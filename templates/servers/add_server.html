@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/server.css' %}">
+{% endblock extra_css %}
+
+{% block title %}Add Server{% endblock %}
+{% block page_title %}Add Server{% endblock %}
+{% block breadcrumb %}<a href="{% url 'server_list' %}">Servers</a> / Add{% endblock %}
+
+{% block content %}
+ 
+<form method="POST" id="serverForm">
+{% csrf_token %}
+ 
+{% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+{% endif %}
+ 
+<!-- ════════════════════════════════════════
+     SECTION 1 — SERVER IDENTITY
+════════════════════════════════════════ -->
+<div class="card shadow-sm mb-3">
+    <div class="card-header-custom">
+        <div class="card-header-icon"
+             style="background:linear-gradient(135deg,#4f8ef7,#38bdf8);">
+            <i class="bi bi-server"></i>
+        </div>
+        <div>
+            <div class="card-header-title">Server Identity</div>
+            <div class="card-header-sub">Machine type, service tag, model</div>
+        </div>
+    </div>
+ 
+    <div class="row g-3 p-3">
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Machine Type</label>
+            <select name="machine_type" class="form-select form-select-sm">
+                <option value="">Select</option>
+                <option value="RACK SERVER">Rack Server</option>
+                <option value="TOWER SERVER">Tower Server</option>
+                <option value="BLADE SERVER">Blade Server</option>
+                <option value="STORAGE">Storage</option>
+                <option value="OTHER">Other</option>
+            </select>
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Machine No</label>
+            <input name="machine_no" class="form-control form-control-sm"
+                   placeholder="e.g. MUM HP SER 1758">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">
+                Service Tag <span class="text-danger">*</span>
+            </label>
+            <input name="service_tag" id="serviceTagInput"
+                   class="form-control form-control-sm"
+                   placeholder="e.g. SGH008S3GG" required>
+            <div id="serviceTagError" class="text-danger"
+                 style="font-size:11px;display:none;">
+                Service tag already exists
+            </div>
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Brand</label>
+            <input name="brand" list="brandList"
+                   class="form-control form-control-sm"
+                   placeholder="e.g. HP">
+        </div>
+ 
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">Model</label>
+            <input name="model" id="serverModelInput"
+                   class="form-control form-control-sm"
+                   placeholder="e.g. HP DL360 G10">
+        </div>
+ 
+        <div class="col-md-1">
+            <label class="form-label fw-semibold">Status</label>
+            <select name="status" class="form-select form-select-sm">
+                <option value="WORKING" selected>Working</option>
+                <option value="NOT WORKING">Not Working</option>
+                <option value="PARTIAL">Partial</option>
+                <option value="SCRAPPED">Scrapped</option>
+            </select>
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Testing Date</label>
+            <input name="testing_date" type="date"
+                   class="form-control form-control-sm">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Tested By / FE Name</label>
+            <input name="tested_by" class="form-control form-control-sm"
+                   placeholder="Engineer name">
+        </div>
+ 
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">Location</label>
+            <input name="location" id="serverLocationInput"
+                   class="form-control form-control-sm">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Reference Location</label>
+            <input name="reference_location" id="serverRefLocationInput"
+                   class="form-control form-control-sm">
+        </div>
+ 
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">Parent-Child Location</label>
+            <input name="parent_child_location"
+                   class="form-control form-control-sm">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Store Location</label>
+            <input name="store_location" list="storeLocationList"
+                   class="form-control form-control-sm" value="WH1">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Stock Status</label>
+            <select name="stock_status" class="form-select form-select-sm">
+                <option value="LIVE" selected>Live</option>
+                <option value="TESTING">Testing</option>
+                <option value="SALE">Sale</option>
+                <option value="RENT">Rent</option>
+                <option value="FAULTY">Faulty</option>
+            </select>
+        </div>
+ 
+        <div class="col-md-4">
+            <label class="form-label fw-semibold">Remark</label>
+            <input name="remark" class="form-control form-control-sm">
+        </div>
+ 
+    </div>
+</div>
+ 
+ 
+<!-- ════════════════════════════════════════
+     SECTION 2 — CABINET DETAILS
+     (same pattern as Controller)
+════════════════════════════════════════ -->
+<div class="card shadow-sm mb-3">
+    <div class="card-header-custom">
+        <div class="card-header-icon"
+             style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+            <i class="bi bi-box-seam"></i>
+        </div>
+        <div>
+            <div class="card-header-title">Cabinet Details</div>
+            <div class="card-header-sub">
+                Physical cabinet / chassis spare details
+            </div>
+        </div>
+    </div>
+ 
+    <div class="row g-3 p-3">
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Part No</label>
+            <input name="part_no" class="form-control form-control-sm"
+                   placeholder="e.g. 867959-B21">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Alt Part No</label>
+            <input name="alt_part_no" class="form-control form-control-sm">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">
+                Serial No
+                <small class="text-muted fw-normal">(auto = service tag)</small>
+            </label>
+            <input name="cabinet_serial_no" id="cabinetSerialInput"
+                   class="form-control form-control-sm"
+                   placeholder="Leave blank to use service tag">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Alt Serial No</label>
+            <input name="alt_serial_no" class="form-control form-control-sm">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Specs</label>
+            <input name="specs" class="form-control form-control-sm"
+                   placeholder="e.g. (2.5 /8 SFF)">
+        </div>
+ 
+        <div class="col-md-1">
+            <label class="form-label fw-semibold">Qty</label>
+            <input name="qty" type="number" value="1" min="1"
+                   class="form-control form-control-sm">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Barcode</label>
+            <input name="barcode" class="form-control form-control-sm barcode-check"
+                   placeholder="Cabinet barcode">
+        </div>
+ 
+        <div class="col-md-2">
+            <label class="form-label fw-semibold">Working Status</label>
+            <select name="cabinet_status" class="form-select form-select-sm">
+                <option value="WORKING" selected>Working</option>
+                <option value="NOT WORKING">Not Working</option>
+            </select>
+        </div>
+ 
+    </div>
+</div>
+ 
+ 
+<!-- ════════════════════════════════════════
+     SECTION 3 — COMPONENTS
+════════════════════════════════════════ -->
+<div class="card shadow-sm mb-4">
+ 
+    <div class="card-header-custom"
+         style="justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <div class="card-header-icon"
+                 style="background:linear-gradient(135deg,#f59e0b,#fbbf24);">
+                <i class="bi bi-gear"></i>
+            </div>
+            <div>
+                <div class="card-header-title">Components</div>
+                <div class="card-header-sub">
+                    Spare parts installed in this server
+                    <span class="text-muted ms-1"
+                          style="font-size:11px;">
+                        (location auto-filled from server)
+                    </span>
+                </div>
+            </div>
+        </div>
+        <button type="button"
+                class="btn btn-sm btn-primary add-comp-row">
+            <i class="bi bi-plus-lg me-1"></i>Add Row
+        </button>
+    </div>
+ 
+    <div class="table-container p-0">
+        <table class="table table-bordered table-sm mb-0"
+               id="compTable">
+            <thead>
+                <tr>
+                    <th style="min-width:190px;">Spare Type</th>
+                    <th style="min-width:100px;">Brand</th>
+                    {% comment %} <th style="min-width:110px;">Model</th> {% endcomment %}
+                    <th style="min-width:100px;">Part No</th>
+                    <th style="min-width:100px;">Alt Part</th>
+                    <th style="min-width:130px;">Serial</th>
+                    <th style="min-width:110px;">Alt Serial</th>
+                    <th style="min-width:100px;">Specs</th>
+                    <th style="min-width:110px;">Barcode</th>
+                    <th style="min-width:55px;">Qty</th>
+                    <th style="min-width:110px;">Working</th>
+                    {% comment %} <th style="min-width:150px;">Location</th>
+                    <th style="min-width:120px;">Ref Loc</th> {% endcomment %}
+                    <th style="min-width:120px;">P-C Loc</th>
+                    <th style="min-width:130px;">Remark</th>
+                    <th style="width:38px;"></th>
+                </tr>
+            </thead>
+ 
+            <tbody id="compRows">
+                <tr>
+                    <td>
+                        <input name="comp_spare_type[]"
+                               list="spareCategoryList"
+                               class="form-control form-control-sm"
+                               placeholder="Type or select…"
+                               autocomplete="off">
+                    </td>
+                    <td>
+                        <input name="comp_brand[]"
+                               list="brandList"
+                               class="form-control form-control-sm">
+                    </td>
+                    {% comment %} <td>
+                        <input name="comp_model[]"
+                               class="form-control form-control-sm comp-model"
+                               placeholder="(from server)">
+                    </td> {% endcomment %}
+                    <td>
+                        <input name="comp_part_no[]"
+                               class="form-control form-control-sm">
+                    </td>
+                    <td>
+                        <input name="comp_alt_part_no[]"
+                               class="form-control form-control-sm">
+                    </td>
+                    <td>
+                        <input name="comp_serial_no[]"
+                               class="form-control form-control-sm">
+                    </td>
+                    <td>
+                        <input name="comp_alt_serial_no[]"
+                               class="form-control form-control-sm">
+                    </td>
+                    <td>
+                        <input name="comp_specs[]"
+                               class="form-control form-control-sm">
+                    </td>
+                    <td>
+                        <input name="comp_barcode[]"
+                               class="form-control form-control-sm barcode-check">
+                    </td>
+                    <td>
+                        <input name="comp_qty[]"
+                               type="number" value="1" min="1"
+                               class="form-control form-control-sm">
+                    </td>
+                    <td>
+                        <select name="comp_working_status[]"
+                                class="form-select form-select-sm">
+                            <option value="WORKING" selected>Working</option>
+                            <option value="NOT WORKING">Not Working</option>
+                        </select>
+                    </td>
+                    {% comment %} <td>
+                        <input name="comp_location[]"
+                               class="form-control form-control-sm comp-location"
+                               placeholder="(from server)">
+                    </td>
+                    <td>
+                        <input name="comp_reference_location[]"
+                               class="form-control form-control-sm comp-ref-location"
+                               placeholder="(from server)">
+                    </td> {% endcomment %}
+                    <td>
+                        <input name="comp_parent_child_location[]"
+                               class="form-control form-control-sm">
+                    </td>
+                    <td>
+                        <input name="comp_remark[]"
+                               class="form-control form-control-sm">
+                    </td>
+                    <td class="text-center">
+                        <button type="button"
+                                class="btn btn-sm btn-danger remove-comp">×</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+ 
+<!-- Submit -->
+<div class="d-flex justify-content-end gap-2 mb-4">
+    <a href="{% url 'server_list' %}"
+       class="btn btn-outline-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary px-5">
+        <i class="bi bi-check-lg me-1"></i>Save Server
+    </button>
+</div>
+ 
+</form>
+ 
+ 
+<!-- ════════════════════════════════════════
+     DATALISTS
+════════════════════════════════════════ -->
+<datalist id="spareCategoryList">
+    {% for cat in spare_categories %}
+        <option value="{{ cat.name }}">
+    {% endfor %}
+</datalist>
+ 
+<datalist id="brandList">
+    {% for b in brands %}
+        <option value="{{ b.name }}">
+    {% endfor %}
+</datalist>
+ 
+<datalist id="storeLocationList">
+    <option value="WH1"><option value="WH2">
+    <option value="DELHI"><option value="BANGALORE">
+    <option value="HYDERABAD"><option value="CHENNAI">
+    <option value="KOLKATA">
+</datalist>
+ 
+ 
+<style>
+.card-header-custom {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border, #e2e8f0);
+    background: #f8fafc;
+    border-radius: 10px 10px 0 0;
+}
+.card-header-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.card-header-icon i { color: #fff; font-size: 16px; }
+.card-header-title  { font-size: 14px; font-weight: 600; color: #1a202c; }
+.card-header-sub    { font-size: 11.5px; color: #718096; }
+ 
+#compTable th {
+    background: #f8fafc; font-size: 11px;
+    white-space: nowrap; padding: 6px 5px;
+}
+#compTable td { padding: 4px 5px; vertical-align: middle; }
+#compTable input.form-control,
+#compTable select.form-select {
+    font-size: 12px; padding: 3px 6px; height: 28px;
+}
+ 
+/* subtle highlight for auto-filled fields */
+.comp-location, .comp-ref-location, .comp-model {
+    background: #f8faff;
+}
+</style>
+ 
+{% endblock %}
+ 
+{% block extra_js %}
+<script src="{% static 'js/server.js' %}"></script>
+{% endblock %}

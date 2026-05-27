@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/cpu.css' %}">
+{% endblock extra_css %}
+
+{% block content %}
+
+<div class="container-fluid px-3">
+
+    <div class="card p-3">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">CPU Inventory</h5>
+            <a href="{% url 'add_cpu' %}" class="btn btn-primary btn-sm">+ Add CPU</a>
+        </div>
+
+        <div class="table-container">
+
+            <table class="table table-bordered table-sm" id="cpuTable">
+
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Brand</th>
+                        <th>Model</th>
+                        <th>Part No</th>
+                        <th>Serial</th>
+                        <th>Cores</th>
+                        <th>Threads</th>
+                        <th>GHz</th>
+                        <th>Frequency</th>
+                        <th>Cache</th>
+                        <th>Barcode</th>
+                        <th>Location</th>
+                        <th>Ref Location</th>
+                        <th>Remark</th>
+                        <th>Store</th>
+                        <th>Status</th>
+                        <th>Last Audit</th>
+                        <th class="sticky-col">Actions</th>
+                    </tr>
+
+                    
+                </thead>
+
+                <tbody>
+                    {% for c in cpus %}
+                    <tr data-id="{{ c.product.id }}" data-spare-id="{{ c.id }}">
+
+                        <td class="truncate" title="{{ c.product.name }}">{{ c.product.name }}</td>
+                        <td>{{ c.brand }}</td>
+                        <td>{{ c.model }}</td>
+                        <td>{{ c.part_no }}</td>
+                        <td>{{ c.product.serial_no }}</td>
+                        <td>{{ c.no_of_cores }}</td>
+                        <td>{{ c.no_of_threads }}</td>
+                        <td>{{ c.ghz }}</td>
+                        <td>{{ c.frequency }}</td>
+                        <td>{{ c.cache }}</td>
+                        <td>{{ c.barcode }}</td>
+
+                        <!-- INLINE EDITABLE -->
+                        <td class="editable-cell" data-field="location">{{ c.location }}</td>
+                        <td class="editable-cell" data-field="reference_location">{{ c.reference_location }}</td>
+                        <td class="editable-cell" data-field="remark">{{ c.remark }}</td>
+
+                        <!-- FROM LATEST TRANSACTION -->
+                        <td>{{ c.latest_location|default:"-" }}</td>
+                        <td class="status-cell">{{ c.latest_status|default:"-" }}</td>
+
+                        <!-- LAST AUDIT -->
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-info audit-history-btn">
+                                {{ c.last_audit_date|default:"View" }}
+                            </button>
+                        </td>
+
+                        <!-- ACTIONS -->
+                        <td class="action-cell sticky-col">
+                            <button type="button" class="btn btn-sm btn-warning audit-btn">Audit</button>
+                            <button type="button" class="btn btn-sm btn-danger stockout-btn">Out</button>
+                        </td>
+
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="18" class="text-center text-muted py-4">No CPU records found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+
+            </table>
+
+        </div>
+    </div>
+</div>
+
+<!-- MODALS -->
+{% include "spare/modals/stock_out_modal.html" %}
+{% include "spare/modals/audit_modal.html" %}
+{% include "spare/modals/audit_history_modal.html" %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/cpu_table.js' %}"></script>
+{% endblock %}

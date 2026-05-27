@@ -1,0 +1,87 @@
+/* ============================================================
+   static/js/railkit.js  —  Add Rail Kit page
+============================================================ */
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    console.log("railkit.js loaded");
+
+    // ----------------------------------------
+    // ADD ROW
+    // ----------------------------------------
+    document.addEventListener("click", function (e) {
+
+        if (!e.target.classList.contains("add-row")) return;
+
+        let tbody    = document.querySelector("#railkitTable tbody");
+        let firstRow = tbody.querySelector("tr");
+        let newRow   = firstRow.cloneNode(true);
+
+        newRow.querySelectorAll("input").forEach(input => {
+            if (input.hasAttribute("readonly")) return;
+            input.value = "";
+            input.classList.remove("error");
+        });
+
+        newRow.querySelectorAll("select").forEach(sel => {
+            sel.selectedIndex = 0;
+        });
+
+        let qty = newRow.querySelector("input[name='qty[]']");
+        if (qty) qty.value = 1;
+
+        newRow.querySelectorAll(".serial-error, .barcode-error").forEach(el => el.remove());
+
+        tbody.appendChild(newRow);
+    });
+
+
+    // ----------------------------------------
+    // REMOVE ROW
+    // ----------------------------------------
+    document.addEventListener("click", function (e) {
+
+        if (!e.target.classList.contains("remove")) return;
+
+        let rows = document.querySelectorAll("#railkitTable tbody tr");
+        if (rows.length > 1) {
+            e.target.closest("tr").remove();
+        }
+    });
+
+
+    // ----------------------------------------
+    // FORM VALIDATION
+    // ----------------------------------------
+    let form = document.getElementById("railkitForm");
+
+    if (form) {
+        form.addEventListener("submit", function (e) {
+
+            let valid    = true;
+            let barcodes = [];
+
+            document.querySelectorAll(".barcode-check").forEach(input => {
+
+                let val = input.value.trim().toUpperCase();
+                input.value = val;
+
+                if (!val) return;
+
+                if (input.classList.contains("error")) {
+                    valid = false;
+                }
+
+                if (barcodes.includes(val)) {
+                    alert("Duplicate barcode in form: " + val);
+                    valid = false;
+                }
+
+                barcodes.push(val);
+            });
+
+            if (!valid) e.preventDefault();
+        });
+    }
+
+});

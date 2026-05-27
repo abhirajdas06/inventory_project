@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+
+<div class="container-fluid px-4">
+
+    <div class="card shadow-sm">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Add CPU</h5>
+        </div>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        <form method="POST" id="cpuForm">
+            {% csrf_token %}
+
+            <div class="table-container">
+
+                <table class="table table-bordered table-sm align-middle" id="cpuTable">
+
+                    <thead>
+                        <tr>
+                            <th>Spare Type</th>
+                            <th>Brand</th>
+                            <th>Model</th>
+                            <th>Part No</th>
+                            {% comment %} <th>Serial *</th> {% endcomment %}
+                            <th>Cores</th>
+                            <th>Threads</th>
+                            <th>GHz</th>
+                            <th>Frequency</th>
+                            <th>Cache</th>
+                            <th>Barcode</th>
+                            <th>Location</th>
+                            <th>Ref Location</th>
+                            <th>Store</th>
+                            <th>Status</th>
+                            <th>Remark</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr>
+
+                            <!-- SPARE TYPE (locked to CPU) -->
+                            <td>
+                                <input name="category[]" value="PROCESSOR" readonly
+                                       class="form-control form-control-sm bg-light">
+                            </td>
+
+                            <!-- BRAND -->
+                            <td>
+                                <input name="brand[]" list="brandList"
+                                       class="form-control form-control-sm"
+                                       placeholder="Brand">
+                            </td>
+
+                            <!-- MODEL -->
+                            <td>
+                                <input name="model[]" class="form-control form-control-sm"
+                                       placeholder="e.g. XEON GOLD 6130">
+                            </td>
+
+                            <!-- PART NO -->
+                            <td>
+                                <input name="part_no[]" class="form-control form-control-sm"
+                                       placeholder="e.g. SR3B9">
+                            </td>
+
+                            <!-- SERIAL -->
+                            {% comment %} <td>
+                                <input name="serial_no[]" class="form-control form-control-sm serial"
+                                       placeholder="Serial No">
+                            </td> {% endcomment %}
+
+                            <!-- CORES -->
+                            <td>
+                                <input name="no_of_cores[]" class="form-control form-control-sm"
+                                       placeholder="e.g. 16">
+                            </td>
+
+                            <!-- THREADS -->
+                            <td>
+                                <input name="no_of_threads[]" class="form-control form-control-sm"
+                                       placeholder="e.g. 32">
+                            </td>
+
+                            <!-- GHZ -->
+                            <td>
+                                <input name="ghz[]" class="form-control form-control-sm"
+                                       placeholder="e.g. 2.10GHz">
+                            </td>
+
+                            <!-- FREQUENCY -->
+                            <td>
+                                <input name="frequency[]" class="form-control form-control-sm"
+                                       placeholder="Frequency">
+                            </td>
+
+                            <!-- CACHE -->
+                            <td>
+                                <input name="cache[]" class="form-control form-control-sm"
+                                       placeholder="e.g. 22MB">
+                            </td>
+
+                            <!-- BARCODE -->
+                            <td>
+                                <input name="barcode[]" class="form-control form-control-sm">
+                            </td>
+
+                            <!-- LOCATION -->
+                            <td>
+                                <input name="location[]" class="form-control form-control-sm">
+                            </td>
+
+                            <!-- REF LOCATION -->
+                            <td>
+                                <input name="reference_location[]" class="form-control form-control-sm">
+                            </td>
+
+                            <!-- STORE LOCATION -->
+                            <td>
+                                <input name="store_location[]" list="storeLocationList"
+                                       class="form-control form-control-sm"
+                                       placeholder="WH1">
+                            </td>
+
+                            <!-- STATUS -->
+                            <td>
+                                <select name="stock_status[]" class="form-control form-control-sm">
+                                    <option value="LIVE" selected>Live</option>
+                                    <option value="SALE">Sale</option>
+                                    <option value="TESTING">Testing</option>
+                                    <option value="RENT">Rent</option>
+                                    <option value="FAULTY">Faulty</option>
+                                    <option value="REPLACEMENT">Replacement</option>
+                                    <option value="ADV_REPLACEMENT">Adv Replacement</option>
+                                    <option value="ON_APPROVAL">On Approval</option>
+                                    <option value="EMPTY">Empty</option>
+                                    <option value="REFILL">Refill</option>
+                                    <option value="SCRAP">Scrap</option>
+                                </select>
+                            </td>
+
+                            <!-- REMARK -->
+                            <td>
+                                <input name="remark[]" class="form-control form-control-sm">
+                            </td>
+
+                            <!-- REMOVE -->
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-danger remove">×</button>
+                            </td>
+
+                        </tr>
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            <div class="mt-3 d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-success add-row">+ Add Row</button>
+                <button type="submit" class="btn btn-primary px-4">Save</button>
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+<!-- DATALISTS -->
+<datalist id="brandList">
+    {% for b in brands %}
+        <option value="{{ b.name }}">
+    {% endfor %}
+</datalist>
+
+<datalist id="storeLocationList">
+    <option value="WH1">
+    <option value="WH2">
+    <option value="DELHI">
+    <option value="BANGALORE">
+    <option value="HYDERABAD">
+    <option value="CHENNAI">
+    <option value="KOLKATA">
+</datalist>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/cpu.js' %}"></script>
+{% endblock %}

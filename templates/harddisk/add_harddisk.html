@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/harddisk.css' %}">
+{% endblock extra_css %}
+
+{% block content %}
+
+
+<div class="container-fluid px-4">
+
+    <div class="card shadow-sm">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Add Hard Disk</h5>
+            <a href="{% url 'harddisk_list' %}" class="btn btn-outline-secondary btn-sm">
+                View List
+            </a>
+        </div>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        <form method="POST" id="harddiskForm">
+            {% csrf_token %}
+
+            <div class="table-container">
+                <table class="table table-bordered table-sm align-middle" id="harddiskTable">
+                    <thead>
+                        <!-- ROW 1: main labels -->
+                        <tr class="table-light">
+                            <th rowspan="2">Type</th>
+                            <th rowspan="2">Brand</th>
+                            <th rowspan="2">OEM</th>
+                            <th rowspan="2">Brand Model</th>
+                            <th rowspan="2">OEM Model</th>
+                            <th rowspan="2">Capacity</th>
+                            <th rowspan="2">RPM</th>
+                            <th rowspan="2">Interface</th>
+                            <th colspan="8" class="text-center bg-light border-bottom-0">Part Numbers</th>
+                            <th colspan="2" class="text-center bg-light border-bottom-0">Serials</th>
+                            <th rowspan="2">Serial <span class="text-danger">*</span></th>
+                            <th rowspan="2">Firmware</th>
+                            <th rowspan="2">Size</th>
+                            <th rowspan="2">Health</th>
+                            <th rowspan="2">GB/s</th>
+                            <th rowspan="2">Barcode</th>
+                            <th rowspan="2">Tray Barcode</th>
+                            <th rowspan="2">Location</th>
+                            <th rowspan="2">Ref Location</th>
+                            <th rowspan="2">Store</th>
+                            <th rowspan="2">Status</th>
+                            <th rowspan="2">Remark</th>
+                            <th rowspan="2"></th>
+                        </tr>
+                        <!-- ROW 2: sub-labels for grouped cols -->
+                        <tr class="table-light" style="font-size:10px;">
+                            <th>Part No</th>
+                            <th>Alt Part</th>
+                            <th>Alt FRU 1</th>
+                            <th>Alt FRU 2</th>
+                            <th>Alt FRU 3</th>
+                            <th>Retail Part</th>
+                            <th>Spare Tray</th>
+                            <th>GPN</th>
+                            <th>Brand Serial</th>
+                            <th>OEM Serial</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr>
+                            <!-- TYPE locked -->
+                            <td><input name="category[]" value="HARD DISK" readonly
+                                       class="form-control form-control-sm bg-light"
+                                       style="min-width:80px;"></td>
+
+                            <!-- BRAND -->
+                            <td><input name="brand[]" list="brandList"
+                                       class="form-control form-control-sm"
+                                       style="min-width:90px;"
+                                       placeholder="e.g. DELL"></td>
+
+                            <!-- OEM -->
+                            <td><input name="oem[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:90px;"
+                                       placeholder="e.g. SEAGATE"></td>
+
+                            <!-- BRAND MODEL -->
+                            <td><input name="brand_model_no[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:110px;"></td>
+
+                            <!-- OEM MODEL -->
+                            <td><input name="oem_model_no[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:120px;"
+                                       placeholder="e.g. ST1000DM003"></td>
+
+                            <!-- CAPACITY -->
+                            <td><input name="capacity[]" list="capacityList"
+                                       class="form-control form-control-sm"
+                                       style="min-width:70px;"
+                                       placeholder="1TB"></td>
+
+                            <!-- RPM -->
+                            <td><input name="rpm[]" list="rpmList"
+                                       class="form-control form-control-sm"
+                                       style="min-width:70px;"
+                                       placeholder="7.2K"></td>
+
+                            <!-- INTERFACE -->
+                            <td>
+                                <select name="interface[]"
+                                        class="form-control form-control-sm"
+                                        style="min-width:80px;">
+                                    <option value="">Select</option>
+                                    <option value="SATA">SATA</option>
+                                    <option value="SAS">SAS</option>
+                                    <option value="FC">FC</option>
+                                    <option value="NVMe">NVMe</option>
+                                </select>
+                            </td>
+
+                            <!-- PART NO -->
+                            <td><input name="part_no[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:90px;"></td>
+
+                            <!-- ALT PART -->
+                            <td><input name="alt_part_no[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:100px;"></td>
+
+                            <!-- ALT FRU 1 -->
+                            <td><input name="alt_fru_1[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:100px;"></td>
+
+                            <!-- ALT FRU 2 -->
+                            <td><input name="alt_fru_2[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:100px;"></td>
+
+                            <!-- ALT FRU 3 -->
+                            <td><input name="alt_fru_3[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:100px;"></td>
+
+                            <!-- RETAIL PART -->
+                            <td><input name="retail_part_no[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:100px;"></td>
+
+                            <!-- SPARE TRAY -->
+                            <td><input name="spare_part_tray[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:100px;"></td>
+
+                            <!-- GPN -->
+                            <td><input name="gpn_code[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:90px;"></td>
+
+                            <!-- BRAND SERIAL -->
+                            <td><input name="brand_serial_no[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:140px;"
+                                       placeholder="Brand Serial"></td>
+
+                            <!-- OEM SERIAL -->
+                            <td><input name="oem_serial_no[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:120px;"
+                                       placeholder="OEM Serial"></td>
+
+                            <!-- SERIAL (primary) -->
+                            <td><input name="serial_no[]"
+                                       class="form-control form-control-sm serial"
+                                       style="min-width:140px;"
+                                       placeholder="Serial No"></td>
+
+                            <!-- FIRMWARE -->
+                            <td><input name="firmware[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:70px;"
+                                       placeholder="CC43"></td>
+
+                            <!-- SIZE -->
+                            <td>
+                                <select name="size[]"
+                                        class="form-control form-control-sm"
+                                        style="min-width:70px;">
+                                    <option value="">—</option>
+                                    <option value="2.5">2.5"</option>
+                                    <option value="3.5">3.5"</option>
+                                </select>
+                            </td>
+
+                            <!-- HEALTH -->
+                            <td><input name="health[]" list="healthList"
+                                       class="form-control form-control-sm"
+                                       style="min-width:70px;"
+                                       placeholder="100%"></td>
+
+                            <!-- GB/S -->
+                            <td><input name="gb_s[]" list="gbsList"
+                                       class="form-control form-control-sm"
+                                       style="min-width:80px;"
+                                       placeholder="6GBPS"></td>
+
+                            <!-- BARCODE -->
+                            <td><input name="barcode[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:110px;"></td>
+
+                            <!-- TRAY BARCODE -->
+                            <td><input name="tray_barcode[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:110px;"></td>
+
+                            <!-- LOCATION -->
+                            <td><input name="location[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:140px;"></td>
+
+                            <!-- REF LOCATION -->
+                            <td><input name="reference_location[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:120px;"></td>
+
+                            <!-- STORE -->
+                            <td><input name="store_location[]" list="storeLocationList"
+                                       class="form-control form-control-sm"
+                                       style="min-width:80px;"
+                                       placeholder="WH1"></td>
+
+                            <!-- STATUS -->
+                            <td>
+                                <select name="stock_status[]"
+                                        class="form-control form-control-sm"
+                                        style="min-width:100px;">
+                                    <option value="LIVE" selected>Live</option>
+                                    <option value="SALE">Sale</option>
+                                    <option value="TESTING">Testing</option>
+                                    <option value="RENT">Rent</option>
+                                    <option value="FAULTY">Faulty</option>
+                                    <option value="REPLACEMENT">Replacement</option>
+                                    <option value="ADV_REPLACEMENT">Adv Replacement</option>
+                                    <option value="ON_APPROVAL">On Approval</option>
+                                    <option value="EMPTY">Empty</option>
+                                    <option value="REFILL">Refill</option>
+                                    <option value="SCRAP">Scrap</option>
+                                </select>
+                            </td>
+
+                            <!-- REMARK -->
+                            <td><input name="remark[]"
+                                       class="form-control form-control-sm"
+                                       style="min-width:130px;"></td>
+
+                            <!-- REMOVE -->
+                            <td class="text-center">
+                                <button type="button"
+                                        class="btn btn-sm btn-danger remove">×</button>
+                            </td>
+
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-3 d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-success add-row">+ Add Row</button>
+                <button type="submit" class="btn btn-primary px-4">Save</button>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+<!-- DATALISTS -->
+<datalist id="brandList">
+    {% for b in brands %}
+        <option value="{{ b.name }}">
+    {% endfor %}
+</datalist>
+
+<datalist id="capacityList">
+    <option value="300GB">
+    <option value="600GB">
+    <option value="900GB">
+    <option value="1TB">
+    <option value="1.2TB">
+    <option value="1.8TB">
+    <option value="2TB">
+    <option value="4TB">
+    <option value="6TB">
+    <option value="8TB">
+    <option value="10TB">
+    <option value="12TB">
+</datalist>
+
+<datalist id="rpmList">
+    <option value="5.4K">
+    <option value="7.2K">
+    <option value="10K">
+    <option value="15K">
+    <option value="SSD">
+</datalist>
+
+<datalist id="healthList">
+    <option value="100%">
+    <option value="90%">
+    <option value="80%">
+    <option value="FAULTY">
+</datalist>
+
+<datalist id="gbsList">
+    <option value="3GBPS">
+    <option value="6GBPS">
+    <option value="12GBPS">
+</datalist>
+
+<datalist id="storeLocationList">
+    <option value="WH1">
+    <option value="WH2">
+    <option value="DELHI">
+    <option value="BANGALORE">
+    <option value="HYDERABAD">
+    <option value="CHENNAI">
+    <option value="KOLKATA">
+</datalist>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/harddisk.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+ {% block extra_css %}
+        <link rel="stylesheet" href="{% static 'css/spare.css' %}">
+
+{% endblock extra_css %}
+<div class="container-fluid px-4">
+
+    <div class="card p-4">
+
+        <h5 class="mb-3">Add Spare</h5>
+
+        <form method="POST" id="spareForm">
+            {% csrf_token %}
+
+            <div class="table-responsive">
+
+                <table class="table table-bordered align-middle" id="spareTable">
+
+                    <thead class="table-light">
+                        <tr>
+                            <th>Spare Type</th>
+                            <th>Brand</th>
+                            <th>Model</th>
+                            <th>Part No</th>
+                            <th>Alt Part</th>
+                            <th>Serial *</th>
+                            <th>Alt Serial</th>
+                            <th>Specs</th>
+                            <th>Qty</th>
+                            <th>Barcode</th>
+                            <th>Location</th>
+                            <th>Ref Location</th>
+
+                            <!-- 🔥 NEW -->
+                            <th>Store Location</th>
+                            <th>Status</th>
+
+                            <th>Remark</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        <tr>
+
+                            <!-- CATEGORY -->
+                            <td>
+                                <input name="category[]" list="categoryList" placeholder="Type or select">
+                            </td>
+
+                            <!-- BRAND -->
+                            <td>
+                                <input name="brand[]" list="brandList" placeholder="Type or select">
+                            </td>
+
+                            <td><input name="model[]" placeholder="Model"></td>
+                            <td><input name="part_no[]" placeholder="Part No"></td>
+                            <td><input name="alt_part_no[]" placeholder="Alt Part"></td>
+
+                            <td>
+                                <input name="serial_no[]" class="serial" placeholder="Serial No">
+                            </td>
+
+                            <td><input name="alt_serial_no[]" placeholder="Alt Serial"></td>
+                            <td><input name="specs[]" placeholder="Specs"></td>
+
+                            <td>
+                                <input name="qty[]" value="1" type="number" min="1">
+                            </td>
+
+                            <td><input name="barcode[]" class="form-control form-control-sm barcode-check"
+           placeholder="Barcode (unique)"></td>
+                            <td><input name="location[]" placeholder="Location"></td>
+                            <td><input name="reference_location[]" placeholder="Reference Location"></td>
+
+                            <!-- 🔥 STORE LOCATION -->
+                            <td>
+                                <input name="store_location[]" list="storeLocationList" placeholder="Store Location">
+                            </td>
+
+                            <!-- 🔥 STATUS (DEFAULT LIVE) -->
+                            <td>
+                                <input name="stock_status[]" list="statusList" value="LIVE" placeholder="Status">
+                            </td>
+
+                            <td><input name="remark[]" placeholder="Remark"></td>
+
+                            <td>
+                                <button type="button" class="btn btn-danger btn-sm remove">X</button>
+                            </td>
+
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            <div class="mt-3 d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-success add-row">+ Add Row</button>
+                <button type="submit" class="btn btn-primary px-4">Save</button>
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+<!-- 🔥 DATALISTS -->
+
+<!-- CATEGORY -->
+<datalist id="categoryList">
+    {% for c in categories %}
+        <option value="{{ c.name }}">
+    {% endfor %}
+</datalist>
+
+<!-- BRAND -->
+<datalist id="brandList">
+    {% for b in brands %}
+        <option value="{{ b.name }}">
+    {% endfor %}
+</datalist>
+
+<!-- 🔥 STORE LOCATION -->
+<datalist id="storeLocationList">
+    <option value="WH1">
+    <option value="WH2">
+    <option value="DELHI">
+    <option value="BANGALORE">
+    <option value="HYDERABAD">
+    <option value="CHENNAI">
+    <option value="KOLKATA">
+</datalist>
+
+<!-- 🔥 STATUS -->
+<datalist id="statusList">
+    <option value="LIVE">
+    <option value="SALE">
+    <option value="TESTING">
+    <option value="RENT">
+    <option value="FAULTY">
+    <option value="REPLACEMENT">
+    <option value="ADV_REPLACEMENT">
+    <option value="ON_APPROVAL">
+    <option value="EMPTY">
+    <option value="REFILL">
+    <option value="SCRAP">
+</datalist>
+
+{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/spare.js' %}"></script>
+{% endblock extra_js%}

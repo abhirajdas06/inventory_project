@@ -1,0 +1,148 @@
+.card {
+    border-radius: 10px;
+    padding: 25px;
+}
+
+table input {
+    border: none;
+    outline: none;
+    width: 100%;
+    padding: 6px;
+    font-size: 13px;
+}
+
+table tr:hover {
+    background: #f9fbff;
+}
+
+th {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.error {
+    border: 1px solid red !important;
+    background: #fff0f0;
+}
+
+.serial-error {
+    color: red;
+    font-size: 11px;
+}
+
+.select2-container--default .select2-selection--single {
+    height: 34px;
+    padding: 4px;
+}
+
+
+.editable {
+    border: none;
+    background: transparent;
+    width: 100%;
+}
+
+.editable:focus {
+    background: #eef6ff;
+    outline: none;
+}
+
+/* Editable cells */
+.editable-cell {
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.editable-cell:hover {
+    background: #f1f7ff;
+}
+
+/* Input inside table */
+.editable-cell input {
+    width: 100%;
+    font-size: 12px;
+    padding: 2px;
+}
+
+/* 🔥 Strong grid borders */
+#cpuTable {
+    border: 1px solid #dcdcdc;
+}
+
+#cpuTable th,
+#cpuTable td {
+    border: 1px solid #e2e2e2;
+    /* padding: 6px; */
+}
+
+/* 🔥 Header styling */
+#cpuTable thead th {
+    background: #f4f6f9;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+/* 🔥 Filter row */
+.filter-row input {
+    width: 100%;
+    font-size: 11px;
+    padding: 3px;
+    border: 1px solid #ddd;
+}
+
+/* 🔥 Row hover */
+#cpuTable tbody tr:hover {
+    background: #f9fbff;
+}
+
+/* 🔥 Alternate rows */
+#cpuTable tbody tr:nth-child(even) {
+    background: #fafafa;
+}
+
+/* 🔥 Editable cells */
+.editable-cell {
+    cursor: pointer;
+}
+
+.editable-cell:hover {
+    background: #eef6ff;
+}
+
+/* 🔥 Prevent wrapping */
+#cpuTable th,
+#cpuTable td {
+    white-space: nowrap;
+}
+
+/* 🔥 Table container */
+.table-container {
+    overflow-x: auto;
+}
+
+/* 🔥 Sticky Action Column (BODY) */
+#cpuTable td.sticky-col {
+    position: sticky;
+    right: 0;
+    background: #fff;
+    z-index: 2;
+    min-width: 120px;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.05);
+}
+
+/* 🔥 Sticky Header FIX (IMPORTANT) */
+.dataTables_scrollHead th.sticky-col,
+#cpuTable thead th.sticky-col {
+    position: sticky !important;
+    right: 0;
+    background: #f4f6f9;
+    z-index: 5;
+    min-width: 120px;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.05);
+}
+
+/* Hover fix */
+#cpuTable tbody tr:hover td.sticky-col {
+    background: #f1f7ff;
+}
+

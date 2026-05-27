@@ -1,0 +1,48 @@
+<div class="modal fade" id="stockOutModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content p-3">
+
+        <h5 class="mb-3">Stock Out</h5>
+
+        <input type="hidden" id="stockOutProductId">
+
+        <div class="mb-2">
+            <label>Client Name</label>
+            <input type="text" id="stockOutClient" class="form-control">
+        </div>
+
+        <div class="mb-2">
+            <label>Invoice No</label>
+            <input type="text" id="stockOutInvoice" class="form-control">
+        </div>
+
+
+
+        <div class="mb-2">
+            <label>Status</label>
+            <select id="stockOutStatus" class="form-control">
+                <option value="SALE" selected>Sale</option>
+                <option value="TESTING">Testing</option>
+                <option value="RENT">Rent</option>
+                <option value="FAULTY">Faulty</option>
+                <option value="REPLACEMENT">Replacement</option>
+                <option value="ADV_REPLACEMENT">Adv Replacement</option>
+                <option value="ON_APPROVAL">On Approval</option>
+                <option value="EMPTY">Empty</option>
+                <option value="REFILL">Refill</option>
+                <option value="SCRAP">Scrap</option>
+            </select>
+        </div>
+
+        <div class="mb-2">
+            <label>Date</label>
+            <input type="date" id="stockOutDate" class="form-control">
+        </div>
+
+        <button class="btn btn-danger mt-2 w-100" id="saveStockOut">
+            Confirm Stock Out
+        </button>
+
+    </div>
+  </div>
+</div>

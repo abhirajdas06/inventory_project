@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+
+<div class="container-fluid px-3">
+
+<div class="card p-3">
+
+<h5 class="mb-3">Stock Out Report</h5>
+
+<div class="table-container">
+
+<table class="table table-bordered table-hover table-sm" id="spareTable">
+
+<thead>
+<tr>
+    <th>Sr.No</th>
+    <th>Product</th>
+    <th>Brand</th>
+    <th>Model</th>
+    <th>Serial</th>
+    <th>Client</th>
+    <th>Invoice</th>
+    <th>Out Date</th>
+    <th>Store</th>
+    <th>Status</th>
+</tr>
+</thead>
+
+<tbody>
+
+{% for s in spares %}
+<tr>
+
+<td>{{ forloop.counter }}</td>
+
+<td>{{ s.product.name }}</td>
+<td>{{ s.brand }}</td>
+<td>{{ s.model }}</td>
+
+<td>{{ s.product.serial_no }}</td>
+
+<td>{{ s.latest_client }}</td>
+<td>{{ s.latest_invoice }}</td>
+<td>{{ s.latest_out_date }}</td>
+
+<td>{{ s.latest_location }}</td>
+<td>{{ s.latest_status }}</td>
+
+</tr>
+{% endfor %}
+
+</tbody>
+
+</table>
+
+</div>
+</div>
+</div>
+
+{% block extra_js %}
+<script src="{% static 'js/spare_table.js' %}"></script>
+{% endblock %}
+{% endblock %}

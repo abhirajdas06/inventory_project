@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% load static %}
+ {% block extra_css %}
+        <link rel="stylesheet" href="{% static 'css/card.css' %}">
+
+{% endblock extra_css %}
+{% block content %}
+
+<div class="container-fluid px-3">
+
+<div class="card p-3">
+
+<h5 class="mb-3">Card Inventory</h5>
+
+<div class="table-container">
+
+<table class="table table-bordered table-hover table-sm" id="cardTable">
+
+<thead>
+<tr>
+    <th>Product</th>
+    <th>Brand</th>
+    <th>OEM</th>
+    <th>Model</th>
+    <th>Interface</th>
+    <th>Part No</th>
+    <th>Serial</th>
+    <th>Capacity</th>
+    <th>Port</th>
+    <th>Belongs To</th>   <!-- ← NEW COLUMN -->
+    <th>Location</th>
+    <th>Ref Location</th>
+    <th>Remark</th>
+    <th>Store</th>
+    <th>Status</th>
+    <th>Last Audit</th>
+    <th class="action-cell sticky-col">Actions</th>
+</tr>
+
+
+</thead>
+
+<tbody>
+
+{% for c in cards %}
+<tr data-id="{{ c.product.id }}">
+
+<td>{{ c.product.name }}</td>
+<td>{{ c.brand }}</td>
+<td>{{ c.oem }}</td>
+<td>{{ c.brand_model_no }}</td>
+<td>{{ c.interface }}</td>
+<td>{{ c.part_no }}</td>
+<td>{{ c.product.serial_no }}</td>
+<td>{{ c.capacity }}</td>
+<td>{{ c.port }}</td>
+
+<!-- BELONGS TO COLUMN -->
+<td>
+                        {% include "partials/membership_badge.html" with item=c %}
+                        {% include "partials/membership_warning_modal.html" %}
+                        </td>
+
+<td class="editable-cell" data-field="location">{{ c.location }}</td>
+<td class="editable-cell" data-field="reference_location">{{ c.reference_location }}</td>
+<td class="editable-cell" data-field="remark">{{ c.remark }}</td>
+
+<td>{{ c.latest_location|default:"-" }}</td>
+<td>{{ c.latest_status|default:"-" }}</td>
+
+<td>
+    <button class="btn btn-sm btn-info audit-history-btn">
+        {{ c.last_audit_date|default:"View" }}
+    </button>
+</td>
+
+<td class="action-cell sticky-col">
+    <button class="btn btn-sm btn-warning audit-btn">Audit</button>
+    <button class="btn btn-sm btn-danger stockout-btn">Out</button>
+</td>
+
+</tr>
+{% endfor %}
+
+</tbody>
+
+</table>
+
+</div>
+</div>
+</div>
+
+{% include "spare/modals/stock_out_modal.html" %}
+{% include "spare/modals/audit_modal.html" %}
+{% include "spare/modals/audit_history_modal.html" %}
+{% block extra_js %}
+<script src="{% static 'js/card_table.js' %}"></script>
+{% endblock %}
+
+{% endblock %}

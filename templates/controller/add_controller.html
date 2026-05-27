@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+
+<div class="container-fluid px-4">
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="POST" id="controllerForm">
+        {% csrf_token %}
+
+        <!-- ================================================
+             SECTION 1 — CABINET (PARENT)
+        ================================================ -->
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-header bg-dark text-white d-flex align-items-center">
+                <span class="me-2">🗄</span>
+                <strong>Cabinet (Controller Parent)</strong>
+            </div>
+
+            <div class="card-body">
+                <div class="row g-3">
+
+                    <div class="col-md-2">
+                        <label class="form-label">Brand</label>
+                        <input name="cabinet_brand" list="brandList"
+                               class="form-control form-control-sm" placeholder="e.g. DELL">
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Model</label>
+                        <input name="cabinet_model" class="form-control form-control-sm"
+                               placeholder="e.g. MD3200I">
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Part No</label>
+                        <input name="cabinet_part_no" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Alt Part No</label>
+                        <input name="cabinet_alt_part_no" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Serial No <span class="text-danger">*</span></label>
+                        <input name="cabinet_serial_no" id="cabinetSerial"
+                               class="form-control form-control-sm serial-cabinet" required>
+                        <div id="cabinetSerialError" class="text-danger" style="font-size:11px;display:none;">
+                            Duplicate serial
+                        </div>
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Alt Serial</label>
+                        <input name="cabinet_alt_serial_no" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Specs</label>
+                        <input name="cabinet_specs" class="form-control form-control-sm"
+                               placeholder="e.g. ISCSI">
+                    </div>
+
+                    <div class="col-md-1">
+                        <label class="form-label">Qty</label>
+                        <input name="cabinet_qty" type="number" value="1" min="1"
+                               class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Barcode</label>
+                        <input name="cabinet_barcode"
+                                class="form-control form-control-sm barcode-check"
+                                placeholder="Barcode (unique)">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Location</label>
+                        <input name="cabinet_location" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Reference Location</label>
+                        <input name="cabinet_reference_location" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Parent-Child Location</label>
+                        <input name="cabinet_parent_child_location"
+                               class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Store Location</label>
+                        <input name="cabinet_store_location" list="storeLocationList"
+                               class="form-control form-control-sm" value="WH1">
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Status</label>
+                        <select name="cabinet_stock_status" class="form-control form-control-sm">
+                            <option value="LIVE" selected>Live</option>
+                            <option value="SALE">Sale</option>
+                            <option value="TESTING">Testing</option>
+                            <option value="RENT">Rent</option>
+                            <option value="FAULTY">Faulty</option>
+                            <option value="REPLACEMENT">Replacement</option>
+                            <option value="ADV_REPLACEMENT">Adv Replacement</option>
+                            <option value="ON_APPROVAL">On Approval</option>
+                            <option value="SCRAP">Scrap</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Remark</label>
+                        <input name="cabinet_remark" class="form-control form-control-sm"
+                               placeholder="e.g. WITH 8GB SD">
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ================================================
+             SECTION 2 — COMPONENTS (CHILDREN)
+        ================================================ -->
+        <div class="card shadow-sm mb-4">
+
+            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                <span><span class="me-2">🔧</span><strong>Components</strong>
+                    <small class="ms-2 fw-normal opacity-75">
+                        (Card, Battery, Cache Memory, etc.)
+                    </small>
+                </span>
+                <button type="button" class="btn btn-sm btn-light add-component-row">
+                    + Add Component
+                </button>
+            </div>
+
+            <div class="card-body p-0">
+                <div class="table-container">
+                    <table class="table table-bordered table-sm mb-0" id="componentsTable">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Brand</th>
+                                <th>Model</th>
+                                <th>Part No</th>
+                                <th>Alt Part</th>
+                                <th>Serial <span class="text-danger">*</span></th>
+                                <th>Alt Serial</th>
+                                <th>Specs</th>
+                                <th>Qty</th>
+                                <th>Barcode</th>
+                                <th>Remark</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="componentRows">
+
+                            <tr>
+                                <td>
+                                    <input name="comp_product_category[]"
+                                           list="spareCategoryList"
+                                           class="form-control form-control-sm"
+                                           placeholder="e.g. CARD">
+                                </td>
+                                <td>
+                                    <input name="comp_brand[]" list="brandList"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_model[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_part_no[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_alt_part_no[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_serial_no[]"
+                                           class="form-control form-control-sm comp-serial">
+                                </td>
+                                <td>
+                                    <input name="comp_alt_serial_no[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_specs[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_qty[]" type="number" value="1" min="1"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td><input name="comp_barcode[]"
+                                        class="form-control form-control-sm barcode-check"
+                                        placeholder="Barcode"></td>
+                                <td>
+                                    <input name="comp_remark[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td class="text-center">
+                                    <button type="button"
+                                            class="btn btn-sm btn-danger remove-component">×</button>
+                                </td>
+                            </tr>
+
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUBMIT -->
+        <div class="d-flex justify-content-end gap-2 mb-4">
+            <a href="{% url 'controller_list' %}" class="btn btn-outline-secondary">
+                View Controllers
+            </a>
+            <button type="submit" class="btn btn-primary px-5">
+                Save Controller
+            </button>
+        </div>
+
+    </form>
+
+</div>
+
+<!-- DATALISTS -->
+<datalist id="brandList">
+    {% for b in brands %}
+        <option value="{{ b.name }}">
+    {% endfor %}
+</datalist>
+
+<datalist id="spareCategoryList">
+    {% for c in spare_categories %}
+        <option value="{{ c.name }}">
+    {% endfor %}
+</datalist>
+
+<datalist id="storeLocationList">
+    <option value="WH1">
+    <option value="WH2">
+    <option value="DELHI">
+    <option value="BANGALORE">
+    <option value="HYDERABAD">
+    <option value="CHENNAI">
+    <option value="KOLKATA">
+</datalist>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/controller.js' %}"></script>
+{% endblock %}

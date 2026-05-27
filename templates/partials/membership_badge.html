@@ -1,0 +1,21 @@
+
+
+{% if item.server_pk %}
+<span class="membership-badge server-badge"
+      title="In Server: {{ item.server_label }} — {{ item.server_model_label }} [{{ item.server_service_tag }}]">
+    <i class="bi bi-server"></i>
+    Server - {{ item.server_label|default:item.server_service_tag|truncatechars:16 }}
+</span>
+{% endif %}
+
+{% if item.controller %}
+<span class="membership-badge ctrl-badge"
+      title="In Controller: {{ item.controller.model }} [{{ item.controller.product.serial_no }}]">
+    <i class="bi bi-hdd-rack"></i>
+    Controller - {{ item.controller.model|default:item.controller.product.serial_no|truncatechars:16 }}
+</span>
+{% endif %}
+
+{% if not item.server_pk and not item.controller %}
+<span class="text-muted" style="font-size:11px;">—</span>
+{% endif %}

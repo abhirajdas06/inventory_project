@@ -1,0 +1,138 @@
+
+
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/spare.css' %}">
+{% endblock extra_css %}
+{% block title %}Spare Inventory{% endblock %}
+{% block page_title %}Spare Inventory{% endblock %}
+ 
+{% block content %}
+ 
+<div class="container-fluid px-3">
+<div class="card p-3">
+ 
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">Spare Inventory</h5>
+</div>
+ 
+<div class="table-container">
+<table class="table table-bordered table-sm" id="spareTable">
+ 
+<thead>
+<tr>
+    <th>Product</th>
+    <th>Brand</th>
+    <th>Model</th>
+    <th>Part No</th>
+    <th>Alt Part</th>
+    <th>Serial</th>
+    <th>Alt Serial</th>
+    <th>Specs</th>
+    <th>Qty</th>
+    <th>Barcode</th>
+    <th>Location</th>
+    <th>Ref Location</th>
+    <th>Remark</th>
+    <th>Store</th>
+    <th>Status</th>
+    <th>Belongs To</th>   <!-- ← NEW COLUMN -->
+    <th>Last Audit</th>
+    <th class="sticky-col">Actions</th>
+</tr>
+<tr class="filter-row">
+    {% for i in "123456789012345678" %}
+    <th><input type="text" placeholder="Search"></th>
+    {% endfor %}
+</tr>
+</thead>
+ 
+<tbody>
+{% for s in spares %}
+<tr  data-id="{{ s.product.id }}"
+    class="{% if s.server_pk %}row-in-server{% elif s.controller %}row-in-controller{% endif %}">
+ 
+    <td class="truncate" title="{{ s.product.name }}">{{ s.product.name }}</td>
+    <td>{{ s.brand }}</td>
+    <td>{{ s.model }}</td>
+    <td class="truncate">{{ s.part_no }}</td>
+    <td class="truncate">{{ s.alt_part_no }}</td>
+    <td><code>{{ s.product.serial_no }}</code></td>
+    <td>{{ s.alt_serial_no }}</td>
+    <td class="truncate">{{ s.specs }}</td>
+    <td>{{ s.qty }}</td>
+    <td>{{ s.barcode }}</td>
+ 
+    <td class="editable-cell" data-field="location">{{ s.location }}</td>
+    <td class="editable-cell" data-field="reference_location">{{ s.reference_location }}</td>
+    <td class="editable-cell" data-field="remark">{{ s.remark }}</td>
+ 
+    <td>{{ s.latest_location|default:"-" }}</td>
+    <td>
+        <span class="badge
+            {% if s.latest_status == 'LIVE' %}bg-success
+            {% elif s.latest_status == 'FAULTY' %}bg-danger
+            {% elif s.latest_status == 'TESTING' %}bg-warning text-dark
+            {% else %}bg-secondary{% endif %}">
+            {{ s.latest_status|default:"-" }}
+        </span>
+    </td>
+ 
+    <!-- BELONGS TO COLUMN -->
+    <td>
+        {% if s.server_pk %}
+            <span class="membership-badge server-badge"
+                  title="In Server: {{ s.server_label }} — {{ s.server_model_label }} [{{ s.server_service_tag }}]">
+                <i class="bi bi-server"></i>
+                {{ s.server_label|default:s.server_service_tag|truncatechars:16 }}
+            </span>
+        {% elif s.controller %}
+            <span class="membership-badge ctrl-badge"
+                  title="In Controller: {{ s.controller.model }} [{{ s.controller.product.serial_no }}]">
+                <i class="bi bi-hdd-rack"></i>
+                {{ s.controller.model|default:s.controller.product.serial_no|truncatechars:16 }}
+            </span>
+        {% else %}
+            <span class="text-muted" style="font-size:11px;">—</span>
+        {% endif %}
+    </td>
+ 
+    <td>
+        <button type="button" class="btn btn-sm btn-outline-info audit-history-btn">
+            {{ s.last_audit_date|default:"View" }}
+        </button>
+    </td>
+ 
+    <td class="action-cell sticky-col">
+        <button type="button" class="btn btn-sm btn-warning audit-btn"
+                data-product-id="{{ s.product.id }}">Audit</button>
+        <button type="button" class="btn btn-sm btn-danger stockout-btn"
+                data-product-id="{{ s.product.id }}">Out</button>
+    </td>
+ 
+</tr>
+{% empty %}
+<tr>
+    <td colspan="18" class="text-center text-muted py-4">No spare records found.</td>
+</tr>
+{% endfor %}
+</tbody>
+ 
+</table>
+</div>
+</div>
+</div>
+ 
+{% include "spare/modals/stock_out_modal.html" %}
+{% include "spare/modals/audit_modal.html" %}
+{% include "spare/modals/audit_history_modal.html" %}
+ 
+<!-- MEMBERSHIP WARNING MODAL -->
+{% include "partials/membership_warning_modal.html" %}
+ 
+{% endblock %}
+ 
+{% block extra_js %}
+<script src="{% static 'js/spare_table.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,86 @@
+<!-- ============================================================
+   templates/partials/membership_warning_modal.html
+   Include in EVERY list template that has Audit / Stock Out buttons.
+   The JS populates it before showing the real modal.
+============================================================ -->
+
+<div class="modal fade" id="membershipWarningModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+
+            <div class="modal-header py-3"
+                 style="background: linear-gradient(135deg, #ff6b35, #f7931e);
+                        border-radius: 12px 12px 0 0;">
+                <div class="d-flex align-items-center gap-2">
+                    <div style="width:32px;height:32px;background:rgba(255,255,255,0.25);
+                                border-radius:8px;display:flex;align-items:center;
+                                justify-content:center;">
+                        <i class="bi bi-exclamation-triangle-fill text-white"
+                           style="font-size:16px;"></i>
+                    </div>
+                    <h6 class="modal-title text-white mb-0 fw-bold">
+                        Product In Use
+                    </h6>
+                </div>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body p-4">
+                <p class="mb-2" style="font-size:14px;color:#374151;">
+                    This product is currently part of:
+                </p>
+
+                <!-- Server warning -->
+                <div id="mwServerBlock" class="membership-warn-block d-none"
+                     style="background:#fff7ed;border:1px solid #fed7aa;
+                            border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <i class="bi bi-server text-warning" style="font-size:16px;"></i>
+                        <span style="font-size:12px;font-weight:700;color:#92400e;
+                                     text-transform:uppercase;letter-spacing:0.5px;">
+                            Server
+                        </span>
+                    </div>
+                    <div id="mwServerLabel"
+                         style="font-size:14px;font-weight:600;color:#1c1917;"></div>
+                </div>
+
+                <!-- Controller warning -->
+                <div id="mwControllerBlock" class="membership-warn-block d-none"
+                     style="background:#faf5ff;border:1px solid #ddd6fe;
+                            border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <i class="bi bi-hdd-rack text-purple" style="font-size:16px;color:#7c3aed;"></i>
+                        <span style="font-size:12px;font-weight:700;color:#4c1d95;
+                                     text-transform:uppercase;letter-spacing:0.5px;">
+                            Controller
+                        </span>
+                    </div>
+                    <div id="mwControllerLabel"
+                         style="font-size:14px;font-weight:600;color:#1c1917;"></div>
+                </div>
+
+                <p class="mb-0 mt-3"
+                   style="font-size:13px;color:#6b7280;">
+                    Do you still want to proceed?
+                </p>
+            </div>
+
+            <div class="modal-footer border-0 pt-0 pb-4 px-4 gap-2">
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm"
+                        data-bs-dismiss="modal">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-warning btn-sm fw-semibold"
+                        id="mwProceedBtn">
+                    <i class="bi bi-arrow-right me-1"></i>
+                    Proceed Anyway
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>

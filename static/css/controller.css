@@ -1,0 +1,267 @@
+.card {
+    border-radius: 10px;
+    padding: 25px;
+}
+
+table input {
+    border: none;
+    outline: none;
+    width: 100%;
+    padding: 6px;
+    font-size: 13px;
+}
+
+table tr:hover {
+    background: #f9fbff;
+}
+
+th {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.error {
+    border: 1px solid red !important;
+    background: #fff0f0;
+}
+
+.serial-error {
+    color: red;
+    font-size: 11px;
+}
+
+.select2-container--default .select2-selection--single {
+    height: 34px;
+    padding: 4px;
+}
+
+
+.editable {
+    border: none;
+    background: transparent;
+    width: 100%;
+}
+
+.editable:focus {
+    background: #eef6ff;
+    outline: none;
+}
+
+/* Editable cells */
+.editable-cell {
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.editable-cell:hover {
+    background: #f1f7ff;
+}
+
+/* Input inside table */
+.editable-cell input {
+    width: 100%;
+    font-size: 12px;
+    padding: 2px;
+}
+
+/* 🔥 Strong grid borders */
+#controllerTable {
+    border: 1px solid #dcdcdc;
+}
+
+#controllerTable th,
+#controllerTable td {
+    border: 1px solid #e2e2e2;
+    /* padding: 6px; */
+}
+
+/* 🔥 Header styling */
+#controllerTable thead th {
+    background: #f4f6f9;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+/* 🔥 Filter row */
+.filter-row input {
+    width: 100%;
+    font-size: 11px;
+    padding: 3px;
+    border: 1px solid #ddd;
+}
+
+/* 🔥 Row hover */
+#controllerTable tbody tr:hover {
+    background: #f9fbff;
+}
+
+/* 🔥 Alternate rows */
+#controllerTable tbody tr:nth-child(even) {
+    background: #fafafa;
+}
+
+/* 🔥 Editable cells */
+.editable-cell {
+    cursor: pointer;
+}
+
+.editable-cell:hover {
+    background: #eef6ff;
+}
+
+/* 🔥 Prevent wrapping */
+#controllerTable th,
+#controllerTable td {
+    white-space: nowrap;
+}
+
+/* 🔥 Table container */
+.table-container {
+    overflow-x: auto;
+}
+
+/* 🔥 Sticky Action Column (BODY) */
+#controllerTable td.sticky-col {
+    position: sticky;
+    right: 0;
+    background: #fff;
+    z-index: 2;
+    min-width: 120px;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.05);
+}
+
+/* 🔥 Sticky Header FIX (IMPORTANT) */
+.dataTables_scrollHead th.sticky-col,
+#controllerTable thead th.sticky-col {
+    position: sticky !important;
+    right: 0;
+    background: #f4f6f9;
+    z-index: 5;
+    min-width: 120px;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.05);
+}
+
+/* Hover fix */
+#controllerTable tbody tr:hover td.sticky-col {
+    background: #f1f7ff;
+}
+
+/* ============================================================
+   ADD TO: static/css/spare.css
+   Controller-related additions only — append to existing file
+============================================================ */
+
+/* Controller badge in spare list */
+.controller-badge {
+    font-size: 10px;
+    padding: 3px 7px;
+    border-radius: 10px;
+    white-space: nowrap;
+    max-width: 140px;
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    transition: opacity 0.2s;
+}
+
+.controller-badge:hover {
+    opacity: 0.8;
+}
+
+/* Controller add page — cabinet section header */
+.card-header.bg-dark {
+    font-size: 14px;
+}
+
+/* Components table inside controller add page */
+#componentsTable th {
+    background: #f8f9fa;
+    font-size: 11px;
+}
+
+#componentsTable td {
+    padding: 4px 6px;
+}
+
+/* Components detail modal table */
+#componentsDetailTable td,
+#componentsDetailTable th {
+    font-size: 12px;
+    padding: 6px 8px;
+    vertical-align: middle;
+}
+
+/* Highlight rows that belong to a controller in spare list */
+tr.has-controller {
+    border-left: 3px solid #6f42c1;
+}
+
+
+/* ============================================================
+   Append to static/css/spare.css
+   Controller component sold/out highlighting
+============================================================ */
+
+/* Row that has been stocked out (sold) */
+tr.comp-row-out {
+    background-color: #fff5f5 !important;
+}
+
+tr.comp-row-out:hover {
+    background-color: #ffe8e8 !important;
+}
+
+/* Available row */
+tr.comp-row-in {
+    background-color: #f6fff6;
+}
+
+tr.comp-row-in:hover {
+    background-color: #edfaed !important;
+}
+
+/* SOLD badge on serial */
+.sold-badge {
+    display: inline-block;
+    background: #dc3545;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    vertical-align: middle;
+    text-transform: uppercase;
+}
+
+/* Legend dots in components modal */
+.legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
+/* Add component modal table */
+#addComponentTable th {
+    background: #f8f9fa;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+#addComponentTable td {
+    padding: 4px 5px;
+    vertical-align: middle;
+}
+
+/* Components detail table in view modal */
+#componentsDetailTable td,
+#componentsDetailTable th {
+    font-size: 12px;
+    padding: 7px 10px;
+    vertical-align: middle;
+    white-space: nowrap;
+}

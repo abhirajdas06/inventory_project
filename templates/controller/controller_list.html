@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/controller.css' %}">
+{% endblock extra_css %}
+{% block content %}
+ 
+<div class="container-fluid px-3">
+ 
+    <div class="card p-3">
+ 
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Controller Inventory</h5>
+            <a href="{% url 'add_controller' %}" class="btn btn-primary btn-sm">
+                + Add Controller
+            </a>
+        </div>
+ 
+        <div class="table-container">
+ 
+            <table class="table table-bordered table-sm" id="controllerTable">
+ 
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Brand</th>
+                        <th>Model</th>
+                        <th>Part No</th>
+                        <th>Serial</th>
+                        <th>Specs</th>
+                        <th>Barcode</th>
+                        <th>Location</th>
+                        <th>Ref Location</th>
+                        <th>P-C Location</th>
+                        <th>Remark</th>
+                        <th>Store</th>
+                        <th>Status</th>
+                        <th>Components</th>
+                        <th>Last Audit</th>
+                        <th class="sticky-col">Actions</th>
+                    </tr>
+ 
+                    <tr class="filter-row">
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th><input type="text" placeholder="Search"></th>
+                        <th></th>
+                        <th></th>
+                        <th class="sticky-col"></th>
+                    </tr>
+                </thead>
+ 
+                <tbody>
+                    {% for ctrl in controllers %}
+                    <tr data-id="{{ ctrl.product.id }}" data-ctrl-id="{{ ctrl.id }}">
+ 
+                        <td class="truncate" title="{{ ctrl.product.name }}">
+                            {{ ctrl.product.name }}
+                        </td>
+                        <td>{{ ctrl.brand }}</td>
+                        <td>{{ ctrl.model }}</td>
+                        <td>{{ ctrl.part_no }}</td>
+                        <td><code>{{ ctrl.product.serial_no }}</code></td>
+                        <td>{{ ctrl.specs }}</td>
+                        <td>{{ ctrl.barcode }}</td>
+ 
+                        <td class="editable-cell" data-field="location">
+                            {{ ctrl.location }}
+                        </td>
+                        <td class="editable-cell" data-field="reference_location">
+                            {{ ctrl.reference_location }}
+                        </td>
+                        <td class="editable-cell" data-field="parent_child_location">
+                            {{ ctrl.parent_child_location }}
+                        </td>
+                        <td class="editable-cell" data-field="remark">
+                            {{ ctrl.remark }}
+                        </td>
+ 
+                        <td>{{ ctrl.latest_location|default:"-" }}</td>
+                        <td>
+                            <span class="badge
+                                {% if ctrl.latest_status == 'LIVE' %}bg-success
+                                {% elif ctrl.latest_status == 'FAULTY' %}bg-danger
+                                {% elif ctrl.latest_status == 'TESTING' %}bg-warning text-dark
+                                {% else %}bg-secondary{% endif %}">
+                                {{ ctrl.latest_status|default:"-" }}
+                            </span>
+                        </td>
+ 
+                        <!-- COMPONENTS BUTTON — shows count + out count -->
+                        <td class="text-center">
+                            {% with total=ctrl.components.count %}
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary components-btn"
+                                    data-ctrl-id="{{ ctrl.id }}">
+                                {{ total }} item{{ total|pluralize }}
+                            </button>
+                            {% endwith %}
+                        </td>
+ 
+                        <td>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-info audit-history-btn">
+                                {{ ctrl.last_audit_date|default:"View" }}
+                            </button>
+                        </td>
+ 
+                        <td class="action-cell sticky-col">
+                            <button type="button"
+                                    class="btn btn-sm btn-success add-component-list-btn"
+                                    data-ctrl-id="{{ ctrl.id }}"
+                                    title="Add component">+</button>
+                            <button type="button"
+                                    class="btn btn-sm btn-warning audit-btn">Audit</button>
+                            <button type="button"
+                                    class="btn btn-sm btn-danger stockout-btn">Out</button>
+                        </td>
+ 
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="16" class="text-center text-muted py-4">
+                            No controllers found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+ 
+            </table>
+ 
+        </div>
+    </div>
+</div>
+ 
+ 
+<!-- ================================================
+     COMPONENTS VIEW MODAL
+================================================ -->
+<div class="modal fade" id="componentsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+ 
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    Controller Components
+                    <span id="compModalSerial" class="text-muted ms-2"
+                          style="font-size:13px;font-weight:400;"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+ 
+            <!-- legend -->
+            <div class="px-3 pt-2 d-flex gap-3" style="font-size:12px;">
+                <span><span class="legend-dot bg-success"></span> Available</span>
+                <span><span class="legend-dot bg-danger"></span> Sold / Stock Out</span>
+            </div>
+ 
+            <div class="modal-body p-0">
+                <table class="table table-bordered table-sm mb-0"
+                       id="componentsDetailTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Category</th>
+                            <th>Brand</th>
+                            <th>Model</th>
+                            <th>Part No</th>
+                            <th>Serial</th>
+                            <th>Specs</th>
+                            <th>Barcode</th>
+                            <th>Store</th>
+                            <th>Status</th>
+                            <th>Client</th>
+                            <th>Invoice</th>
+                            <th>Out Date</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+ 
+        </div>
+    </div>
+</div>
+ 
+ 
+<!-- ================================================
+     ADD COMPONENT MODAL
+================================================ -->
+<div class="modal fade" id="addComponentModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+ 
+            <div class="modal-header">
+                <h5 class="modal-title">Add Components to Controller</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+ 
+            <div class="modal-body">
+ 
+                <input type="hidden" id="addCompControllerId">
+ 
+                <!-- success / error alert -->
+                <div id="addCompAlert" class="alert d-none"></div>
+ 
+                <div class="table-container">
+                    <table class="table table-bordered table-sm align-middle"
+                           id="addComponentTable">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Brand</th>
+                                <th>Model</th>
+                                <th>Part No</th>
+                                <th>Alt Part</th>
+                                <th>Serial <span class="text-danger">*</span></th>
+                                <th>Alt Serial</th>
+                                <th>Specs</th>
+                                <th>Qty</th>
+                                <th>Barcode</th>
+                                <th>Remark</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="addCompRows">
+                            <tr>
+                                <td>
+                                    <input name="comp_product_category[]"
+                                           list="spareCategoryList"
+                                           class="form-control form-control-sm"
+                                           placeholder="e.g. CARD">
+                                </td>
+                                <td>
+                                    <input name="comp_brand[]"
+                                           list="brandListComp"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_model[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_part_no[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_alt_part_no[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_serial_no[]"
+                                           class="form-control form-control-sm new-comp-serial">
+                                </td>
+                                <td>
+                                    <input name="comp_alt_serial_no[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_specs[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_qty[]" type="number" value="1" min="1"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_barcode[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input name="comp_remark[]"
+                                           class="form-control form-control-sm">
+                                </td>
+                                <td class="text-center">
+                                    <button type="button"
+                                            class="btn btn-sm btn-danger remove-comp-row">×</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+ 
+            </div>
+ 
+            <div class="modal-footer justify-content-between">
+                <button type="button" class="btn btn-success btn-sm add-comp-row-btn">
+                    + Add Row
+                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary"
+                            id="saveNewComponents">Save Components</button>
+                </div>
+            </div>
+ 
+        </div>
+    </div>
+</div>
+ 
+ 
+<!-- datalists for add-component modal -->
+<datalist id="spareCategoryList">
+    {% for c in spare_categories %}
+        <option value="{{ c.name }}">
+    {% endfor %}
+</datalist>
+ 
+<datalist id="brandListComp">
+    {% for b in brands %}
+        <option value="{{ b.name }}">
+    {% endfor %}
+</datalist>
+ 
+ 
+<!-- STOCK OUT / AUDIT / HISTORY MODALS -->
+{% include "spare/modals/stock_out_modal.html" %}
+{% include "spare/modals/audit_modal.html" %}
+{% include "spare/modals/audit_history_modal.html" %}
+ 
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/controller_table.js' %}"></script>
+{% endblock %}

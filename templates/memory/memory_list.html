@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/memory.css' %}">
+{% endblock extra_css %}
+{% block content %}
+
+<div class="container-fluid px-3">
+
+    <div class="card p-3">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Memory Inventory</h5>
+            <a href="{% url 'add_memory' %}" class="btn btn-primary btn-sm">+ Add Memory</a>
+        </div>
+
+        <div class="table-container">
+
+            <table class="table table-bordered table-sm" id="memoryTable">
+
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Brand</th>
+                        <th>OEM</th>
+                        <th>Model</th>
+                        <th>Part No 1</th>
+                        <th>Part No 2</th>
+                        <th>Part No 3</th>
+                        <th>Size</th>
+                        <th>RAM Type</th>
+                        <th>DDR</th>
+                        <th>Frequency</th>
+                        <th>Rank</th>
+                        <th>Serial</th>
+                        <th>Qty</th>
+                        <th>Barcode</th>
+                        <th>Belongs to</th>
+                        <th>Location</th>
+                        <th>Ref Location</th>
+                        <th>Remark</th>
+                        <th>Store</th>
+                        <th>Status</th>
+                        <th>Last Audit</th>
+                        <th class="sticky-col">Actions</th>
+                    </tr>
+
+ 
+                </thead>
+
+                <tbody>
+                    {% for m in memories %}
+                    <tr data-id="{{ m.product.id }}" data-mem-id="{{ m.id }}">
+
+                        <td class="truncate" title="{{ m.product.name }}">
+                            {{ m.product.name }}
+                        </td>
+                        <td>{{ m.brand }}</td>
+                        <td>{{ m.oem }}</td>
+                        <td>{{ m.model }}</td>
+                        <td>{{ m.part_no_1 }}</td>
+                        <td>{{ m.part_no_2 }}</td>
+                        <td>{{ m.part_no_3 }}</td>
+                        <td>{{ m.size }}</td>
+                        <td>{{ m.ram_type }}</td>
+                        <td>{{ m.ddr_version }}</td>
+                        <td>{{ m.frequency }}</td>
+                        <td>{{ m.rank }}</td>
+                        <td><code>{{ m.product.serial_no }}</code></td>
+                        <td>{{ m.qty }}</td>
+                        <td>{{ m.barcode }}</td>
+
+
+                        <td>
+                        {% include "partials/membership_badge.html" with item=m %}
+                        {% include "partials/membership_warning_modal.html" %}
+                        </td>
+
+
+                        <!-- INLINE EDITABLE -->
+                        <td class="editable-cell" data-field="location">
+                            {{ m.location }}
+                        </td>
+                        <td class="editable-cell" data-field="reference_location">
+                            {{ m.reference_location }}
+                        </td>
+                        <td class="editable-cell" data-field="remark">
+                            {{ m.remark }}
+                        </td>
+
+                        <!-- FROM LATEST TRANSACTION -->
+                        <td>{{ m.latest_location|default:"-" }}</td>
+                        <td class="status-cell">
+                            <span class="badge
+                                {% if m.latest_status == 'LIVE' %}bg-success
+                                {% elif m.latest_status == 'FAULTY' %}bg-danger
+                                {% elif m.latest_status == 'TESTING' %}bg-warning text-dark
+                                {% else %}bg-secondary{% endif %}">
+                                {{ m.latest_status|default:"-" }}
+                            </span>
+                        </td>
+
+                        <!-- LAST AUDIT -->
+                        <td>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-info audit-history-btn">
+                                {{ m.last_audit_date|default:"View" }}
+                            </button>
+                        </td>
+
+                        <!-- ACTIONS -->
+                        <td class="action-cell sticky-col">
+                            <button type="button"
+                                    class="btn btn-sm btn-warning audit-btn">Audit</button>
+                            <button type="button"
+                                    class="btn btn-sm btn-danger stockout-btn">Out</button>
+                        </td>
+
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="22" class="text-center text-muted py-4">
+                            No memory records found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+
+            </table>
+
+        </div>
+    </div>
+</div>
+
+<!-- MODALS -->
+{% include "spare/modals/stock_out_modal.html" %}
+{% include "spare/modals/audit_modal.html" %}
+{% include "spare/modals/audit_history_modal.html" %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/memory_table.js' %}"></script>
+{% endblock %}

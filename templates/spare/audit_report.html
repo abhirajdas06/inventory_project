@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% load static %}
+<div class="container-fluid px-3">
+<div class="card p-3">
+
+<h5>Audit Report</h5>
+
+<div class="table-container">
+
+<table class="table table-bordered table-hover table-sm" id="spareTable">
+
+<thead>
+<tr>
+    <th>Sr.No</th>
+    <th>Product</th>
+    <th>Serial</th>
+    <th>Date</th>
+    <th>User</th>
+    <th>Location</th>
+    <th>Status</th>
+    <th>Remark</th>
+</tr>
+</thead>
+
+<tbody>
+
+{% for a in audits %}
+<tr>
+<td>{{ forloop.counter }}</td>
+<td>{{ a.product.name }}</td>
+<td>{{ a.product.serial_no }}</td>
+<td>{{ a.audited_on }}</td>
+<td>{{ a.audited_by.username }}</td>
+<td>{{ a.store_location }}</td>
+<td>{{ a.stock_status }}</td>
+<td>{{ a.audit_remark }}</td>
+</tr>
+{% endfor %}
+
+</tbody>
+
+</table>
+
+</div>
+</div>
+</div>
+{% block extra_js %}
+<script src="{% static 'js/spare_table.js' %}"></script>
+{% endblock %}
+{% endblock %}
