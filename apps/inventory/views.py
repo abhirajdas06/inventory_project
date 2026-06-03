@@ -1,12 +1,63 @@
 from django.http import JsonResponse
 from datetime import date, datetime
 
+from django.db import transaction
 from django.shortcuts import render
 from apps.inventory.models import InventoryTransaction
 from apps.core.models import Product
 from django.utils.timezone import now
 
 # Create your views here.
+
+
+def _latest_store_location(product):
+    last_txn = InventoryTransaction.objects.filter(
+        product=product
+    ).order_by('-created_at').first()
+
+    return last_txn.store_location if last_txn else 'WH1'
+
+
+def _create_stock_out_transaction(product, store_location, stock_status,
+                                  stock_out_date, client_name, invoice_no):
+    return InventoryTransaction.objects.create(
+        product          = product,
+        transaction_type = 'OUT',
+        store_location   = store_location,
+        stock_status     = stock_status,
+        stock_out_date   = stock_out_date,
+        client_name      = client_name,
+        invoice_no       = invoice_no,
+    )
+
+
+def _stock_out_server_components(product, store_location, stock_status,
+                                 stock_out_date, client_name, invoice_no):
+    from apps.servers.models import Server
+
+    server = Server.objects.filter(product=product).first()
+    if not server:
+        return 0
+
+    component_products = (
+        server.components
+        .select_related('product')
+        .all()
+    )
+
+    count = 0
+    for component in component_products:
+        _create_stock_out_transaction(
+            product=component.product,
+            store_location=store_location,
+            stock_status=stock_status,
+            stock_out_date=stock_out_date,
+            client_name=client_name,
+            invoice_no=invoice_no,
+        )
+        count += 1
+
+    return count
  
 def stock_out(request):
     if request.method == 'POST':
@@ -22,15 +73,8 @@ def stock_out(request):
         except Product.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Product not found'})
  
-        # carry store_location forward from last transaction
-        last_txn = InventoryTransaction.objects.filter(
-            product=product
-        ).order_by('-created_at').first()
- 
-        store_location = (
-            last_txn.store_location if last_txn else 'WH1'
-        )
- 
+        store_location = _latest_store_location(product)
+
         try:
             stock_out_date = (
                 datetime.strptime(date_value, '%Y-%m-%d').date()
@@ -39,17 +83,30 @@ def stock_out(request):
         except ValueError:
             stock_out_date = date.today()
  
-        InventoryTransaction.objects.create(
-            product          = product,
-            transaction_type = 'OUT',
-            store_location   = store_location,
-            stock_status     = stock_status,
-            stock_out_date   = stock_out_date,
-            client_name      = client_name,
-            invoice_no       = invoice_no,
-        )
+        with transaction.atomic():
+            _create_stock_out_transaction(
+                product=product,
+                store_location=store_location,
+                stock_status=stock_status,
+                stock_out_date=stock_out_date,
+                client_name=client_name,
+                invoice_no=invoice_no,
+            )
+
+            components_stocked_out = _stock_out_server_components(
+                product=product,
+                store_location=store_location,
+                stock_status=stock_status,
+                stock_out_date=stock_out_date,
+                client_name=client_name,
+                invoice_no=invoice_no,
+            )
  
-        return JsonResponse({'success': True, 'status': stock_status})
+        return JsonResponse({
+            'success': True,
+            'status': stock_status,
+            'components_stocked_out': components_stocked_out,
+        })
  
     return JsonResponse({'success': False, 'error': 'Invalid method'})
 

@@ -196,3 +196,144 @@ th {
 tr.has-controller {
     border-left: 3px solid #6f42c1;
 }
+
+/* Add Spare Form */
+.spare-form-shell {
+    background: #fff;
+    border: 1px solid #dde5f0;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+    overflow: hidden;
+}
+
+.spare-form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 18px;
+    border-bottom: 1px solid #e7edf6;
+    background: #f8fbff;
+}
+
+.spare-form-title {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: #1f2a3d;
+}
+
+.spare-form-subtitle {
+    margin-top: 3px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.spare-form-shell form {
+    padding: 14px;
+}
+
+.spare-add-table {
+    width: 100%;
+    margin: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.spare-add-table th {
+    background: #f1f5fb;
+    border-bottom: 1px solid #d7e2f0;
+    color: #465a74;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 10px 8px;
+}
+
+.spare-add-table td {
+    padding: 6px 7px;
+    border-color: #e5ebf4;
+    background: #fff;
+}
+
+.spare-add-table tbody tr:nth-child(even) td {
+    background: #fbfdff;
+}
+
+.spare-add-table input {
+    width: 100%;
+    min-width: 110px;
+    padding: 7px 8px;
+    border: 1px solid #cfdaea;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 12px;
+    color: #1f2937;
+}
+
+.spare-add-table input:focus {
+    border-color: #7fa7ef;
+    box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.14);
+}
+
+.spare-add-table .row-remove-col {
+    width: 58px;
+    min-width: 58px;
+    text-align: center;
+}
+
+.spare-add-table .remove {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.spare-form-footer {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.spare-form-note {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.spare-form-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+@media (max-width: 900px) {
+    .spare-form-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .spare-form-tools {
+        width: 100%;
+    }
+
+    .spare-form-tools .btn {
+        width: 100%;
+    }
+
+    .spare-form-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .spare-form-actions {
+        width: 100%;
+    }
+
+    .spare-form-actions .btn {
+        flex: 1;
+    }
+}

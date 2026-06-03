@@ -20,10 +20,12 @@ $(document).ready(function () {
     }
 
     let table = $('#spareTable').DataTable({
-        pageLength:    25,
-        autoWidth:     false,
+        pageLength: 25,
+        scrollX: true,
+        autoWidth: false,
         orderCellsTop: true,
-        fixedHeader:   false
+        fixedHeader: true,
+        deferRender: true
     });
 
     setTimeout(function () {

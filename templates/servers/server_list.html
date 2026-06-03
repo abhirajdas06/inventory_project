@@ -7,24 +7,33 @@
 {% block title %}Server List{% endblock %}
 {% block page_title %}Server Inventory{% endblock %}
 {% block breadcrumb %}Servers{% endblock %}
+{% block nav_server_list %}active{% endblock %}
 
 {% block content %}
 
-<div class="card p-3">
+<div class="server-list-shell">
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0">Servers</h5>
-        <a href="{% url 'add_server' %}" class="btn btn-primary btn-sm">
-            <i class="bi bi-plus-lg me-1"></i>Add Server
-        </a>
+    <div class="server-list-toolbar">
+        <div>
+            <h5 class="server-list-title">Servers</h5>
+            <div class="server-list-subtitle">{{ servers|length }} active server{{ servers|length|pluralize }}</div>
+        </div>
+        <div class="server-list-actions">
+            <a href="{% url 'server_out_list' %}" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-box-arrow-up-right me-1"></i>Sold Servers
+            </a>
+            <a href="{% url 'add_server' %}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i>Add Server
+            </a>
+        </div>
     </div>
 
-    <div class="table-container">
-        <table class="table table-bordered table-sm" id="serverTable">
+    <div class="server-table-wrap">
+        <table class="table table-sm align-middle" id="serverTable">
 
             <thead>
                 <tr>
-                    <th>Sr.No</th>
+                    <th class="serial-col">Sr.No</th>
                     <th>Machine Type</th>
                     <th>Machine No</th>
                     <th>Service Tag</th>
@@ -42,17 +51,13 @@
                     <th>Components</th>
                     <th class="sticky-col">Actions</th>
                 </tr>
-                <tr class="filter-row">
-                    {% for i in "12345678901234567" %}
-                    <th><input type="text" placeholder="Search"></th>
-                    {% endfor %}
-                </tr>
+
             </thead>
 
             <tbody>
                 {% for s in servers %}
                 <tr data-id="{{ s.product.id }}" data-server-id="{{ s.id }}">
-                    <td>{{ forloop.counter }}</td>
+                    <td class="serial-col text-muted">{{ forloop.counter }}</td>
                     <td>
                         <span class="badge
                             {% if s.machine_type == 'RACK SERVER' %}bg-primary
@@ -62,10 +67,10 @@
                             {{ s.machine_type|default:"-" }}
                         </span>
                     </td>
-                    <td>{{ s.machine_no|default:"-" }}</td>
-                    <td><code>{{ s.service_tag }}</code></td>
+                    <td><span class="server-machine">{{ s.machine_no|default:"-" }}</span></td>
+                    <td><code class="server-tag">{{ s.service_tag }}</code></td>
                     <td>{{ s.brand|default:"-" }}</td>
-                    <td><strong>{{ s.model|default:"-" }}</strong></td>
+                    <td><strong class="server-model">{{ s.model|default:"-" }}</strong></td>
 
                     <!-- Status badge -->
                     <td>
@@ -82,10 +87,10 @@
                     <td>{{ s.tested_by|default:"-" }}</td>
 
                     <!-- Inline editable -->
-                    <td class="editable-cell" data-field="location">{{ s.location|default:"" }}</td>
-                    <td class="editable-cell" data-field="reference_location">{{ s.reference_location|default:"" }}</td>
-                    <td class="editable-cell" data-field="parent_child_location">{{ s.parent_child_location|default:"" }}</td>
-                    <td class="editable-cell" data-field="remark">{{ s.remark|default:"" }}</td>
+                    <td class="editable-cell muted-empty" data-field="location">{{ s.location|default:"Click to add" }}</td>
+                    <td class="editable-cell muted-empty" data-field="reference_location">{{ s.reference_location|default:"Click to add" }}</td>
+                    <td class="editable-cell muted-empty" data-field="parent_child_location">{{ s.parent_child_location|default:"Click to add" }}</td>
+                    <td class="editable-cell server-remark muted-empty" data-field="remark">{{ s.remark|default:"Click to add" }}</td>
 
                     <!-- From inventory transaction -->
                     <td>{{ s.latest_location|default:"-" }}</td>
@@ -103,7 +108,7 @@
                     <td class="text-center">
                         {% with cnt=s.components.count %}
                         <button type="button"
-                                class="btn btn-sm btn-outline-secondary view-components-btn"
+                            class="btn btn-sm btn-outline-secondary view-components-btn"
                                 data-server-id="{{ s.id }}">
                             <i class="bi bi-grid me-1"></i>{{ cnt }}
                             item{{ cnt|pluralize }}
@@ -113,18 +118,20 @@
 
                     <!-- Actions -->
                     <td class="action-cell sticky-col">
+                        <div class="server-row-actions">
                         <button type="button"
-                                class="btn btn-sm btn-success add-component-btn"
+                                class="btn btn-sm btn-outline-success add-component-btn"
                                 data-server-id="{{ s.id }}"
                                 title="Add component">
                             <i class="bi bi-plus-lg"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-warning audit-btn">
-                            Audit
+                        <button type="button" class="btn btn-sm btn-outline-warning audit-btn" title="Audit">
+                            <i class="bi bi-clipboard2-check"></i>
                         </button>
-                        <button type="button" class="btn btn-sm btn-danger stockout-btn">
-                            Out
+                        <button type="button" class="btn btn-sm btn-outline-danger stockout-btn" title="Stock out">
+                            <i class="bi bi-box-arrow-up-right"></i>
                         </button>
+                        </div>
                     </td>
                 </tr>
                 {% empty %}

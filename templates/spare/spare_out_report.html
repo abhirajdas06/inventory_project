@@ -1,16 +1,24 @@
 {% extends "base.html" %}
 {% load static %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/inventory-list.css' %}">
+{% endblock extra_css %}
 {% block content %}
 
 <div class="container-fluid px-3">
 
-<div class="card p-3">
+<div class="inventory-list-shell">
 
-<h5 class="mb-3">Stock Out Report</h5>
+<div class="inventory-list-toolbar">
+    <div>
+        <h5 class="inventory-list-title">Stock Out Report</h5>
+        <div class="inventory-list-subtitle">{{ spares|length }} stocked out spare{{ spares|length|pluralize }}</div>
+    </div>
+</div>
 
 <div class="table-container">
 
-<table class="table table-bordered table-hover table-sm" id="spareTable">
+<table class="table table-sm align-middle inventory-list-table" id="spareTable">
 
 <thead>
 <tr>

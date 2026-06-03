@@ -3,22 +3,30 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/cpu.css' %}">
+<link rel="stylesheet" href="{% static 'css/inventory-list.css' %}">
 {% endblock extra_css %}
 
 {% block content %}
 
 <div class="container-fluid px-3">
 
-    <div class="card p-3">
+    <div class="inventory-list-shell">
 
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">CPU Inventory</h5>
-            <a href="{% url 'add_cpu' %}" class="btn btn-primary btn-sm">+ Add CPU</a>
+        <div class="inventory-list-toolbar">
+            <div>
+                <h5 class="inventory-list-title">CPU Inventory</h5>
+                <div class="inventory-list-subtitle">{{ cpus|length }} active CPU{{ cpus|length|pluralize }}</div>
+            </div>
+            <div class="inventory-list-actions">
+                <a href="{% url 'add_cpu' %}" class="btn btn-primary btn-sm">
+                    <i class="bi bi-plus-lg me-1"></i>Add CPU
+                </a>
+            </div>
         </div>
 
         <div class="table-container">
 
-            <table class="table table-bordered table-sm" id="cpuTable">
+            <table class="table table-sm align-middle inventory-list-table" id="cpuTable">
 
                 <thead>
                     <tr>
@@ -42,7 +50,7 @@
                         <th class="sticky-col">Actions</th>
                     </tr>
 
-                    
+
                 </thead>
 
                 <tbody>
@@ -79,8 +87,14 @@
 
                         <!-- ACTIONS -->
                         <td class="action-cell sticky-col">
-                            <button type="button" class="btn btn-sm btn-warning audit-btn">Audit</button>
-                            <button type="button" class="btn btn-sm btn-danger stockout-btn">Out</button>
+                            <div class="inventory-row-actions">
+                                <button type="button" class="btn btn-sm btn-outline-warning audit-btn" title="Audit">
+                                    <i class="bi bi-clipboard2-check"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger stockout-btn" title="Stock out">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </button>
+                            </div>
                         </td>
 
                     </tr>

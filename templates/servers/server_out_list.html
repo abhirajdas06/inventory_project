@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/server.css' %}">
+{% endblock extra_css %}
+
+{% block title %}Sold Servers{% endblock %}
+{% block page_title %}Sold Servers{% endblock %}
+{% block breadcrumb %}<a href="{% url 'server_list' %}">Servers</a> / Sold{% endblock %}
+{% block nav_server_out %}active{% endblock %}
+
+{% block content %}
+
+<div class="server-list-shell">
+
+    <div class="server-list-toolbar">
+        <div>
+            <h5 class="server-list-title">Sold / Stocked Out Servers</h5>
+            <div class="server-list-subtitle">{{ servers|length }} sold server{{ servers|length|pluralize }}</div>
+        </div>
+        <div class="server-list-actions">
+            <a href="{% url 'server_list' %}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1"></i>Active Servers
+            </a>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="table table-sm align-middle" id="serverTable">
+            <thead>
+                <tr>
+                    <th>Sr.No</th>
+                    <th>Machine Type</th>
+                    <th>Machine No</th>
+                    <th>Service Tag</th>
+                    <th>Brand</th>
+                    <th>Model</th>
+                    <th>Store</th>
+                    <th>Out Status</th>
+                    <th>Client</th>
+                    <th>Invoice</th>
+                    <th>Out Date</th>
+                    <th>Components</th>
+                </tr>
+
+            </thead>
+            <tbody>
+                {% for s in servers %}
+                <tr data-id="{{ s.product.id }}" data-server-id="{{ s.id }}">
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ s.machine_type|default:"-" }}</td>
+                    <td>{{ s.machine_no|default:"-" }}</td>
+                    <td><code>{{ s.service_tag }}</code></td>
+                    <td>{{ s.brand|default:"-" }}</td>
+                    <td><strong>{{ s.model|default:"-" }}</strong></td>
+                    <td>{{ s.latest_location|default:"-" }}</td>
+                    <td><span class="badge bg-danger">{{ s.latest_status|default:"OUT" }}</span></td>
+                    <td>{{ s.latest_client|default:"-" }}</td>
+                    <td>{{ s.latest_invoice|default:"-" }}</td>
+                    <td>{{ s.latest_out_date|default:"-" }}</td>
+                    <td class="text-center">
+                        {% with cnt=s.components.count %}
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary view-components-btn"
+                                data-server-id="{{ s.id }}">
+                            <i class="bi bi-grid me-1"></i>{{ cnt }}
+                            item{{ cnt|pluralize }}
+                        </button>
+                        {% endwith %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="12" class="text-center text-muted py-4">
+                        No sold servers found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="viewComponentsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#0f1117;border-bottom:1px solid #252d3d;">
+                <div>
+                    <h5 class="modal-title text-white mb-0" id="viewCompModalTitle">
+                        Components
+                    </h5>
+                    <small id="viewCompModalSub" class="text-secondary"></small>
+                </div>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+            </div>
+            <div class="px-3 pt-2 pb-1 d-flex gap-4 border-bottom"
+                 style="font-size:12px;background:#fafafa;">
+                <span><span class="legend-dot bg-success"></span> Available</span>
+                <span><span class="legend-dot bg-danger"></span> Sold / Stocked Out</span>
+                <span id="viewCompSummary" class="ms-auto text-muted"></span>
+            </div>
+            <div class="modal-body p-0">
+                <div class="table-container">
+                    <table class="table table-bordered table-sm mb-0"
+                           id="compDetailTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Spare Type</th>
+                                <th>Table</th>
+                                <th>Part No</th>
+                                <th>Alt Part</th>
+                                <th>Serial</th>
+                                <th>Alt Serial</th>
+                                <th>Specs</th>
+                                <th>Barcode</th>
+                                <th>Qty</th>
+                                <th>Working</th>
+                                <th>Location</th>
+                                <th>Store</th>
+                                <th>Status</th>
+                                <th>Client</th>
+                                <th>Invoice</th>
+                                <th>Out Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="compDetailBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.legend-dot {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+tr.comp-out-row  { background: #fff5f5 !important; }
+tr.comp-out-row:hover { background: #ffe8e8 !important; }
+tr.comp-in-row   { background: #f6fff6; }
+tr.comp-in-row:hover  { background: #edfaed !important; }
+.sold-tag {
+    display: inline-block;
+    background: #dc3545;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 3px;
+}
+#compDetailTable th,
+#compDetailTable td { font-size: 12px; white-space: nowrap; padding: 6px 8px; }
+</style>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/server_table.js' %}"></script>
+{% endblock %}

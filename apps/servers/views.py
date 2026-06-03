@@ -81,24 +81,40 @@ def add_server(request):
     })
  
  
-# ── List ──────────────────────────────────────────────────
-def server_list(request):
+def _server_queryset():
     latest_txn = InventoryTransaction.objects.filter(
         product=OuterRef('product')
     ).order_by('-created_at')
- 
-    servers = Server.objects.select_related(
+
+    return Server.objects.select_related(
         'product', 'brand'
     ).annotate(
+        latest_type     = Subquery(latest_txn.values('transaction_type')[:1]),
         latest_location = Subquery(latest_txn.values('store_location')[:1]),
         latest_status   = Subquery(latest_txn.values('stock_status')[:1]),
+        latest_client   = Subquery(latest_txn.values('client_name')[:1]),
+        latest_invoice  = Subquery(latest_txn.values('invoice_no')[:1]),
+        latest_out_date = Subquery(latest_txn.values('stock_out_date')[:1]),
     ).order_by('-created_at')
+
+
+# ── List ──────────────────────────────────────────────────
+def server_list(request):
+    servers = _server_queryset().exclude(latest_type='OUT')
  
     return render(request, 'servers/server_list.html', {
-    'servers':          servers,
-    'spare_categories': SpareCategory.objects.all(),   # ← this
-    'brands':           Brand.objects.all(),
-})
+        'servers':          servers,
+        'spare_categories': SpareCategory.objects.all(),   # ← this
+        'brands':           Brand.objects.all(),
+    })
+
+
+def server_out_list(request):
+    servers = _server_queryset().filter(latest_type='OUT')
+
+    return render(request, 'servers/server_out_list.html', {
+        'servers': servers,
+    })
  
  
 # ── Components API ────────────────────────────────────────

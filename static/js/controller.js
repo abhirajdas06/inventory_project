@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ----------------------------------------
     document.addEventListener("click", function (e) {
 
-        if (!e.target.classList.contains("add-component-row")) return;
+        if (!e.target.closest(".add-component-row")) return;
 
         let tbody    = document.querySelector("#componentRows");
         let firstRow = tbody.querySelector("tr");
@@ -43,11 +43,12 @@ document.addEventListener("DOMContentLoaded", function () {
     // ----------------------------------------
     document.addEventListener("click", function (e) {
 
-        if (!e.target.classList.contains("remove-component")) return;
+        let removeBtn = e.target.closest(".remove-component");
+        if (!removeBtn) return;
 
         let rows = document.querySelectorAll("#componentRows tr");
         if (rows.length > 1) {
-            e.target.closest("tr").remove();
+            removeBtn.closest("tr").remove();
         }
     });
 

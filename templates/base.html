@@ -30,7 +30,7 @@
             --nav-active:     #4f8ef7;
             --accent:         #4f8ef7;
             --accent2:        #38bdf8;
-            --sidebar-w:      220px;
+            --sidebar-w:      236px;
             --sidebar-w-col:  56px;
             --topbar-h:       52px;
             --content-bg:     #f0f4f8;
@@ -70,6 +70,40 @@
             transition: width 0.22s ease;
         }
 
+        .sidebar-search-wrap {
+            padding: 10px 10px 4px;
+        }
+
+        .sidebar-search {
+            position: relative;
+        }
+
+        .sidebar-search i {
+            position: absolute;
+            left: 9px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #5f6d82;
+            font-size: 12px;
+        }
+
+        .sidebar-search input {
+            width: 100%;
+            height: 32px;
+            border: 1px solid #2a3344;
+            border-radius: 7px;
+            background: #151d2b;
+            color: #d8e0ec;
+            font-size: 12px;
+            padding: 6px 8px 6px 30px;
+            outline: none;
+        }
+
+        .sidebar-search input:focus {
+            border-color: #4f8ef7;
+            box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.18);
+        }
+
         #sidebar::-webkit-scrollbar       { width: 3px; }
         #sidebar::-webkit-scrollbar-track { background: transparent; }
         #sidebar::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 4px; }
@@ -84,6 +118,7 @@
         body.sb-collapsed .nav-section-label,
         body.sb-collapsed .sidebar-brand-text,
         body.sb-collapsed .nav-subitems   { display: none !important; }
+        body.sb-collapsed .sidebar-search-wrap { display: none !important; }
 
         body.sb-collapsed .nav-item-link,
         body.sb-collapsed .nav-group-toggle {
@@ -324,6 +359,44 @@
         #sbToggleBtn:hover { background: var(--content-bg); color: var(--text-main); }
         #sbToggleBtn i     { font-size: 16px; display: block; }
 
+        #sbMobileBtn {
+            display: none;
+            background: #0f172a;
+            border: 1px solid #2b3b54;
+            border-radius: 7px;
+            padding: 5px 8px;
+            color: #e2e8f0;
+            cursor: pointer;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        #sbMobileBtn i { font-size: 16px; display: block; }
+
+        .topbar-search {
+            min-width: 230px;
+            max-width: 320px;
+            width: 32vw;
+        }
+
+        .topbar-search .input-group-text {
+            border: 1px solid var(--border);
+            border-right: 0;
+            background: #f8fafc;
+            color: #64748b;
+        }
+
+        .topbar-search input {
+            border: 1px solid var(--border);
+            border-left: 0;
+            font-size: 12.5px;
+            box-shadow: none !important;
+        }
+
+        .topbar-search input:focus {
+            border-color: #b8c9e5;
+        }
+
         .topbar-title      { font-size: 14px; font-weight: 600; color: var(--text-main); }
         .topbar-breadcrumb { font-size: 11.5px; color: var(--text-muted); }
         .topbar-breadcrumb a { color: var(--accent); text-decoration: none; }
@@ -349,10 +422,60 @@
         }
 
         .alert { border-radius: var(--radius); font-size: 13.5px; }
+
+        #sbBackdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 8, 23, 0.52);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.18s ease;
+            z-index: 998;
+        }
+
+        @media (max-width: 992px) {
+            #sbMobileBtn { display: inline-flex; align-items: center; justify-content: center; }
+            #sbToggleBtn { display: none; }
+            .topbar-search { display: none; }
+
+            #sidebar {
+                width: min(86vw, 290px);
+                transform: translateX(-100%);
+                transition: transform 0.2s ease;
+            }
+
+            #topbar {
+                left: 0;
+                padding: 0 12px;
+            }
+
+            #main-content {
+                margin-left: 0;
+                padding: 14px;
+            }
+
+            body.sb-mobile-open #sidebar {
+                transform: translateX(0);
+            }
+
+            body.sb-mobile-open #sbBackdrop {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            body.sb-collapsed #sidebar,
+            body.sb-collapsed #topbar,
+            body.sb-collapsed #main-content {
+                width: auto;
+                left: 0;
+                margin-left: 0;
+            }
+        }
     </style>
 </head>
 
 <body>
+<div id="sbBackdrop"></div>
 
 <!-- ═══════════════════════════════════════════════
      SIDEBAR
@@ -368,6 +491,13 @@
             <span class="sidebar-brand-sub">Asset Management</span>
         </div>
     </a>
+
+    <div class="sidebar-search-wrap">
+        <div class="sidebar-search">
+            <i class="bi bi-search"></i>
+            <input type="text" id="sidebarSearch" placeholder="Search menu">
+        </div>
+    </div>
 
     <!-- MAIN -->
     <div class="nav-section">
@@ -454,6 +584,22 @@
         </div>
     </div>
 
+    <!-- SERVERS -->
+    <div class="nav-section">
+        <span class="nav-section-label">Servers</span>
+
+        <div class="nav-group-toggle" data-bs-toggle="collapse" data-bs-target="#nav-server" aria-expanded="false" data-sb-tip="Servers">
+            <i class="bi bi-hdd-network nav-icon"></i>
+            <span class="nav-label">Servers</span>
+            <i class="bi bi-chevron-right nav-chevron"></i>
+        </div>
+        <div class="collapse nav-subitems" id="nav-server">
+            <a href="{% url 'add_server' %}"       class="nav-subitem-link {% block nav_server_add %}{% endblock %}">Add Server</a>
+            <a href="{% url 'server_list' %}"      class="nav-subitem-link {% block nav_server_list %}{% endblock %}">Server List</a>
+            <a href="{% url 'server_out_list' %}"  class="nav-subitem-link {% block nav_server_out %}{% endblock %}">Sold Servers</a>
+        </div>
+    </div>
+
     <!-- CONTROLLERS -->
     <div class="nav-section">
         <span class="nav-section-label">Controllers</span>
@@ -494,6 +640,10 @@
 ═══════════════════════════════════════════════ -->
 <div id="topbar">
 
+    <button id="sbMobileBtn" title="Open menu">
+        <i class="bi bi-list"></i>
+    </button>
+
     <button id="sbToggleBtn" title="Toggle sidebar">
         <i class="bi bi-layout-sidebar"></i>
     </button>
@@ -504,6 +654,13 @@
     </div>
 
     <div class="ms-auto d-flex align-items-center gap-2">
+
+        <div class="topbar-search">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="topbarSearch" class="form-control" placeholder="Search menu">
+            </div>
+        </div>
 
         <!-- Quick Add -->
         <div class="dropdown">
@@ -521,6 +678,7 @@
                 <li><a class="dropdown-item" href="{% url 'add_railkit' %}">  <i class="bi bi-layout-sidebar me-2 text-secondary"></i>Rail Kit</a></li>
                 <li><a class="dropdown-item" href="{% url 'add_harddisk' %}"> <i class="bi bi-hdd me-2 text-secondary"></i>Hard Disk</a></li>
                 <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'add_server' %}">    <i class="bi bi-hdd-network me-2 text-secondary"></i>Server</a></li>
                 <li><a class="dropdown-item" href="{% url 'add_controller' %}"><i class="bi bi-server me-2 text-secondary"></i>Controller</a></li>
             </ul>
         </div>
@@ -582,6 +740,10 @@
     const STORAGE_KEY = 'sb_collapsed';
     const body  = document.body;
     const btn   = document.getElementById('sbToggleBtn');
+    const mobileBtn = document.getElementById('sbMobileBtn');
+    const backdrop = document.getElementById('sbBackdrop');
+    const sidebarSearch = document.getElementById('sidebarSearch');
+    const topbarSearch = document.getElementById('topbarSearch');
 
     /* restore on load */
     if (localStorage.getItem(STORAGE_KEY) === '1') {
@@ -589,18 +751,39 @@
     }
 
     /* toggle */
-    btn.addEventListener('click', function () {
-        const collapsed = body.classList.toggle('sb-collapsed');
-        localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
+    if (btn) {
+        btn.addEventListener('click', function () {
+            const collapsed = body.classList.toggle('sb-collapsed');
+            localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
 
-        /* close open sub-menus when collapsing */
-        if (collapsed) {
-            document.querySelectorAll('#sidebar .collapse.show').forEach(function (el) {
-                el.classList.remove('show');
-                const t = document.querySelector('[data-bs-target="#' + el.id + '"]');
-                if (t) t.setAttribute('aria-expanded', 'false');
-            });
-        }
+            if (collapsed) {
+                document.querySelectorAll('#sidebar .collapse.show').forEach(function (el) {
+                    el.classList.remove('show');
+                    const t = document.querySelector('[data-bs-target="#' + el.id + '"]');
+                    if (t) t.setAttribute('aria-expanded', 'false');
+                });
+            }
+        });
+    }
+
+    function setMobileSidebar(open) {
+        body.classList.toggle('sb-mobile-open', open);
+    }
+
+    if (mobileBtn) {
+        mobileBtn.addEventListener('click', function () {
+            setMobileSidebar(true);
+        });
+    }
+
+    if (backdrop) {
+        backdrop.addEventListener('click', function () {
+            setMobileSidebar(false);
+        });
+    }
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') setMobileSidebar(false);
     });
 
     /* auto-expand active group */
@@ -613,6 +796,42 @@
             if (t) t.setAttribute('aria-expanded', 'true');
         });
     });
+
+    function filterMenu(term) {
+        const value = (term || '').trim().toLowerCase();
+        const links = document.querySelectorAll('#sidebar .nav-item-link, #sidebar .nav-subitem-link');
+
+        if (!value) {
+            links.forEach(function (a) { a.style.display = ''; });
+            document.querySelectorAll('#sidebar .nav-section').forEach(function (s) { s.style.display = ''; });
+            return;
+        }
+
+        links.forEach(function (a) {
+            const text = (a.textContent || '').toLowerCase();
+            a.style.display = text.includes(value) ? '' : 'none';
+        });
+
+        document.querySelectorAll('#sidebar .nav-section').forEach(function (section) {
+            const anyVisible = Array.from(section.querySelectorAll('.nav-item-link, .nav-subitem-link'))
+                .some(function (a) { return a.style.display !== 'none'; });
+            section.style.display = anyVisible ? '' : 'none';
+        });
+    }
+
+    if (sidebarSearch) {
+        sidebarSearch.addEventListener('input', function () {
+            filterMenu(this.value);
+            if (topbarSearch && topbarSearch.value !== this.value) topbarSearch.value = this.value;
+        });
+    }
+
+    if (topbarSearch) {
+        topbarSearch.addEventListener('input', function () {
+            filterMenu(this.value);
+            if (sidebarSearch && sidebarSearch.value !== this.value) sidebarSearch.value = this.value;
+        });
+    }
 
 })();
 </script>

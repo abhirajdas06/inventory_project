@@ -6,31 +6,39 @@
 
 {% block content %}
 
-<div class="container-fluid px-4">
+<div class="container-fluid px-3">
 
-    <div class="card shadow-sm">
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
 
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Add Rail Kit</h5>
-            <a href="{% url 'railkit_list' %}" class="btn btn-outline-secondary btn-sm">
-                View List
-            </a>
+    <div class="spare-form-shell">
+
+        <div class="spare-form-header">
+            <div>
+                <h5 class="spare-form-title">Add Rail Kit</h5>
+                <div class="spare-form-subtitle">Add one or multiple rail kit items in a single save.</div>
+            </div>
+            <div class="spare-form-tools d-flex gap-2 align-items-center">
+                <a href="{% url 'railkit_list' %}" class="btn btn-outline-secondary btn-sm">
+                    View List
+                </a>
+                <button type="button" class="btn btn-outline-success btn-sm add-row">
+                    <i class="bi bi-plus-lg me-1"></i>Add Row
+                </button>
+            </div>
         </div>
-
-        {% if messages %}
-            {% for message in messages %}
-                <div class="alert alert-{{ message.tags }} alert-dismissible fade show">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
 
         <form method="POST" id="railkitForm">
             {% csrf_token %}
 
-            <div class="table-container">
-                <table class="table table-bordered table-sm align-middle" id="railkitTable">
+            <div class="table-responsive">
+                <table class="table table-sm align-middle spare-add-table" id="railkitTable">
                     <thead>
                         <tr>
                             <th>Spare Type</th>
@@ -47,7 +55,7 @@
                             <th>Store</th>
                             <th>Status</th>
                             <th>Remark</th>
-                            <th></th>
+                            <th class="row-remove-col">Remove</th>
                         </tr>
                     </thead>
 
@@ -159,9 +167,10 @@
                                        class="form-control form-control-sm">
                             </td>
 
-                            <!-- REMOVE -->
-                            <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-danger remove">×</button>
+                            <td class="row-remove-col">
+                                <button type="button" class="btn btn-outline-danger btn-sm remove" title="Remove row">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
                             </td>
 
                         </tr>
@@ -169,9 +178,16 @@
                 </table>
             </div>
 
-            <div class="mt-3 d-flex justify-content-end gap-2">
-                <button type="button" class="btn btn-success add-row">+ Add Row</button>
-                <button type="submit" class="btn btn-primary px-4">Save</button>
+            <div class="spare-form-footer">
+                <div class="spare-form-note">Fields marked with * are required.</div>
+                <div class="spare-form-actions">
+                    <button type="button" class="btn btn-outline-success add-row">
+                        <i class="bi bi-plus-lg me-1"></i>Add Row
+                    </button>
+                    <button type="submit" class="btn btn-primary px-4">
+                        <i class="bi bi-check-lg me-1"></i>Save Rail Kits
+                    </button>
+                </div>
             </div>
 
         </form>

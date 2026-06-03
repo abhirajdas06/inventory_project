@@ -2,19 +2,30 @@
 {% load static %}
  {% block extra_css %}
         <link rel="stylesheet" href="{% static 'css/card.css' %}">
+        <link rel="stylesheet" href="{% static 'css/inventory-list.css' %}">
 
 {% endblock extra_css %}
 {% block content %}
 
 <div class="container-fluid px-3">
 
-<div class="card p-3">
+<div class="inventory-list-shell">
 
-<h5 class="mb-3">Card Inventory</h5>
+<div class="inventory-list-toolbar">
+    <div>
+        <h5 class="inventory-list-title">Card Inventory</h5>
+        <div class="inventory-list-subtitle">{{ cards|length }} active card{{ cards|length|pluralize }}</div>
+    </div>
+    <div class="inventory-list-actions">
+        <a href="{% url 'add_card' %}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>Add Card
+        </a>
+    </div>
+</div>
 
 <div class="table-container">
 
-<table class="table table-bordered table-hover table-sm" id="cardTable">
+<table class="table table-sm align-middle inventory-list-table" id="cardTable">
 
 <thead>
 <tr>
@@ -36,7 +47,11 @@
     <th>Last Audit</th>
     <th class="action-cell sticky-col">Actions</th>
 </tr>
-
+{% comment %} <tr class="filter-row">
+    {% for i in "12345678901234567" %}
+    <th><input type="text" placeholder="Search"></th>
+    {% endfor %}
+</tr> {% endcomment %}
 
 </thead>
 
@@ -75,8 +90,14 @@
 </td>
 
 <td class="action-cell sticky-col">
-    <button class="btn btn-sm btn-warning audit-btn">Audit</button>
-    <button class="btn btn-sm btn-danger stockout-btn">Out</button>
+    <div class="inventory-row-actions">
+        <button class="btn btn-sm btn-outline-warning audit-btn" title="Audit">
+            <i class="bi bi-clipboard2-check"></i>
+        </button>
+        <button class="btn btn-sm btn-outline-danger stockout-btn" title="Stock out">
+            <i class="bi bi-box-arrow-up-right"></i>
+        </button>
+    </div>
 </td>
 
 </tr>

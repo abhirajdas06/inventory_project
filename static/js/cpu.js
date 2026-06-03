@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ----------------------------------------
     document.addEventListener("click", function (e) {
 
-        if (!e.target.classList.contains("add-row")) return;
+        if (!e.target.closest(".add-row")) return;
 
         let tbody    = document.querySelector("#cpuTable tbody");
         let firstRow = tbody.querySelector("tr");
@@ -38,11 +38,12 @@ document.addEventListener("DOMContentLoaded", function () {
     // ----------------------------------------
     document.addEventListener("click", function (e) {
 
-        if (!e.target.classList.contains("remove")) return;
+        let removeBtn = e.target.closest(".remove");
+        if (!removeBtn) return;
 
         let rows = document.querySelectorAll("#cpuTable tbody tr");
         if (rows.length > 1) {
-            e.target.closest("tr").remove();
+            removeBtn.closest("tr").remove();
         }
     });
 

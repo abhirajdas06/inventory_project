@@ -2,24 +2,30 @@
 {% load static %}
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/railkit.css' %}">
+<link rel="stylesheet" href="{% static 'css/inventory-list.css' %}">
 {% endblock extra_css %}
 
 {% block content %}
  
 <div class="container-fluid px-3">
  
-    <div class="card p-3">
+    <div class="inventory-list-shell">
  
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Rail Kit Inventory</h5>
-            <a href="{% url 'add_railkit' %}" class="btn btn-primary btn-sm">
-                + Add Rail Kit
-            </a>
+        <div class="inventory-list-toolbar">
+            <div>
+                <h5 class="inventory-list-title">Rail Kit Inventory</h5>
+                <div class="inventory-list-subtitle">{{ railkits|length }} active rail kit{{ railkits|length|pluralize }}</div>
+            </div>
+            <div class="inventory-list-actions">
+                <a href="{% url 'add_railkit' %}" class="btn btn-primary btn-sm">
+                    <i class="bi bi-plus-lg me-1"></i>Add Rail Kit
+                </a>
+            </div>
         </div>
  
         <div class="table-container">
  
-            <table class="table table-bordered table-sm" id="railkitTable">
+            <table class="table table-sm align-middle inventory-list-table" id="railkitTable">
  
                 <thead>
                     <tr>
@@ -41,7 +47,7 @@
                         <th class="sticky-col">Actions</th>
                     </tr>
  
-                    <!-- FILTER ROW -->
+
 
                 </thead>
  
@@ -104,10 +110,16 @@
  
                         <!-- ACTIONS -->
                         <td class="action-cell sticky-col">
-                            <button type="button"
-                                    class="btn btn-sm btn-warning audit-btn">Audit</button>
-                            <button type="button"
-                                    class="btn btn-sm btn-danger stockout-btn">Out</button>
+                            <div class="inventory-row-actions">
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-warning audit-btn" title="Audit">
+                                    <i class="bi bi-clipboard2-check"></i>
+                                </button>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger stockout-btn" title="Stock out">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </button>
+                            </div>
                         </td>
  
                     </tr>

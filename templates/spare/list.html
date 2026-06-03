@@ -4,6 +4,7 @@
 {% load static %}
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/spare.css' %}">
+<link rel="stylesheet" href="{% static 'css/inventory-list.css' %}">
 {% endblock extra_css %}
 {% block title %}Spare Inventory{% endblock %}
 {% block page_title %}Spare Inventory{% endblock %}
@@ -11,14 +12,22 @@
 {% block content %}
  
 <div class="container-fluid px-3">
-<div class="card p-3">
+<div class="inventory-list-shell">
  
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h5 class="mb-0">Spare Inventory</h5>
+<div class="inventory-list-toolbar">
+    <div>
+        <h5 class="inventory-list-title">Spare Inventory</h5>
+        <div class="inventory-list-subtitle">{{ spares|length }} active spare{{ spares|length|pluralize }}</div>
+    </div>
+    <div class="inventory-list-actions">
+        <a href="{% url 'add_spare' %}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>Add Spare
+        </a>
+    </div>
 </div>
  
 <div class="table-container">
-<table class="table table-bordered table-sm" id="spareTable">
+<table class="table table-sm align-middle inventory-list-table" id="spareTable">
  
 <thead>
 <tr>
@@ -41,16 +50,12 @@
     <th>Last Audit</th>
     <th class="sticky-col">Actions</th>
 </tr>
-<tr class="filter-row">
-    {% for i in "123456789012345678" %}
-    <th><input type="text" placeholder="Search"></th>
-    {% endfor %}
-</tr>
+
 </thead>
  
 <tbody>
 {% for s in spares %}
-<tr  data-id="{{ s.product.id }}"
+<tr data-id="{{ s.product.id }}" data-spare-id="{{ s.id }}"
     class="{% if s.server_pk %}row-in-server{% elif s.controller %}row-in-controller{% endif %}">
  
     <td class="truncate" title="{{ s.product.name }}">{{ s.product.name }}</td>
@@ -105,10 +110,16 @@
     </td>
  
     <td class="action-cell sticky-col">
-        <button type="button" class="btn btn-sm btn-warning audit-btn"
-                data-product-id="{{ s.product.id }}">Audit</button>
-        <button type="button" class="btn btn-sm btn-danger stockout-btn"
-                data-product-id="{{ s.product.id }}">Out</button>
+        <div class="inventory-row-actions">
+            <button type="button" class="btn btn-sm btn-outline-warning audit-btn"
+                    data-product-id="{{ s.product.id }}" title="Audit">
+                <i class="bi bi-clipboard2-check"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger stockout-btn"
+                    data-product-id="{{ s.product.id }}" title="Stock out">
+                <i class="bi bi-box-arrow-up-right"></i>
+            </button>
+        </div>
     </td>
  
 </tr>

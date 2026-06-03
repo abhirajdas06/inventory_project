@@ -22,10 +22,12 @@ $(document).ready(function () {
     }
 
     let table = $('#serverTable').DataTable({
-        pageLength:    25,
-        autoWidth:     false,
+        pageLength: 25,
+        scrollX: true,
+        autoWidth: false,          // IMPORTANT for alignment
         orderCellsTop: true,
-        fixedHeader:   false
+        fixedHeader: true,
+        deferRender: true
     });
 
     setTimeout(() => table.columns.adjust().draw(), 200);
