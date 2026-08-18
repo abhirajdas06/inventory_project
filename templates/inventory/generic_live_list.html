@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block breadcrumb %}In stock{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/inventory-list.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar">
+        <div>
+            <h1>{{ title }}</h1>
+            <p>{{ items|length }} live items</p>
+        </div>
+        <div class="inventory-list-actions">
+            {% if user.is_authenticated %}
+            <a href="{% url 'add_networking_spare' %}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg"></i> Add
+            </a>
+            <a href="{% url 'inventory_sold' kind %}" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-bag-check"></i> Sold
+            </a>
+            <a href="{% url 'inventory_export' kind 'live' %}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-download"></i> Export
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle inventory-list-table" id="networkingTable">
+            <thead>
+                <tr>
+                    {% for label, path in fields %}<th>{{ label }}</th>{% endfor %}
+                    <th>Store</th>
+                    <th>Status</th>
+                    <th>Last Audit</th>
+                    <th>Created On</th>
+                    {% if user.is_authenticated %}<th class="sticky-col">Actions</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr data-id="{{ row.item.product.id }}">
+                    {% for value in row.values %}<td>{{ value|default_if_none:"" }}</td>{% endfor %}
+                    <td>{{ row.item.latest_location|default:"" }}</td>
+                    <td>{{ row.item.latest_status|default:"" }}</td>
+                    <td>{{ row.item.last_audit_date|default:"" }}</td>
+                    <td>{{ row.item.created_at|date:"Y-m-d H:i" }}</td>
+                    {% if user.is_authenticated %}
+                    <td class="sticky-col action-cell">
+                        <button type="button" class="btn btn-sm btn-outline-warning audit-btn" data-product-id="{{ row.item.product.id }}" title="Audit">
+                            <i class="bi bi-clipboard-check"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger stockout-btn" data-product-id="{{ row.item.product.id }}" title="Stock out">
+                            <i class="bi bi-box-arrow-up"></i>
+                        </button>
+                        <a href="{% url 'asset_movement_ledger' row.item.product.id %}" class="btn btn-sm btn-outline-secondary" title="Movement ledger">
+                            <i class="bi bi-clock-history"></i>
+                        </a>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% include "spare/modals/stock_out_modal.html" %}
+{% include "spare/modals/audit_modal.html" %}
+{% include "spare/modals/audit_history_modal.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/spare_table.js' %}"></script>
+<script>
+$(function () {
+    if (!$.fn.DataTable.isDataTable('#networkingTable')) {
+        $('#networkingTable').DataTable({pageLength: 25, scrollX: true, deferRender: true});
+    }
+});
+</script>
+{% endblock %}

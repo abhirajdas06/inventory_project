@@ -1,0 +1,25 @@
+<div class="modal fade" id="salesReturnModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="salesReturnForm">
+      {% csrf_token %}
+      <div class="modal-header"><h5 class="modal-title">Sales Return</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" name="product_id" id="salesReturnProductId">
+        <div class="mb-3"><label class="form-label">Return reason</label><select class="form-select" name="reason" id="salesReturnReason" required><option value="NORMAL">Normal return</option><option value="FAULTY">Faulty</option><option value="DAMAGED">Damaged</option></select></div>
+        <div class="mb-3 d-none" id="salesReturnDisposition"><label class="form-label">Return disposition</label><select class="form-select" name="disposition"><option value="LIVE">Add back to stock</option><option value="FAULTY">Move to faulty stock</option><option value="SCRAP">Move to scrap</option></select></div>
+        <div class="mb-3"><label class="form-label">Return date</label><input class="form-control" type="date" name="returned_on"></div>
+        <div><label class="form-label">Remarks</label><textarea class="form-control" name="remarks" rows="3" placeholder="Reason, inspection notes, or customer details"></textarea></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" type="submit"><i class="bi bi-box-arrow-in-down me-1"></i>Process Return</button></div>
+    </form>
+  </div>
+</div>
+<script>
+(() => {
+  const modal = document.getElementById('salesReturnModal'); if (!modal) return;
+  const form = document.getElementById('salesReturnForm'), reason = document.getElementById('salesReturnReason');
+  reason.addEventListener('change', () => document.getElementById('salesReturnDisposition').classList.toggle('d-none', reason.value === 'NORMAL'));
+  document.addEventListener('click', e => { const btn = e.target.closest('.sales-return-btn'); if (!btn) return; document.getElementById('salesReturnProductId').value = btn.dataset.productId; new bootstrap.Modal(modal).show(); });
+  form.addEventListener('submit', async e => { e.preventDefault(); const res = await fetch('{% url "sales_return" %}', {method:'POST', body:new FormData(form)}); const data = await res.json(); if (!data.success) return alert(data.error || 'Return failed'); window.location.reload(); });
+})();
+</script>

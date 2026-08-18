@@ -4,8 +4,6 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    console.log("railkit.js loaded");
-
     // ----------------------------------------
     // ADD ROW
     // ----------------------------------------

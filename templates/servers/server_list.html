@@ -49,6 +49,8 @@
                     <th>Store</th>
                     <th>Inv Status</th>
                     <th>Components</th>
+                    <th style="display:none;">Component Search</th>
+                    <th>Created On</th>
                     <th class="sticky-col">Actions</th>
                 </tr>
 
@@ -87,9 +89,9 @@
                     <td>{{ s.tested_by|default:"-" }}</td>
 
                     <!-- Inline editable -->
-                    <td class="editable-cell muted-empty" data-field="location">{{ s.location|default:"Click to add" }}</td>
-                    <td class="editable-cell muted-empty" data-field="reference_location">{{ s.reference_location|default:"Click to add" }}</td>
-                    <td class="editable-cell muted-empty" data-field="parent_child_location">{{ s.parent_child_location|default:"Click to add" }}</td>
+                    <td>{{ s.location|default:"-" }}</td>
+                    <td>{{ s.reference_location|default:"-" }}</td>
+                    <td>{{ s.parent_child_location|default:"-" }}</td>
                     <td class="editable-cell server-remark muted-empty" data-field="remark">{{ s.remark|default:"Click to add" }}</td>
 
                     <!-- From inventory transaction -->
@@ -116,6 +118,8 @@
                         {% endwith %}
                     </td>
 
+                    <td style="display:none;">{{ s.component_search }}</td>
+                    <td>{{ s.created_at|date:"Y-m-d H:i" }}</td>
                     <!-- Actions -->
                     <td class="action-cell sticky-col">
                         <div class="server-row-actions">
@@ -131,12 +135,15 @@
                         <button type="button" class="btn btn-sm btn-outline-danger stockout-btn" title="Stock out">
                             <i class="bi bi-box-arrow-up-right"></i>
                         </button>
+                        <a href="{% url 'asset_movement_ledger' s.product.id %}" class="btn btn-sm btn-outline-secondary" title="Movement ledger">
+                            <i class="bi bi-clock-history"></i>
+                        </a>
                         </div>
                     </td>
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="17" class="text-center text-muted py-4">
+                    <td colspan="19" class="text-center text-muted py-4">
                         No servers found.
                     </td>
                 </tr>
@@ -195,6 +202,7 @@
                                 <th>Status</th>
                                 <th>Client</th>
                                 <th>Invoice</th>
+                                <th>OLF / DC</th>
                                 <th>Out Date</th>
                             </tr>
                         </thead>
@@ -341,3 +349,4 @@ tr.comp-in-row:hover  { background: #edfaed !important; }
 {% block extra_js %}
 <script src="{% static 'js/server_table.js' %}"></script>
 {% endblock %}
+

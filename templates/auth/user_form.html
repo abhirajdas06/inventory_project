@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}{% if target %}Edit User{% else %}Add User{% endif %}{% endblock %}
+{% block page_title %}{% if target %}Edit User{% else %}Add User{% endif %}{% endblock %}
+{% block breadcrumb %}Admin / Users / {% if target %}Edit{% else %}New{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card">
+    <h5 class="mb-3">{% if target %}Edit “{{ target.username }}”{% else %}Create new user{% endif %}</h5>
+
+    <form method="post" action="{% if target %}{% url 'user_edit' target.id %}{% else %}{% url 'user_create' %}{% endif %}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="update">
+
+        <div class="mb-3">
+            <label class="form-label">Username</label>
+            <input type="text" name="username" class="form-control"
+                   value="{{ target.username }}" {% if target %}disabled{% endif %} required>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" name="email" class="form-control" value="{{ target.email }}">
+        </div>
+
+        {% if not target %}
+        <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" name="password" class="form-control" required>
+        </div>
+        {% endif %}
+
+        <div class="mb-3">
+            <label class="form-label">Role</label>
+            <select name="role" class="form-select">
+                {% for value, label in roles %}
+                    <option value="{{ value }}" {% if profile.role == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <div class="form-text">
+                Admin: full access · Stock In: stock in + attend findings · Stock Out: stock out, transfer, mapping, freeze · Audit: audit, reports, findings
+            </div>
+        </div>
+
+        {% if target %}
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="is_active" id="isActive"
+                   {% if target.is_active %}checked{% endif %}>
+            <label class="form-check-label" for="isActive">Active</label>
+        </div>
+        {% endif %}
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+                {% if target %}Save Changes{% else %}Create User{% endif %}
+            </button>
+            <a href="{% url 'user_list' %}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+    </form>
+
+    {% if target %}
+    <hr class="my-4">
+    <h6 class="mb-3">Reset Password</h6>
+    <form method="post" action="{% url 'user_edit' target.id %}" class="row g-2 align-items-end">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="reset_password">
+        <div class="col-sm-8">
+            <label class="form-label">New Password</label>
+            <input type="password" name="password" class="form-control" required>
+        </div>
+        <div class="col-sm-4">
+            <button type="submit" class="btn btn-outline-danger w-100">Reset</button>
+        </div>
+    </form>
+    {% endif %}
+</div>
+</div>
+</div>
+</div>
+{% endblock %}

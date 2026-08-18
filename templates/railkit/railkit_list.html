@@ -44,6 +44,7 @@
                         <th>Store</th>
                         <th>Status</th>
                         <th>Last Audit</th>
+                        <th>Created On</th>
                         <th class="sticky-col">Actions</th>
                     </tr>
  
@@ -78,10 +79,10 @@
                         <td>{{ rk.qty }}</td>
  
                         <!-- INLINE EDITABLE -->
-                        <td class="editable-cell" data-field="location">
+                        <td>
                             {{ rk.location }}
                         </td>
-                        <td class="editable-cell" data-field="reference_location">
+                        <td>
                             {{ rk.reference_location }}
                         </td>
                         <td class="editable-cell" data-field="remark">
@@ -107,6 +108,9 @@
                                 {{ rk.last_audit_date|default:"View" }}
                             </button>
                         </td>
+                        <td>{{ rk.created_at|date:"Y-m-d H:i" }}</td>
+
+
  
                         <!-- ACTIONS -->
                         <td class="action-cell sticky-col">
@@ -148,3 +152,7 @@
 {% block extra_js %}
 <script src="{% static 'js/railkit_table.js' %}"></script>
 {% endblock %}
+
+
+
+

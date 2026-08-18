@@ -157,6 +157,28 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
 
+        body.sb-collapsed #sidebar:hover {
+            width: var(--sidebar-w);
+            box-shadow: 8px 0 26px rgba(2, 8, 23, 0.25);
+        }
+
+        body.sb-collapsed #sidebar:hover .nav-label,
+        body.sb-collapsed #sidebar:hover .nav-chevron,
+        body.sb-collapsed #sidebar:hover .nav-section-label,
+        body.sb-collapsed #sidebar:hover .sidebar-brand-text {
+            display: inline-block !important;
+        }
+
+        body.sb-collapsed #sidebar:hover .sidebar-search-wrap {
+            display: block !important;
+        }
+
+        body.sb-collapsed #sidebar:hover .nav-item-link,
+        body.sb-collapsed #sidebar:hover .nav-group-toggle {
+            justify-content: flex-start;
+            padding: 7px 8px;
+        }
+
         /* Brand */
         .sidebar-brand {
             display: flex;
@@ -397,6 +419,25 @@
             border-color: #b8c9e5;
         }
 
+        .universal-results {
+            max-height: 56vh;
+            overflow-y: auto;
+        }
+
+        .universal-result {
+            display: grid;
+            grid-template-columns: 110px minmax(0, 1fr);
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid #edf2f7;
+        }
+
+        .universal-result:last-child { border-bottom: 0; }
+        .universal-result strong { display: block; font-size: 13px; }
+        .universal-result small { color: #64748b; }
+        .universal-result-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+        .universal-result-actions .btn { font-size: 11px; padding: 2px 8px; }
+
         .topbar-title      { font-size: 14px; font-weight: 600; color: var(--text-main); }
         .topbar-breadcrumb { font-size: 11.5px; color: var(--text-muted); }
         .topbar-breadcrumb a { color: var(--accent); text-decoration: none; }
@@ -422,6 +463,76 @@
         }
 
         .alert { border-radius: var(--radius); font-size: 13.5px; }
+
+        /* Show record counts at the TOP of lists, not the bottom */
+        .dataTables_wrapper .dataTables_info { display: none; }
+        .js-record-count {
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .js-record-count.badge {
+            background: #eef2ff !important;
+            color: #3730a3 !important;
+            border: 1px solid #c7d2fe;
+        }
+
+        body.anon-user .stockout-btn,
+        body.anon-user .audit-btn,
+        body.anon-user .add-component-btn,
+        body.anon-user .add-component-list-btn,
+        body.anon-user .inventory-list-actions a[href*="add"],
+        body.anon-user .inventory-list-actions a[href*="sold"],
+        body.anon-user .inventory-list-actions a[href*="export"],
+        body.anon-user .server-list-actions a[href*="add"],
+        body.anon-user .server-list-actions a[href*="sold"],
+        body.anon-user .server-list-actions a[href*="export"] {
+            display: none !important;
+        }
+
+        .dashboard-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .dash-card,
+        .dash-panel {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+        }
+
+        .dash-card {
+            padding: 14px;
+            min-height: 96px;
+        }
+
+        .dash-card span {
+            display: block;
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .dash-card strong {
+            display: block;
+            font-size: 28px;
+            line-height: 1.1;
+            margin: 6px 0 4px;
+        }
+
+        .dash-card small { color: #718096; }
+
+        .dashboard-panels {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(360px, 0.9fr);
+            gap: 16px;
+        }
+
+        .dash-panel { padding: 16px; min-width: 0; }
+        .dash-panel-head h2 { font-size: 16px; font-weight: 700; margin: 0 0 12px; }
 
         #sbBackdrop {
             position: fixed;
@@ -470,11 +581,18 @@
                 left: 0;
                 margin-left: 0;
             }
+
+            .dashboard-panels {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 
-<body>
+<body class="{% if not user.is_authenticated %}anon-user{% endif %}">
+<!-- Ensures the csrftoken cookie is always set so AJAX POSTs (stock out, audit,
+     transfer, freeze) work on every page, even ones with no server-rendered form. -->
+<form style="display:none">{% csrf_token %}</form>
 <div id="sbBackdrop"></div>
 
 <!-- ═══════════════════════════════════════════════
@@ -502,10 +620,16 @@
     <!-- MAIN -->
     <div class="nav-section">
         <span class="nav-section-label">Main</span>
+        {% if user.is_authenticated %}
         <a href="/" class="nav-item-link {% block nav_dashboard %}{% endblock %}" data-sb-tip="Dashboard">
             <i class="bi bi-speedometer2"></i>
             <span class="nav-label">Dashboard</span>
         </a>
+        <a href="{% url 'inventory_import' %}" class="nav-item-link {% block nav_import %}{% endblock %}" data-sb-tip="Import">
+            <i class="bi bi-upload"></i>
+            <span class="nav-label">Import</span>
+        </a>
+        {% endif %}
     </div>
 
     <!-- SPARE PARTS -->
@@ -518,9 +642,16 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems" id="nav-spare">
+            {% if user.is_authenticated %}
             <a href="{% url 'add_spare' %}"        class="nav-subitem-link {% block nav_spare_add %}{% endblock %}">Add Spare</a>
+            {% endif %}
             <a href="{% url 'spare_list' %}"       class="nav-subitem-link {% block nav_spare_list %}{% endblock %}">Spare List</a>
-            <a href="{% url 'spare_out_report' %}" class="nav-subitem-link {% block nav_spare_out %}{% endblock %}">Stock Out Report</a>
+            {% if user.is_authenticated %}
+              {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' or user.profile.role == 'STOCK_OUT' %}
+              <a href="{% url 'spare_out_report' %}" class="nav-subitem-link {% block nav_spare_out %}{% endblock %}">Stock Out Report</a>
+              <a href="{% url 'inventory_faulty' 'spare' %}" class="nav-subitem-link">Faulty Spares</a>
+              {% endif %}
+            {% endif %}
         </div>
 
         <div class="nav-group-toggle" data-bs-toggle="collapse" data-bs-target="#nav-memory" aria-expanded="false" data-sb-tip="Memory">
@@ -529,8 +660,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems" id="nav-memory">
+            {% if user.is_authenticated %}
             <a href="{% url 'add_memory' %}"  class="nav-subitem-link {% block nav_memory_add %}{% endblock %}">Add Memory</a>
+            {% endif %}
             <a href="{% url 'memory_list' %}" class="nav-subitem-link {% block nav_memory_list %}{% endblock %}">Memory List</a>
+            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'memory' %}" class="nav-subitem-link">Sold Memory</a>{% endif %}
+            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'memory' %}" class="nav-subitem-link">Faulty Memory</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle" data-bs-toggle="collapse" data-bs-target="#nav-card" aria-expanded="false" data-sb-tip="Card">
@@ -539,8 +674,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems" id="nav-card">
+            {% if user.is_authenticated %}
             <a href="{% url 'add_card' %}"  class="nav-subitem-link {% block nav_card_add %}{% endblock %}">Add Card</a>
+            {% endif %}
             <a href="{% url 'card_list' %}" class="nav-subitem-link {% block nav_card_list %}{% endblock %}">Card List</a>
+            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'card' %}" class="nav-subitem-link">Sold Cards</a>{% endif %}
+            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'card' %}" class="nav-subitem-link">Faulty Cards</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle" data-bs-toggle="collapse" data-bs-target="#nav-cpu" aria-expanded="false" data-sb-tip="CPU">
@@ -549,8 +688,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems" id="nav-cpu">
+            {% if user.is_authenticated %}
             <a href="{% url 'add_cpu' %}"  class="nav-subitem-link {% block nav_cpu_add %}{% endblock %}">Add CPU</a>
+            {% endif %}
             <a href="{% url 'cpu_list' %}" class="nav-subitem-link {% block nav_cpu_list %}{% endblock %}">CPU List</a>
+            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'cpu' %}" class="nav-subitem-link">Sold CPUs</a>{% endif %}
+            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'cpu' %}" class="nav-subitem-link">Faulty CPUs</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle" data-bs-toggle="collapse" data-bs-target="#nav-sfp" aria-expanded="false" data-sb-tip="SFP">
@@ -559,8 +702,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems" id="nav-sfp">
+            {% if user.is_authenticated %}
             <a href="{% url 'add_sfp' %}"  class="nav-subitem-link {% block nav_sfp_add %}{% endblock %}">Add SFP</a>
+            {% endif %}
             <a href="{% url 'sfp_list' %}" class="nav-subitem-link {% block nav_sfp_list %}{% endblock %}">SFP List</a>
+            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'sfp' %}" class="nav-subitem-link">Sold SFP</a>{% endif %}
+            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'sfp' %}" class="nav-subitem-link">Faulty SFP</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle" data-bs-toggle="collapse" data-bs-target="#nav-railkit" aria-expanded="false" data-sb-tip="Rail Kit">
@@ -569,8 +716,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems" id="nav-railkit">
+            {% if user.is_authenticated %}
             <a href="{% url 'add_railkit' %}"  class="nav-subitem-link {% block nav_railkit_add %}{% endblock %}">Add Rail Kit</a>
+            {% endif %}
             <a href="{% url 'railkit_list' %}" class="nav-subitem-link {% block nav_railkit_list %}{% endblock %}">Rail Kit List</a>
+            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'railkit' %}" class="nav-subitem-link">Sold Rail Kits</a>{% endif %}
+            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'railkit' %}" class="nav-subitem-link">Faulty Rail Kits</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle" data-bs-toggle="collapse" data-bs-target="#nav-harddisk" aria-expanded="false" data-sb-tip="Hard Disk">
@@ -579,8 +730,26 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems" id="nav-harddisk">
+            {% if user.is_authenticated %}
             <a href="{% url 'add_harddisk' %}"  class="nav-subitem-link {% block nav_hdd_add %}{% endblock %}">Add Hard Disk</a>
+            {% endif %}
             <a href="{% url 'harddisk_list' %}" class="nav-subitem-link {% block nav_hdd_list %}{% endblock %}">Hard Disk List</a>
+            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'harddisk' %}" class="nav-subitem-link">Sold Hard Disks</a>{% endif %}
+            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'harddisk' %}" class="nav-subitem-link">Faulty Hard Disks</a>{% endif %}
+        </div>
+
+        <div class="nav-group-toggle" data-bs-toggle="collapse" data-bs-target="#nav-networking" aria-expanded="false" data-sb-tip="Networking Spare">
+            <i class="bi bi-ethernet nav-icon"></i>
+            <span class="nav-label">Networking Spare</span>
+            <i class="bi bi-chevron-right nav-chevron"></i>
+        </div>
+        <div class="collapse nav-subitems" id="nav-networking">
+            {% if user.is_authenticated %}
+            <a href="{% url 'add_networking_spare' %}" class="nav-subitem-link">Add Networking Spare</a>
+            {% endif %}
+            <a href="{% url 'networking_spare_list' %}" class="nav-subitem-link">Networking List</a>
+            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'networking_spare' %}" class="nav-subitem-link">Sold Networking</a>{% endif %}
+            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'networking_spare' %}" class="nav-subitem-link">Faulty Networking</a>{% endif %}
         </div>
     </div>
 
@@ -594,9 +763,14 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems" id="nav-server">
+            {% if user.is_authenticated %}
             <a href="{% url 'add_server' %}"       class="nav-subitem-link {% block nav_server_add %}{% endblock %}">Add Server</a>
+            {% endif %}
             <a href="{% url 'server_list' %}"      class="nav-subitem-link {% block nav_server_list %}{% endblock %}">Server List</a>
+            {% if user.is_authenticated %}
             <a href="{% url 'server_out_list' %}"  class="nav-subitem-link {% block nav_server_out %}{% endblock %}">Sold Servers</a>
+            <a href="{% url 'server_faulty_list' %}" class="nav-subitem-link">Faulty Servers</a>
+            {% endif %}
         </div>
     </div>
 
@@ -610,19 +784,101 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems" id="nav-controller">
+            {% if user.is_authenticated %}
             <a href="{% url 'add_controller' %}"  class="nav-subitem-link {% block nav_ctrl_add %}{% endblock %}">Add Controller</a>
+            {% endif %}
             <a href="{% url 'controller_list' %}" class="nav-subitem-link {% block nav_ctrl_list %}{% endblock %}">Controller List</a>
+            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'controller' %}" class="nav-subitem-link">Sold Controllers</a>{% endif %}
+            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'controller' %}" class="nav-subitem-link">Faulty Controllers</a>{% endif %}
         </div>
     </div>
 
     <!-- REPORTS -->
     <div class="nav-section">
         <span class="nav-section-label">Reports</span>
+        {% if user.is_authenticated %}
         <a href="{% url 'audit_report' %}" class="nav-item-link {% block nav_audit_report %}{% endblock %}" data-sb-tip="Audit Report">
             <i class="bi bi-clipboard2-check"></i>
             <span class="nav-label">Audit Report</span>
         </a>
+        {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'AUDIT' or user.profile.role == 'STOCK_IN' %}
+        <a href="{% url 'audit_finding_list' %}" class="nav-item-link" data-sb-tip="Audit Findings">
+            <i class="bi bi-exclamation-diamond"></i>
+            <span class="nav-label">Audit Findings</span>
+        </a>
+        <a href="{% url 'general_audit_finding_list' %}" class="nav-item-link" data-sb-tip="General Findings">
+            <i class="bi bi-list-check"></i>
+            <span class="nav-label">General Findings</span>
+        </a>
+        {% endif %}
+        {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' or user.profile.role == 'STOCK_OUT' %}
+        <a href="{% url 'transfer_history' %}" class="nav-item-link" data-sb-tip="Transfers">
+            <i class="bi bi-arrow-left-right"></i>
+            <span class="nav-label">Transfers</span>
+        </a>
+        <a href="{% url 'transfer_request_page' %}" class="nav-item-link" data-sb-tip="Transfer Requests">
+            <i class="bi bi-truck"></i>
+            <span class="nav-label">Transfer Requests</span>
+        </a>
+        <div class="nav-group-toggle" data-bs-toggle="collapse" data-bs-target="#nav-stock-status" aria-expanded="false" data-sb-tip="Stock Status">
+            <i class="bi bi-tags nav-icon"></i>
+            <span class="nav-label">Stock Status</span>
+            <i class="bi bi-chevron-right nav-chevron"></i>
+        </div>
+        <div class="collapse nav-subitems" id="nav-stock-status">
+            <a href="{% url 'stock_out_status_list' 'TESTING' %}" class="nav-subitem-link">Testing</a>
+            <a href="{% url 'stock_out_status_list' 'RENT' %}" class="nav-subitem-link">Rent</a>
+            <a href="{% url 'stock_out_status_list' 'REPLACEMENT' %}" class="nav-subitem-link">Replacement</a>
+            <a href="{% url 'stock_out_status_list' 'ADV_REPLACEMENT' %}" class="nav-subitem-link">Adv Replacement</a>
+            <a href="{% url 'stock_out_status_list' 'ON_APPROVAL' %}" class="nav-subitem-link">On Approval</a>
+            <a href="{% url 'stock_out_status_list' 'EMPTY' %}" class="nav-subitem-link">Empty</a>
+            <a href="{% url 'stock_out_status_list' 'REFILL' %}" class="nav-subitem-link">Refill</a>
+            <a href="{% url 'stock_out_status_list' 'SCRAP' %}" class="nav-subitem-link">Scrap</a>
+        </div>
+        <a href="{% url 'frozen_inventory_list' %}" class="nav-item-link" data-sb-tip="Frozen Stock">
+            <i class="bi bi-snow2"></i>
+            <span class="nav-label">Frozen Stock</span>
+        </a>
+        {% endif %}
+        {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' %}
+        <a href="{% url 'sales_return_history' %}" class="nav-item-link" data-sb-tip="Sales Returns">
+            <i class="bi bi-box-arrow-in-down"></i>
+            <span class="nav-label">Sales Returns</span>
+        </a>
+        <a href="{% url 'rental_list' %}" class="nav-item-link" data-sb-tip="Rentals">
+            <i class="bi bi-arrow-repeat"></i>
+            <span class="nav-label">Rentals</span>
+        </a>
+        <a href="{% url 'audit_reconciliation' %}" class="nav-item-link" data-sb-tip="Reconciliation">
+            <i class="bi bi-arrow-repeat"></i>
+            <span class="nav-label">Reconciliation</span>
+        </a>
+        {% endif %}
+        {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' or user.profile.role == 'STOCK_OUT' %}
+        <a href="{% url 'mapping_history' %}" class="nav-item-link" data-sb-tip="Mapping History">
+            <i class="bi bi-diagram-3"></i>
+            <span class="nav-label">Mapping History</span>
+        </a>
+        <a href="{% url 'activity_trail' %}" class="nav-item-link" data-sb-tip="Activity Trail">
+            <i class="bi bi-clock-history"></i>
+            <span class="nav-label">Activity Trail</span>
+        </a>
+        {% endif %}
+        {% endif %}
     </div>
+
+    {% if user.is_authenticated %}
+    {% if user.is_superuser or user.profile.role == 'ADMIN' %}
+    <!-- ADMINISTRATION -->
+    <div class="nav-section">
+        <span class="nav-section-label">Administration</span>
+        <a href="{% url 'user_list' %}" class="nav-item-link" data-sb-tip="User Management">
+            <i class="bi bi-people"></i>
+            <span class="nav-label">User Management</span>
+        </a>
+    </div>
+    {% endif %}
+    {% endif %}
 
     <!-- FOOTER -->
     <div class="sidebar-footer">
@@ -658,11 +914,12 @@
         <div class="topbar-search">
             <div class="input-group input-group-sm">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
-                <input type="text" id="topbarSearch" class="form-control" placeholder="Search menu">
+                <input type="text" id="universalSearchInput" class="form-control" placeholder="Search inventory">
             </div>
         </div>
 
         <!-- Quick Add -->
+        {% if user.is_authenticated %}
         <div class="dropdown">
             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                     data-bs-toggle="dropdown" style="font-size:13px;">
@@ -680,8 +937,10 @@
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{% url 'add_server' %}">    <i class="bi bi-hdd-network me-2 text-secondary"></i>Server</a></li>
                 <li><a class="dropdown-item" href="{% url 'add_controller' %}"><i class="bi bi-server me-2 text-secondary"></i>Controller</a></li>
+                <li><a class="dropdown-item" href="{% url 'add_networking_spare' %}"><i class="bi bi-ethernet me-2 text-secondary"></i>Networking Spare</a></li>
             </ul>
         </div>
+        {% endif %}
 
         <!-- User -->
         {% if user.is_authenticated %}
@@ -697,6 +956,9 @@
                 {{ user.get_username }}
             </span>
         </div>
+        <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-secondary">Logout</a>
+        {% else %}
+        <a href="{% url 'home' %}" class="btn btn-sm btn-primary">Login</a>
         {% endif %}
 
     </div>
@@ -728,6 +990,176 @@
 <!-- ═══════════════════════════════════════════════
      SCRIPTS
 ═══════════════════════════════════════════════ -->
+<div class="modal fade" id="universalSearchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Search Inventory</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="universalSearchModalInput" class="form-control mb-3" placeholder="Search serial, part, barcode, model, location">
+                <div id="universalSearchResults" class="universal-results">
+                    <div class="text-muted small">Type at least two characters.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Global Audit Modal (available on every page for search results) ── -->
+<div class="modal fade" id="globalAuditModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content p-3">
+      <h5 class="mb-1">Audit Item</h5>
+      <p id="globalAuditItemLabel" class="text-muted small mb-3"></p>
+      <input type="hidden" id="globalAuditProductId">
+      <div class="mb-2">
+        <label class="form-label">Audit Date</label>
+        <input type="date" id="globalAuditDate" class="form-control">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Audit Result</label>
+        <select id="globalAuditResult" class="form-control">
+          <option value="FOUND" selected>Found</option>
+          <option value="NOT_FOUND">Not Found</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Remark</label>
+        <textarea id="globalAuditRemark" class="form-control" rows="2"></textarea>
+      </div>
+      <button class="btn btn-warning w-100 mt-2" id="globalSaveAudit">Confirm Audit</button>
+      <div id="globalAuditMsg" class="mt-2 small"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Global Stock Out Modal (available on every page for search results) ── -->
+<div class="modal fade" id="globalStockOutModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content p-3">
+      <h5 class="mb-1">Stock Out</h5>
+      <p id="globalStockOutItemLabel" class="text-muted small mb-3"></p>
+      <input type="hidden" id="globalStockOutProductId">
+      <div class="mb-2">
+        <label class="form-label">Client Name</label>
+        <input type="text" id="globalStockOutClient" class="form-control">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Invoice No</label>
+        <input type="text" id="globalStockOutInvoice" class="form-control">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">OLF / DC No</label>
+        <input type="text" id="globalStockOutOlfDc" class="form-control">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Status</label>
+        <select id="globalStockOutStatus" class="form-control">
+          <option value="SALE" selected>Sale</option>
+          <option value="TESTING">Testing</option>
+          <option value="RENT">Rent</option>
+            <option value="FAULTY">Faulty</option>
+            <option value="DAMAGED">Damaged</option>
+          <option value="REPLACEMENT">Replacement</option>
+          <option value="ADV_REPLACEMENT">Adv Replacement</option>
+          <option value="ON_APPROVAL">On Approval</option>
+          <option value="EMPTY">Empty</option>
+          <option value="REFILL">Refill</option>
+          <option value="SCRAP">Scrap</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Date</label>
+        <input type="date" id="globalStockOutDate" class="form-control">
+      </div>
+      <div class="mb-2" id="globalStockOutReturnWrap" style="display:none;">
+        <label class="form-label">Expected Return Date <span class="text-muted small">(rentals)</span></label>
+        <input type="date" id="globalStockOutReturnDate" class="form-control">
+      </div>
+      <button class="btn btn-danger w-100 mt-2" id="globalSaveStockOut">Confirm Stock Out</button>
+      <div id="globalStockOutMsg" class="mt-2 small"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="globalTransferModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content p-3">
+      <h5 class="mb-1">Create Transfer Request</h5>
+      <p id="globalTransferItemLabel" class="text-muted small mb-3"></p>
+      <input type="hidden" id="globalTransferProductId">
+      <div class="mb-2">
+        <label class="form-label">Destination Warehouse</label>
+        <select id="globalTransferWarehouse" class="form-control">
+          <option value="WH1">WH1</option>
+          <option value="WH2">WH2</option>
+          <option value="DELHI">Delhi</option>
+          <option value="BANGALORE">Bangalore</option>
+          <option value="HYDERABAD">Hyderabad</option>
+          <option value="CHENNAI">Chennai</option>
+          <option value="KOLKATA">Kolkata</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Remarks</label>
+        <textarea id="globalTransferRemarks" class="form-control" rows="2" required></textarea>
+      </div>
+      <button class="btn btn-primary w-100 mt-2" id="globalSaveTransfer">Create Request</button>
+      <div id="globalTransferMsg" class="mt-2 small"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="globalFreezeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content p-3">
+      <h5 class="mb-1">Freeze Item</h5>
+      <p id="globalFreezeItemLabel" class="text-muted small mb-3"></p>
+      <input type="hidden" id="globalFreezeProductId">
+      <div class="mb-2">
+        <label class="form-label">Reason</label>
+        <textarea id="globalFreezeReason" class="form-control" rows="3" required></textarea>
+      </div>
+      <button class="btn btn-outline-primary w-100 mt-2" id="globalSaveFreeze">Freeze Stock</button>
+      <div id="globalFreezeMsg" class="mt-2 small"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="globalMapModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content p-3">
+      <h5 class="mb-1">Map Inventory</h5>
+      <p id="globalMapItemLabel" class="text-muted small mb-2"></p>
+      <input type="hidden" id="globalMapProductId">
+      <div id="globalMapCurrent" class="alert alert-info py-2 small d-none"></div>
+      <div class="mb-2">
+        <label class="form-label">Map Into</label>
+        <select id="globalMapType" class="form-select">
+          <option value="server">Server</option>
+          <option value="controller">Controller (spares only)</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Search Target</label>
+        <input type="text" id="globalMapSearch" class="form-control" placeholder="Type to search…">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Target</label>
+        <select id="globalMapTarget" class="form-select" size="5"></select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Remarks</label>
+        <textarea id="globalMapRemarks" class="form-control" rows="2"></textarea>
+      </div>
+      <button class="btn btn-primary w-100 mt-1" id="globalSaveMap">Map</button>
+      <div id="globalMapMsg" class="mt-2 small"></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -744,9 +1176,18 @@
     const backdrop = document.getElementById('sbBackdrop');
     const sidebarSearch = document.getElementById('sidebarSearch');
     const topbarSearch = document.getElementById('topbarSearch');
+    const universalSearchInput = document.getElementById('universalSearchInput');
+    const universalModalInput = document.getElementById('universalSearchModalInput');
+    const universalResults = document.getElementById('universalSearchResults');
+    const universalModalEl = document.getElementById('universalSearchModal');
+    let universalTimer = null;
+
+    function csrfToken() {
+        return (document.cookie.split('; ').find(r => r.startsWith('csrftoken')) || '').split('=')[1] || '';
+    }
 
     /* restore on load */
-    if (localStorage.getItem(STORAGE_KEY) === '1') {
+    if (window.matchMedia('(min-width: 993px)').matches && localStorage.getItem(STORAGE_KEY) === '1') {
         body.classList.add('sb-collapsed');
     }
 
@@ -767,6 +1208,9 @@
     }
 
     function setMobileSidebar(open) {
+        if (open) {
+            body.classList.remove('sb-collapsed');
+        }
         body.classList.toggle('sb-mobile-open', open);
     }
 
@@ -831,6 +1275,526 @@
             filterMenu(this.value);
             if (sidebarSearch && sidebarSearch.value !== this.value) sidebarSearch.value = this.value;
         });
+    }
+
+    function renderUniversalResults(items) {
+        if (!universalResults) return;
+        if (!items.length) {
+            universalResults.innerHTML = '<div class="text-muted small">No matching inventory found.</div>';
+            return;
+        }
+        const isLoggedIn = !document.body.classList.contains('anon-user');
+        function esc(s) { return (s || '').toString().replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+        universalResults.innerHTML = items.map(function (item) {
+            let actionBtns = '';
+            if (isLoggedIn && (canAudit || canStockOut)) {
+                actionBtns = '<div class="universal-result-actions mt-1">';
+                if (canAudit) actionBtns += '<button type="button" class="btn btn-sm btn-outline-warning search-result-audit-btn" data-product-id="' + (item.product_id || '') + '" data-item-label="' + esc(item.title) + '" title="Audit"><i class="bi bi-clipboard2-check me-1"></i>Audit</button>';
+                if (canStockOut) actionBtns += '<button type="button" class="btn btn-sm btn-outline-danger search-result-stockout-btn" data-product-id="' + (item.product_id || '') + '" data-item-label="' + esc(item.title) + '" title="Stock Out"><i class="bi bi-box-arrow-up-right me-1"></i>Stock Out</button>';
+                actionBtns += '</div>';
+            }
+            let membership = '';
+            if (item.in_server) {
+                membership = `<div class="mt-1"><span class="badge bg-primary"><i class="bi bi-hdd-network me-1"></i>Installed in Server: ${esc(item.server_label)}</span></div>`;
+            } else if (item.in_controller) {
+                membership = `<div class="mt-1"><span class="badge bg-warning text-dark"><i class="bi bi-hdd-rack me-1"></i>Installed in Controller: ${esc(item.controller_label)}</span></div>`;
+            }
+            return `
+                <div class="universal-result">
+                    <span class="badge text-bg-light align-self-start mt-1">${item.type || ''}</span>
+                    <div>
+                        <strong>${item.title || ''}</strong>
+                        <small>
+                            Serial: ${item.serial || '-'} &nbsp; Part: ${item.part_no || '-'} &nbsp;
+                            Barcode: ${item.barcode || '-'} &nbsp; Location: ${item.location || '-'}
+                        </small>
+                        ${membership}
+                        ${actionBtns}
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    function runUniversalSearch(term) {
+        const value = (term || '').trim();
+        if (!universalResults) return;
+        if (value.length < 2) {
+            universalResults.innerHTML = '<div class="text-muted small">Type at least two characters.</div>';
+            return;
+        }
+        universalResults.innerHTML = '<div class="text-muted small">Searching...</div>';
+        fetch('/spare/universal-search/?q=' + encodeURIComponent(value))
+            .then(function (res) { return res.json(); })
+            .then(function (data) { renderUniversalResults(data.results || []); })
+            .catch(function () {
+                universalResults.innerHTML = '<div class="text-danger small">Search failed.</div>';
+            });
+    }
+
+    function scheduleUniversalSearch(value) {
+        window.clearTimeout(universalTimer);
+        universalTimer = window.setTimeout(function () {
+            runUniversalSearch(value);
+        }, 220);
+    }
+
+    if (universalSearchInput && universalModalEl) {
+        universalSearchInput.addEventListener('focus', function () {
+            const modal = new bootstrap.Modal(universalModalEl);
+            universalModalInput.value = universalSearchInput.value;
+            modal.show();
+            setTimeout(function () { universalModalInput.focus(); }, 180);
+        });
+        universalSearchInput.addEventListener('input', function () {
+            universalModalInput.value = this.value;
+            scheduleUniversalSearch(this.value);
+        });
+    }
+
+    if (universalModalInput) {
+        universalModalInput.addEventListener('input', function () {
+            if (universalSearchInput) universalSearchInput.value = this.value;
+            scheduleUniversalSearch(this.value);
+        });
+    }
+
+    // ── Search-result Audit button ─────────────────────────────────
+    document.addEventListener('click', function (e) {
+        const auditBtn = e.target.closest('.search-result-audit-btn');
+        if (!auditBtn) return;
+        const productId = auditBtn.dataset.productId;
+        const label     = auditBtn.dataset.itemLabel || '';
+        document.getElementById('globalAuditProductId').value = productId;
+        document.getElementById('globalAuditItemLabel').textContent = label;
+        document.getElementById('globalAuditDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('globalAuditRemark').value = '';
+        document.getElementById('globalAuditMsg').textContent = '';
+        // Close the search modal first so the audit modal isn't trapped behind it.
+        const searchModal = bootstrap.Modal.getInstance(document.getElementById('universalSearchModal'));
+        if (searchModal) searchModal.hide();
+        setTimeout(() => new bootstrap.Modal(document.getElementById('globalAuditModal')).show(), 350);
+    });
+
+    document.getElementById('globalSaveAudit').addEventListener('click', function () {
+        const productId = document.getElementById('globalAuditProductId').value;
+        const msgEl     = document.getElementById('globalAuditMsg');
+        if (!productId) return;
+        const data = new URLSearchParams({
+            product_id:   productId,
+            audit_remark: document.getElementById('globalAuditRemark').value,
+            audited_on:   document.getElementById('globalAuditDate').value,
+            audit_result: document.getElementById('globalAuditResult').value,
+            csrfmiddlewaretoken: (document.cookie.split('; ').find(r => r.startsWith('csrftoken')) || '').split('=')[1] || ''
+        });
+        fetch('/inventory/audit/', { method: 'POST', body: data })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    msgEl.className = 'mt-2 small text-success';
+                    msgEl.textContent = 'Audit saved successfully.';
+                    setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('globalAuditModal')).hide(), 900);
+                } else {
+                    msgEl.className = 'mt-2 small text-danger';
+                    msgEl.textContent = 'Failed: ' + (res.error || 'Unknown error');
+                }
+            })
+            .catch(() => { msgEl.className = 'mt-2 small text-danger'; msgEl.textContent = 'Server error.'; });
+    });
+
+    // ── Search-result Stock Out button ─────────────────────────────
+    document.addEventListener('click', function (e) {
+        const soBtn = e.target.closest('.search-result-stockout-btn');
+        if (!soBtn) return;
+        const productId = soBtn.dataset.productId;
+        const label     = soBtn.dataset.itemLabel || '';
+        document.getElementById('globalStockOutProductId').value = productId;
+        document.getElementById('globalStockOutItemLabel').textContent = label;
+        document.getElementById('globalStockOutClient').value  = '';
+        document.getElementById('globalStockOutInvoice').value = '';
+        document.getElementById('globalStockOutOlfDc').value = '';
+        document.getElementById('globalStockOutDate').value    = new Date().toISOString().split('T')[0];
+        document.getElementById('globalStockOutMsg').textContent = '';
+        // Close search modal first, then open stockout
+        const searchModal = bootstrap.Modal.getInstance(document.getElementById('universalSearchModal'));
+        if (searchModal) searchModal.hide();
+        setTimeout(() => new bootstrap.Modal(document.getElementById('globalStockOutModal')).show(), 350);
+    });
+
+    document.getElementById('globalSaveStockOut').addEventListener('click', function () {
+        const productId = document.getElementById('globalStockOutProductId').value;
+        const msgEl     = document.getElementById('globalStockOutMsg');
+        if (!productId) return;
+        const data = new URLSearchParams({
+            product_id:          productId,
+            client_name:         document.getElementById('globalStockOutClient').value,
+            invoice_no:          document.getElementById('globalStockOutInvoice').value,
+            olf_dc_number:       document.getElementById('globalStockOutOlfDc').value,
+            stock_status:        document.getElementById('globalStockOutStatus').value,
+            stock_out_date:      document.getElementById('globalStockOutDate').value,
+            expected_return_date: document.getElementById('globalStockOutReturnDate').value,
+            csrfmiddlewaretoken: (document.cookie.split('; ').find(r => r.startsWith('csrftoken')) || '').split('=')[1] || ''
+        });
+        fetch('/inventory/stock-out/', { method: 'POST', body: data })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    msgEl.className = 'mt-2 small text-success';
+                    msgEl.textContent = 'Stock Out saved successfully.';
+                    setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('globalStockOutModal')).hide(), 900);
+                } else {
+                    msgEl.className = 'mt-2 small text-danger';
+                    msgEl.textContent = 'Failed: ' + (res.error || 'Unknown error');
+                }
+            })
+            .catch(() => { msgEl.className = 'mt-2 small text-danger'; msgEl.textContent = 'Server error.'; });
+    });
+
+    function rowProductId(button) {
+        return button.dataset.productId || button.closest('tr')?.dataset.id || '';
+    }
+
+    function rowLabel(button) {
+        const explicit = button.dataset.itemLabel;
+        if (explicit) return explicit;
+        const row = button.closest('tr');
+        if (!row) return '';
+        return Array.from(row.querySelectorAll('td')).slice(0, 5).map(td => td.textContent.trim()).filter(Boolean).join(' | ');
+    }
+
+    const canStockOut = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_OUT' %}true{% else %}false{% endif %};
+    const canAudit = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'AUDIT' %}true{% else %}false{% endif %};
+    const canTransferRequest = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_OUT' %}true{% else %}false{% endif %};
+    const canProductHistory = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' %}true{% else %}false{% endif %};
+    const canFreeze = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_OUT' %}true{% else %}false{% endif %};
+    const canMap = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' or user.profile.role == 'STOCK_OUT' %}true{% else %}false{% endif %};
+
+    function addWorkflowButtons() {
+        if (body.classList.contains('anon-user')) return;
+        document.querySelectorAll('.stockout-btn').forEach(btn => { if (!canStockOut) btn.classList.add('d-none'); });
+        document.querySelectorAll('.audit-btn').forEach(btn => { if (!canAudit) btn.classList.add('d-none'); });
+        document.querySelectorAll('td.action-cell, td.sticky-col').forEach(function (cell) {
+            const row = cell.closest('tr');
+            const productId = row?.dataset.id || '';
+            if (!productId) return;
+
+            if (canTransferRequest && !cell.querySelector('.transfer-btn')) {
+                const transfer = document.createElement('button');
+                transfer.type = 'button';
+                transfer.className = 'btn btn-sm btn-outline-primary transfer-btn';
+                transfer.dataset.productId = productId;
+                transfer.title = 'Transfer';
+                transfer.innerHTML = '<i class="bi bi-arrow-left-right"></i>';
+                cell.appendChild(transfer);
+            }
+            if (canFreeze && !cell.querySelector('.freeze-btn')) {
+                const freeze = document.createElement('button');
+                freeze.type = 'button';
+                freeze.className = 'btn btn-sm btn-outline-info freeze-btn';
+                freeze.dataset.productId = productId;
+                freeze.title = 'Freeze';
+                freeze.innerHTML = '<i class="bi bi-snow2"></i>';
+                cell.appendChild(freeze);
+            }
+            if (canMap && !cell.querySelector('.map-btn')) {
+                const map = document.createElement('button');
+                map.type = 'button';
+                map.className = 'btn btn-sm btn-outline-secondary map-btn';
+                map.dataset.productId = productId;
+                map.title = 'Map to server / controller';
+                map.innerHTML = '<i class="bi bi-diagram-3"></i>';
+                cell.appendChild(map);
+            }
+            if (canProductHistory && !cell.querySelector('.history-btn')) {
+                const hist = document.createElement('a');
+                hist.className = 'btn btn-sm btn-outline-dark history-btn';
+                hist.href = '/inventory/asset-ledger/' + productId + '/';
+                hist.title = 'Full history & detail';
+                hist.innerHTML = '<i class="bi bi-clock-history"></i>';
+                cell.appendChild(hist);
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', addWorkflowButtons);
+    if (window.jQuery) {
+        window.jQuery(document).on('draw.dt', addWorkflowButtons);
+    }
+
+    document.addEventListener('click', function (e) {
+        const transferBtn = e.target.closest('.transfer-btn');
+        if (!transferBtn) return;
+        const productId = rowProductId(transferBtn);
+        document.getElementById('globalTransferProductId').value = productId;
+        document.getElementById('globalTransferItemLabel').textContent = rowLabel(transferBtn);
+        document.getElementById('globalTransferRemarks').value = '';
+        document.getElementById('globalTransferMsg').textContent = '';
+        new bootstrap.Modal(document.getElementById('globalTransferModal')).show();
+    });
+
+    document.getElementById('globalSaveTransfer').addEventListener('click', function () {
+        const productId = document.getElementById('globalTransferProductId').value;
+        const msgEl = document.getElementById('globalTransferMsg');
+        const remarks = document.getElementById('globalTransferRemarks').value.trim();
+        if (!productId || !remarks) {
+            msgEl.className = 'mt-2 small text-danger';
+            msgEl.textContent = 'Remarks are required.';
+            return;
+        }
+        const data = new URLSearchParams({
+            product_id: productId,
+            destination_warehouse: document.getElementById('globalTransferWarehouse').value,
+            destination_location: '',
+            remarks: remarks,
+            csrfmiddlewaretoken: csrfToken()
+        });
+        fetch('/inventory/transfer/', { method: 'POST', body: data })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    msgEl.className = 'mt-2 small text-success';
+                    msgEl.textContent = res.message || 'Transfer request created. Awaiting receipt.';
+                    setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('globalTransferModal')).hide(), 900);
+                } else {
+                    msgEl.className = 'mt-2 small text-danger';
+                    msgEl.textContent = 'Failed: ' + (res.error || 'Unknown error');
+                }
+            })
+            .catch(() => { msgEl.className = 'mt-2 small text-danger'; msgEl.textContent = 'Server error.'; });
+    });
+
+    document.addEventListener('click', function (e) {
+        const freezeBtn = e.target.closest('.freeze-btn');
+        if (!freezeBtn) return;
+        const productId = rowProductId(freezeBtn);
+        document.getElementById('globalFreezeProductId').value = productId;
+        document.getElementById('globalFreezeItemLabel').textContent = rowLabel(freezeBtn);
+        document.getElementById('globalFreezeReason').value = '';
+        document.getElementById('globalFreezeMsg').textContent = '';
+        new bootstrap.Modal(document.getElementById('globalFreezeModal')).show();
+    });
+
+    document.getElementById('globalSaveFreeze').addEventListener('click', function () {
+        const productId = document.getElementById('globalFreezeProductId').value;
+        const msgEl = document.getElementById('globalFreezeMsg');
+        const reason = document.getElementById('globalFreezeReason').value.trim();
+        if (!productId || !reason) {
+            msgEl.className = 'mt-2 small text-danger';
+            msgEl.textContent = 'Reason is required.';
+            return;
+        }
+        const data = new URLSearchParams({
+            product_id: productId,
+            reason: reason,
+            csrfmiddlewaretoken: csrfToken()
+        });
+        fetch('/inventory/freeze/', { method: 'POST', body: data })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    msgEl.className = 'mt-2 small text-success';
+                    msgEl.textContent = `Frozen successfully. ${res.affected_components || 0} related component(s) affected.`;
+                    document.querySelectorAll(`tr[data-id="${productId}"] .stockout-btn, tr[data-id="${productId}"] .transfer-btn, tr[data-id="${productId}"] .freeze-btn`).forEach(function (btn) {
+                        btn.disabled = true;
+                    });
+                    setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('globalFreezeModal')).hide(), 1100);
+                } else {
+                    msgEl.className = 'mt-2 small text-danger';
+                    msgEl.textContent = 'Failed: ' + (res.error || 'Unknown error');
+                }
+            })
+            .catch(() => { msgEl.className = 'mt-2 small text-danger'; msgEl.textContent = 'Server error.'; });
+    });
+
+    // ── Rentals: show "Expected Return Date" only when status is RENT ──
+    document.addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'stockOutStatus') {
+            const wrap = document.getElementById('stockOutReturnWrap');
+            if (wrap) wrap.style.display = e.target.value === 'RENT' ? '' : 'none';
+        }
+        if (e.target && e.target.id === 'globalStockOutStatus') {
+            const wrap = document.getElementById('globalStockOutReturnWrap');
+            if (wrap) wrap.style.display = e.target.value === 'RENT' ? '' : 'none';
+        }
+    });
+
+    // ── Mapping ─────────────────────────────────────────────────────
+    let mapSearchTimer = null;
+    function loadMapTargets() {
+        const type = document.getElementById('globalMapType').value;
+        const q = document.getElementById('globalMapSearch').value.trim();
+        const sel = document.getElementById('globalMapTarget');
+        sel.innerHTML = '<option disabled>Loading…</option>';
+        fetch(`/inventory/map/targets/?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`)
+            .then(r => r.json())
+            .then(data => {
+                sel.innerHTML = '';
+                (data.results || []).forEach(function (item) {
+                    const o = document.createElement('option');
+                    o.value = item.id; o.textContent = item.label;
+                    sel.appendChild(o);
+                });
+                if (!sel.options.length) sel.innerHTML = '<option disabled>No matches</option>';
+            })
+            .catch(() => { sel.innerHTML = '<option disabled>Search failed</option>'; });
+    }
+
+    document.addEventListener('click', function (e) {
+        const mapBtn = e.target.closest('.map-btn');
+        if (!mapBtn) return;
+        const productId = rowProductId(mapBtn);
+        document.getElementById('globalMapProductId').value = productId;
+        document.getElementById('globalMapItemLabel').textContent = rowLabel(mapBtn);
+        document.getElementById('globalMapRemarks').value = '';
+        document.getElementById('globalMapMsg').textContent = '';
+        document.getElementById('globalMapSearch').value = '';
+        const cur = document.getElementById('globalMapCurrent');
+        cur.classList.add('d-none'); cur.innerHTML = '';
+        // check current mapping
+        fetch(`/inventory/map/status/?product_id=${encodeURIComponent(productId)}`)
+            .then(r => r.json())
+            .then(s => {
+                if (s.mapped) {
+                    cur.classList.remove('d-none');
+                    cur.innerHTML = `Currently mapped to ${s.type}: <strong>${s.label}</strong> ` +
+                        `<button type="button" class="btn btn-sm btn-outline-danger ms-2" id="globalUnmapBtn">Unmap</button>`;
+                }
+            }).catch(()=>{});
+        loadMapTargets();
+        new bootstrap.Modal(document.getElementById('globalMapModal')).show();
+    });
+
+    document.getElementById('globalMapType').addEventListener('change', loadMapTargets);
+    document.getElementById('globalMapSearch').addEventListener('input', function () {
+        window.clearTimeout(mapSearchTimer);
+        mapSearchTimer = window.setTimeout(loadMapTargets, 250);
+    });
+
+    document.getElementById('globalSaveMap').addEventListener('click', function () {
+        const productId = document.getElementById('globalMapProductId').value;
+        const targetType = document.getElementById('globalMapType').value;
+        const target = document.getElementById('globalMapTarget').value;
+        const msgEl = document.getElementById('globalMapMsg');
+        if (!productId || !target) {
+            msgEl.className = 'mt-2 small text-danger';
+            msgEl.textContent = 'Please select a target.';
+            return;
+        }
+        const data = new URLSearchParams({
+            product_id: productId, target_type: targetType, target_id: target,
+            remarks: document.getElementById('globalMapRemarks').value,
+            csrfmiddlewaretoken: csrfToken()
+        });
+        fetch('/inventory/map/', { method: 'POST', body: data })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    msgEl.className = 'mt-2 small text-success';
+                    msgEl.textContent = 'Mapped into ' + (res.parent || 'target') + '.';
+                    setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('globalMapModal')).hide(), 900);
+                } else {
+                    msgEl.className = 'mt-2 small text-danger';
+                    msgEl.textContent = 'Failed: ' + (res.error || 'Unknown error');
+                }
+            })
+            .catch(() => { msgEl.className = 'mt-2 small text-danger'; msgEl.textContent = 'Server error.'; });
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('#globalUnmapBtn')) return;
+        const productId = document.getElementById('globalMapProductId').value;
+        const msgEl = document.getElementById('globalMapMsg');
+        const data = new URLSearchParams({
+            product_id: productId,
+            remarks: document.getElementById('globalMapRemarks').value,
+            csrfmiddlewaretoken: csrfToken()
+        });
+        fetch('/inventory/unmap/', { method: 'POST', body: data })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    msgEl.className = 'mt-2 small text-success';
+                    msgEl.textContent = 'Unmapped.';
+                    setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('globalMapModal')).hide(), 900);
+                } else {
+                    msgEl.className = 'mt-2 small text-danger';
+                    msgEl.textContent = 'Failed: ' + (res.error || 'Unknown error');
+                }
+            })
+            .catch(() => { msgEl.className = 'mt-2 small text-danger'; msgEl.textContent = 'Server error.'; });
+    });
+
+    function addExportButton() {
+        if (body.classList.contains('anon-user')) return;
+        const path = window.location.pathname;
+        const map = [
+            ['/spare/spares/', '/spare/export/spare/live/'],
+            ['/spare/card-list/', '/spare/export/card/live/'],
+            ['/spare/cpu-list/', '/spare/export/cpu/live/'],
+            ['/spare/controller-list/', '/spare/export-controllers/live/'],
+            ['/spare/memory-list/', '/spare/export/memory/live/'],
+            ['/spare/sfp-list/', '/spare/export/sfp/live/'],
+            ['/spare/railkit-list/', '/spare/export/railkit/live/'],
+            ['/spare/harddisk-list/', '/spare/export/harddisk/live/'],
+            ['/spare/networking-spare/list/', '/spare/export/networking_spare/live/'],
+            ['/servers/list/', '/servers/export/live/'],
+            ['/servers/sold/', '/servers/export/sold/']
+        ];
+        const match = map.find(function (item) { return path === item[0]; });
+        const actions = document.querySelector('.inventory-list-actions, .server-list-actions');
+        if (!match || !actions || actions.querySelector('.js-export-btn')) return;
+        const a = document.createElement('a');
+        a.href = match[1];
+        a.className = 'btn btn-outline-secondary btn-sm js-export-btn';
+        a.innerHTML = '<i class="bi bi-download"></i> Export';
+        actions.appendChild(a);
+    }
+
+    document.addEventListener('DOMContentLoaded', addExportButton);
+
+    // ── Universal record count for every DataTable list (shown at the TOP) ──
+    // When no search/filter is active it keeps the original subtitle (e.g.
+    // "1247 active cards"); once a search is performed it switches to
+    // "N matching records of M". Lists without a subtitle get a top badge.
+    function updateRecordCounts() {
+        if (!window.jQuery || !window.jQuery.fn || !window.jQuery.fn.DataTable) return;
+        window.jQuery('table.dataTable').each(function () {
+            // Wrapped so a count failure can NEVER break a page's ready() block
+            // (DataTable init fires draw.dt synchronously inside those blocks).
+            try {
+                const el = this;
+                if (!window.jQuery.fn.DataTable.isDataTable(el)) return;
+                const api = window.jQuery(el).DataTable();
+                if (!api || typeof api.page !== 'function') return;
+                const info = api.page.info();
+                if (!info) return;
+                const $t = window.jQuery(el);
+                const shown = info.recordsDisplay;
+                const total = info.recordsTotal;
+                const filtered = shown !== total;
+                const matchText = `${shown} matching record${shown === 1 ? '' : 's'} of ${total}`;
+
+                const shell = $t.closest('.inventory-list-shell, .card, #main-content').first();
+                if (!shell.length) return;
+                const sub = shell.find('.inventory-list-subtitle').first();
+
+                if (sub.length) {
+                    if (sub.attr('data-orig') === undefined) sub.attr('data-orig', sub.html());
+                    sub.html(filtered ? matchText : sub.attr('data-orig'));
+                } else {
+                    let badge = shell.find('.js-record-count').first();
+                    if (!badge.length) {
+                        badge = window.jQuery('<div class="js-record-count badge mb-2"></div>');
+                        const wrap = $t.closest('.table-responsive, .table-container, .dataTables_wrapper').first();
+                        if (wrap.length) wrap.before(badge); else $t.before(badge);
+                    }
+                    badge.text(filtered ? matchText : `${total} record${total === 1 ? '' : 's'}`);
+                }
+            } catch (e) { /* swallow — counts are non-critical */ }
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(updateRecordCounts, 350); });
+    if (window.jQuery) {
+        window.jQuery(document).on('draw.dt', updateRecordCounts);
     }
 
 })();

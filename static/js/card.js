@@ -4,8 +4,6 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    console.log("card.js loaded");
-
     // ----------------------------------------
     // ADD ROW
     // ----------------------------------------

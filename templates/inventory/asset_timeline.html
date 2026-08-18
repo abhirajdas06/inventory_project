@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}{{ product.name|default:"Asset" }} — History{% endblock %}
+{% block page_title %}Product Detail &amp; History{% endblock %}
+{% block breadcrumb %}Reports / Product History{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+
+<!-- Overview card -->
+<div class="card mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div>
+            <h5 class="mb-1">{{ product.name|default:"Asset" }}</h5>
+            <div class="text-muted small">
+                Serial: <code>{{ product.serial_no|default:"-" }}</code> ·
+                Part No: {{ detail.part_no|default:"-" }} ·
+                Barcode: {{ detail.barcode|default:"-" }} ·
+                Category: {{ detail.spare_type|default:"-" }}
+            </div>
+        </div>
+        <div class="text-end">
+            {% if is_frozen %}<span class="badge bg-info text-dark">Frozen</span>{% endif %}
+            {% if on_rent %}<span class="badge bg-warning text-dark">On Rent</span>{% endif %}
+            {% if is_stocked_out %}<span class="badge bg-danger">Stocked Out</span>{% else %}<span class="badge bg-success">In Stock</span>{% endif %}
+        </div>
+    </div>
+    <hr class="my-2">
+    <div class="row g-2 small">
+        <div class="col-sm-3"><span class="text-muted">Warehouse</span><div><strong>{{ current_warehouse|default:"-" }}</strong></div></div>
+        <div class="col-sm-3"><span class="text-muted">Location</span><div><strong>{{ current_location|default:"-" }}</strong></div></div>
+        <div class="col-sm-3"><span class="text-muted">Status</span><div><strong>{{ current_status|default:"-" }}</strong></div></div>
+        <div class="col-sm-3"><span class="text-muted">Mapped To</span><div><strong>{% if mapping_type %}{{ mapping_type|title }}: {{ mapping_label }}{% else %}—{% endif %}</strong></div></div>
+    </div>
+</div>
+
+<div class="dashboard-summary mb-3">
+    <div class="dash-card"><span>Timeline</span><strong>{{ events|length }}</strong></div>
+    <div class="dash-card"><span>Transfers</span><strong>{{ transfers|length }}</strong></div>
+    <div class="dash-card"><span>Audits</span><strong>{{ audits|length }}</strong></div>
+    <div class="dash-card"><span>Activity</span><strong>{{ activity|length }}</strong></div>
+</div>
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-timeline" type="button">Timeline ({{ events|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-rent" type="button">Rentals ({{ rentals|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-sale" type="button">Sale / Stock Out ({{ stock_out|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-in" type="button">Stock In ({{ stock_in|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-audit" type="button">Audit ({{ audits|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-transfer" type="button">Transfers ({{ transfers|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-freeze" type="button">Freeze ({{ freezes|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-activity" type="button">Activity ({{ activity|length }})</button></li>
+</ul>
+
+<div class="tab-content">
+
+    <!-- TIMELINE -->
+    <div class="tab-pane fade show active" id="tab-timeline">
+        <div class="table-responsive"><table class="table table-sm align-middle inventory-list-table">
+            <thead><tr><th>Time</th><th>Event</th><th>User</th><th>Warehouse</th><th>Location</th><th>Remarks</th></tr></thead>
+            <tbody>
+                {% for e in events %}
+                <tr>
+                    <td>{{ e.created_at|date:"Y-m-d H:i" }}</td>
+                    <td><span class="badge bg-light text-dark border">{{ e.get_event_type_display }}</span></td>
+                    <td>{{ e.performed_by|default:"System" }}</td>
+                    <td>{{ e.warehouse }}</td><td>{{ e.location }}</td>
+                    <td style="white-space:normal;min-width:220px;">{{ e.remarks }}</td>
+                </tr>
+                {% empty %}<tr><td colspan="6" class="text-center text-muted py-4">No timeline events.</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+    </div>
+
+    <!-- RENTALS -->
+    <div class="tab-pane fade" id="tab-rent">
+        <div class="table-responsive"><table class="table table-sm align-middle inventory-list-table">
+            <thead><tr><th>Client</th><th>Invoice</th><th>OLF/DC</th><th>Warehouse</th><th>Rent Out</th><th>Expected Return</th><th>Returned On</th><th>Status</th><th>By</th></tr></thead>
+            <tbody>
+                {% for r in rentals %}
+                <tr>
+                    <td>{{ r.client_name|default:"-" }}</td><td>{{ r.invoice_no|default:"-" }}</td>
+                    <td>{{ r.olf_dc_number|default:"-" }}</td><td>{{ r.store_location|default:"-" }}</td>
+                    <td>{{ r.rent_out_date|default:"-" }}</td><td>{{ r.expected_return_date|default:"-" }}</td>
+                    <td>{{ r.actual_return_date|default:"-" }}</td>
+                    <td><span class="badge {% if r.status == 'ON_RENT' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ r.get_status_display }}</span></td>
+                    <td>{{ r.rented_out_by|default:"-" }}{% if r.returned_by %} / ret: {{ r.returned_by }}{% endif %}</td>
+                </tr>
+                {% empty %}<tr><td colspan="9" class="text-center text-muted py-4">No rental history.</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+    </div>
+
+    <!-- SALE / STOCK OUT -->
+    <div class="tab-pane fade" id="tab-sale">
+        <div class="table-responsive"><table class="table table-sm align-middle inventory-list-table">
+            <thead><tr><th>Date</th><th>Status</th><th>Client</th><th>Invoice</th><th>OLF/DC</th><th>Warehouse</th><th>By</th></tr></thead>
+            <tbody>
+                {% for t in stock_out %}
+                <tr>
+                    <td>{{ t.stock_out_date|default:"-" }}</td><td><span class="badge bg-secondary">{{ t.get_stock_status_display }}</span></td>
+                    <td>{{ t.client_name|default:"-" }}</td><td>{{ t.invoice_no|default:"-" }}</td>
+                    <td>{{ t.olf_dc_number|default:"-" }}</td><td>{{ t.store_location }}</td><td>{{ t.performed_by|default:"-" }}</td>
+                </tr>
+                {% empty %}<tr><td colspan="7" class="text-center text-muted py-4">No stock-out / sale history.</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+    </div>
+
+    <!-- STOCK IN -->
+    <div class="tab-pane fade" id="tab-in">
+        <div class="table-responsive"><table class="table table-sm align-middle inventory-list-table">
+            <thead><tr><th>Date</th><th>Status</th><th>Warehouse</th><th>By</th><th>Created</th></tr></thead>
+            <tbody>
+                {% for t in stock_in %}
+                <tr><td>{{ t.stock_in_date|default:"-" }}</td><td>{{ t.get_stock_status_display }}</td><td>{{ t.store_location }}</td><td>{{ t.performed_by|default:"-" }}</td><td>{{ t.created_at|date:"Y-m-d H:i" }}</td></tr>
+                {% empty %}<tr><td colspan="5" class="text-center text-muted py-4">No stock-in history.</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+    </div>
+
+    <!-- AUDIT -->
+    <div class="tab-pane fade" id="tab-audit">
+        <div class="table-responsive"><table class="table table-sm align-middle inventory-list-table">
+            <thead><tr><th>Date</th><th>Result</th><th>Warehouse</th><th>Status</th><th>Auditor</th><th>Remark</th></tr></thead>
+            <tbody>
+                {% for t in audits %}
+                <tr>
+                    <td>{{ t.audited_on|default:t.created_at|date:"Y-m-d" }}</td>
+                    <td>{% if t.audit_result %}<span class="badge {% if t.audit_result == 'FOUND' %}bg-success{% else %}bg-danger{% endif %}">{{ t.get_audit_result_display }}</span>{% else %}-{% endif %}</td>
+                    <td>{{ t.store_location }}</td><td>{{ t.stock_status }}</td><td>{{ t.audited_by|default:"-" }}</td>
+                    <td style="white-space:normal;min-width:220px;">{{ t.audit_remark }}</td>
+                </tr>
+                {% empty %}<tr><td colspan="6" class="text-center text-muted py-4">No audit history.</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+    </div>
+
+    <!-- TRANSFERS -->
+    <div class="tab-pane fade" id="tab-transfer">
+        <div class="table-responsive"><table class="table table-sm align-middle inventory-list-table">
+            <thead><tr><th>Date</th><th>From WH</th><th>To WH</th><th>From Loc</th><th>To Loc</th><th>By</th><th>Remarks</th></tr></thead>
+            <tbody>
+                {% for t in transfers %}
+                <tr>
+                    <td>{{ t.created_at|date:"Y-m-d H:i" }}</td><td>{{ t.source_warehouse }}</td><td>{{ t.destination_warehouse }}</td>
+                    <td>{{ t.source_location|default:"-" }}</td><td>{{ t.destination_location|default:"-" }}</td>
+                    <td>{{ t.transferred_by|default:"-" }}</td><td style="white-space:normal;">{{ t.remarks }}</td>
+                </tr>
+                {% empty %}<tr><td colspan="7" class="text-center text-muted py-4">No transfer history.</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+    </div>
+
+    <!-- FREEZE -->
+    <div class="tab-pane fade" id="tab-freeze">
+        <div class="table-responsive"><table class="table table-sm align-middle inventory-list-table">
+            <thead><tr><th>Frozen At</th><th>Status</th><th>Reason</th><th>Frozen By</th><th>Unfrozen At</th><th>Unfrozen By</th></tr></thead>
+            <tbody>
+                {% for f in freezes %}
+                <tr>
+                    <td>{{ f.frozen_at|date:"Y-m-d H:i" }}</td>
+                    <td><span class="badge {% if f.status == 'FROZEN' %}bg-info text-dark{% else %}bg-secondary{% endif %}">{{ f.get_status_display }}</span></td>
+                    <td style="white-space:normal;">{{ f.reason }}</td><td>{{ f.frozen_by|default:"-" }}</td>
+                    <td>{{ f.unfrozen_at|date:"Y-m-d H:i"|default:"-" }}</td><td>{{ f.unfrozen_by|default:"-" }}</td>
+                </tr>
+                {% empty %}<tr><td colspan="6" class="text-center text-muted py-4">No freeze history.</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+    </div>
+
+    <!-- ACTIVITY -->
+    <div class="tab-pane fade" id="tab-activity">
+        <div class="table-responsive"><table class="table table-sm align-middle inventory-list-table">
+            <thead><tr><th>Time</th><th>Action</th><th>Module</th><th>User</th><th>Warehouse</th><th>Location</th><th>Remarks</th></tr></thead>
+            <tbody>
+                {% for a in activity %}
+                <tr>
+                    <td>{{ a.timestamp|date:"Y-m-d H:i" }}</td><td><span class="badge bg-light text-dark border">{{ a.action }}</span></td>
+                    <td>{{ a.module }}</td><td>{{ a.user|default:"System" }}</td><td>{{ a.warehouse }}</td><td>{{ a.location }}</td>
+                    <td style="white-space:normal;min-width:220px;">{{ a.remarks }}</td>
+                </tr>
+                {% empty %}<tr><td colspan="7" class="text-center text-muted py-4">No activity recorded.</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+    </div>
+
+</div>
+</div>
+{% endblock %}

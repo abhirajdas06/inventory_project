@@ -4,8 +4,6 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    console.log("sfp.js loaded");
-
     // ----------------------------------------
     // ADD ROW
     // ----------------------------------------

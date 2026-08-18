@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Mapping History{% endblock %}
+{% block page_title %}Mapping History{% endblock %}
+{% block breadcrumb %}Inventory / Mapping{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar">
+        <div>
+            <h5 class="inventory-list-title mb-1">Mapping &amp; Unmapping History</h5>
+            <div class="inventory-list-subtitle">
+                {% if filters.q or filters.date_from or filters.date_to %}
+                    {{ result_count }} matching record{{ result_count|pluralize }} of {{ total_count }}
+                {% else %}
+                    {{ total_count }} mapping event{{ total_count|pluralize }}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-summary mb-3">
+        <div class="dash-card"><span>Total Events</span><strong>{{ total_count }}</strong></div>
+        <div class="dash-card"><span>Showing</span><strong>{{ result_count }}</strong></div>
+        <div class="dash-card"><span>Mode</span><strong>{% if filters.q or filters.date_from or filters.date_to %}Filtered{% else %}Full Log{% endif %}</strong></div>
+    </div>
+
+    <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-sm-4">
+            <label class="form-label small mb-0">Search</label>
+            <input type="search" name="q" value="{{ filters.q }}" class="form-control form-control-sm"
+                   placeholder="Product, barcode, parent, remarks">
+        </div>
+        <div class="col-sm-3">
+            <label class="form-label small mb-0">From</label>
+            <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-sm-3">
+            <label class="form-label small mb-0">To</label>
+            <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-sm-2 d-flex gap-1">
+            <button class="btn btn-primary btn-sm">Filter</button>
+            <a href="{% url 'mapping_history' %}" class="btn btn-outline-secondary btn-sm">Reset</a>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle inventory-list-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Action</th>
+                    <th>Module</th>
+                    <th>Item</th>
+                    <th>Barcode</th>
+                    <th>Parent</th>
+                    <th>User</th>
+                    <th>Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td>{{ row.log.timestamp|date:"Y-m-d H:i" }}</td>
+                    <td>
+                        <span class="badge {% if row.log.action == 'MAP' %}bg-success{% else %}bg-secondary{% endif %}">
+                            {{ row.log.action }}
+                        </span>
+                    </td>
+                    <td>{{ row.log.module }}</td>
+                    <td>{{ row.log.entity }}</td>
+                    <td>{{ row.log.barcode|default:"—" }}</td>
+                    <td>{{ row.parent|default:"—" }}</td>
+                    <td>{{ row.log.user|default:"System" }}</td>
+                    <td style="white-space:normal;min-width:220px;">{{ row.log.remarks }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-center text-muted py-4">No mapping events found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+{% endblock %}

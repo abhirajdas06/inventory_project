@@ -1,7 +1,5 @@
 $(document).ready(function () {
 
-    console.log("card_table.js loaded");
-
     // =============================
     // 🔥 INIT DATATABLE
     // =============================
@@ -120,12 +118,12 @@ $(document).ready(function () {
             product_id: $('#stockOutProductId').val(),
             client_name: $('#stockOutClient').val(),
             invoice_no: $('#stockOutInvoice').val(),
+            olf_dc_number: $('#stockOutOlfDc').val(),
             stock_status: $('#stockOutStatus').val(),
             stock_out_date: $('#stockOutDate').val(),
+            expected_return_date: $('#stockOutReturnDate').val(),
             csrfmiddlewaretoken: getCSRFToken()
         };
-
-        console.log("Submitting Stock Out:", data);
 
         $.ajax({
             url: '/inventory/stock-out/',
@@ -164,10 +162,9 @@ $(document).ready(function () {
             product_id: $('#auditProductId').val(),
             audit_remark: $('#auditRemark').val(),
             audited_on: $('#auditDate').val(),
+            audit_result: $('#auditResult').val(),
             csrfmiddlewaretoken: getCSRFToken()
         };
-
-        console.log("Submitting Audit:", data);
 
         $.ajax({
             url: '/inventory/audit/',
@@ -216,6 +213,7 @@ $(document).ready(function () {
                         <td>${item.user || ''}</td>
                         <td>${item.location || ''}</td>
                         <td>${item.status || ''}</td>
+                        <td>${item.audit_result || ''}</td>
                         <td>${item.remark || ''}</td>
                     </tr>
                 `);

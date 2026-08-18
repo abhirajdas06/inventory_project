@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Transfer History{% endblock %}
+{% block page_title %}Transfer History{% endblock %}
+{% block breadcrumb %}Inventory / Transfers{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar">
+        <div>
+            <h5 class="inventory-list-title mb-1">Transfer History</h5>
+            <div class="inventory-list-subtitle">
+                {% if filters.q or filters.date_from or filters.date_to %}
+                    {{ result_count }} matching record{{ result_count|pluralize }} of {{ total_count }}
+                {% else %}
+                    {{ total_count }} transfer{{ total_count|pluralize }}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-summary mb-3">
+        <div class="dash-card"><span>Total Transfers</span><strong>{{ total_count }}</strong></div>
+        <div class="dash-card"><span>Showing</span><strong>{{ result_count }}</strong></div>
+        <div class="dash-card"><span>Range</span><strong>{% if filters.date_from or filters.date_to %}Filtered{% else %}All Time{% endif %}</strong></div>
+    </div>
+
+    <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-sm-4">
+            <label class="form-label small mb-0">Search</label>
+            <input type="search" name="q" value="{{ filters.q }}" class="form-control form-control-sm"
+                   placeholder="Product, serial, warehouse, location, remarks">
+        </div>
+        <div class="col-sm-3">
+            <label class="form-label small mb-0">From</label>
+            <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-sm-3">
+            <label class="form-label small mb-0">To</label>
+            <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-sm-2 d-flex gap-1">
+            <button class="btn btn-primary btn-sm">Filter</button>
+            <a href="{% url 'transfer_history' %}" class="btn btn-outline-secondary btn-sm">Reset</a>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle inventory-list-table">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Serial</th>
+                    <th>From Warehouse</th>
+                    <th>To Warehouse</th>
+                    <th>From Location</th>
+                    <th>To Location</th>
+                    <th>Remarks</th>
+                    <th>User</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for transfer in transfers %}
+                <tr>
+                    <td>{{ transfer.product.name }}</td>
+                    <td><code>{{ transfer.product.serial_no }}</code></td>
+                    <td><span class="badge bg-light text-dark border">{{ transfer.source_warehouse }}</span></td>
+                    <td><span class="badge bg-primary">{{ transfer.destination_warehouse }}</span></td>
+                    <td>{{ transfer.source_location|default:"—" }}</td>
+                    <td>{{ transfer.destination_location|default:"—" }}</td>
+                    <td style="white-space:normal;min-width:200px;">{{ transfer.remarks }}</td>
+                    <td>{{ transfer.transferred_by|default:"—" }}</td>
+                    <td>{{ transfer.created_at|date:"Y-m-d H:i" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">No transfers found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,47 @@
+<div class="modal fade" id="scrapFaultyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="scrapFaultyForm">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">Scrap Faulty Stock</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="product_id" id="scrapFaultyProductId">
+        <div class="mb-3">
+          <label class="form-label">Scrap date</label>
+          <input class="form-control" type="date" name="scrapped_on">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Remarks</label>
+          <textarea class="form-control" name="remarks" rows="3" placeholder="Optional scrap notes"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" type="submit">
+          <i class="bi bi-trash3 me-1"></i>Scrap Item
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(() => {
+  const modal = document.getElementById('scrapFaultyModal');
+  if (!modal) return;
+  const form = document.getElementById('scrapFaultyForm');
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('.scrap-faulty-btn');
+    if (!btn) return;
+    document.getElementById('scrapFaultyProductId').value = btn.dataset.productId;
+    new bootstrap.Modal(modal).show();
+  });
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const res = await fetch('{% url "scrap_faulty_stock" %}', { method: 'POST', body: new FormData(form) });
+    const data = await res.json();
+    if (!data.success) return alert(data.error || 'Scrap failed');
+    window.location.reload();
+  });
+})();
+</script>

@@ -56,7 +56,7 @@
                             showError(input, 'Duplicate barcode');
                         }
                     })
-                    .catch(err => console.error('Barcode check error:', err));
+                    .catch(() => {});
 
             }, DEBOUNCE_MS);
 

@@ -1,5 +1,14 @@
 from django.contrib import admin
-from .models import InventoryTransaction
+from .models import (
+    AuditFinding,
+    GeneralAuditFinding,
+    InventoryFreezeRecord,
+    InventoryTransaction,
+    InventoryTransfer,
+    SalesReturn,
+    TransferRequest,
+    TransferRequestItem,
+)
 
 
 @admin.register(InventoryTransaction)
@@ -101,3 +110,56 @@ class InventoryTransactionAdmin(admin.ModelAdmin):
     def get_category(self, obj):
         return obj.product.category.name
     get_category.short_description = "Category"
+
+
+@admin.register(InventoryTransfer)
+class InventoryTransferAdmin(admin.ModelAdmin):
+    list_display = ('product', 'source_warehouse', 'destination_warehouse', 'transferred_by', 'created_at')
+    search_fields = ('product__serial_no', 'product__name', 'source_location', 'destination_location', 'remarks')
+    list_filter = ('source_warehouse', 'destination_warehouse', 'created_at')
+    readonly_fields = ('created_at',)
+
+
+@admin.register(SalesReturn)
+class SalesReturnAdmin(admin.ModelAdmin):
+    list_display = ('product', 'reason', 'disposition', 'returned_on', 'returned_by')
+    search_fields = ('product__serial_no', 'product__name', 'remarks')
+    list_filter = ('reason', 'disposition', 'returned_on')
+    readonly_fields = ('created_at',)
+
+
+class TransferRequestItemInline(admin.TabularInline):
+    model = TransferRequestItem
+    extra = 0
+    readonly_fields = ('received_at',)
+
+
+@admin.register(TransferRequest)
+class TransferRequestAdmin(admin.ModelAdmin):
+    list_display = ('id', 'source_warehouse', 'destination_warehouse', 'status', 'requested_by', 'created_at')
+    list_filter = ('status', 'source_warehouse', 'destination_warehouse')
+    inlines = (TransferRequestItemInline,)
+
+
+@admin.register(InventoryFreezeRecord)
+class InventoryFreezeRecordAdmin(admin.ModelAdmin):
+    list_display = ('product', 'status', 'reason', 'frozen_by', 'unfrozen_by', 'frozen_at', 'unfrozen_at')
+    search_fields = ('product__serial_no', 'product__name', 'reason')
+    list_filter = ('status', 'frozen_at', 'unfrozen_at')
+    readonly_fields = ('frozen_at',)
+
+
+@admin.register(AuditFinding)
+class AuditFindingAdmin(admin.ModelAdmin):
+    list_display = ('audit_date', 'person_involved', 'created_by', 'created_at')
+    search_fields = ('person_involved', 'remarks')
+    list_filter = ('audit_date', 'created_at')
+    readonly_fields = ('created_at',)
+
+
+@admin.register(GeneralAuditFinding)
+class GeneralAuditFindingAdmin(admin.ModelAdmin):
+    list_display = ('audit_date', 'title', 'person', 'status', 'created_by', 'attended_by', 'created_at')
+    search_fields = ('title', 'person', 'remarks', 'attended_remarks')
+    list_filter = ('status', 'audit_date', 'created_at')
+    readonly_fields = ('created_at', 'attended_at')

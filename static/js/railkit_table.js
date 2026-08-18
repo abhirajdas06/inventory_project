@@ -4,8 +4,6 @@
 
 $(document).ready(function () {
 
-    console.log("railkit_table.js loaded");
-
     // ----------------------------------------
     // INIT DATATABLE
     // ----------------------------------------
@@ -106,8 +104,10 @@ $(document).ready(function () {
             product_id:     productId,
             client_name:    $('#stockOutClient').val(),
             invoice_no:     $('#stockOutInvoice').val(),
+            olf_dc_number:     $('#stockOutOlfDc').val(),
             stock_status:   $('#stockOutStatus').val(),
             stock_out_date: $('#stockOutDate').val(),
+            expected_return_date: $('#stockOutReturnDate').val(),
             csrfmiddlewaretoken: getCSRFToken()
         };
 
@@ -153,6 +153,7 @@ $(document).ready(function () {
             product_id:   productId,
             audit_remark: $('#auditRemark').val(),
             audited_on:   $('#auditDate').val(),
+            audit_result:   $('#auditResult').val(),
             csrfmiddlewaretoken: getCSRFToken()
         };
 
@@ -196,7 +197,7 @@ $(document).ready(function () {
 
             if (!res.data || res.data.length === 0) {
                 tbody.html(
-                    '<tr><td colspan="5" class="text-center text-muted py-3">' +
+                    '<tr><td colspan="6" class="text-center text-muted py-3">' +
                     'No audit records found.</td></tr>'
                 );
             } else {
@@ -207,6 +208,7 @@ $(document).ready(function () {
                             <td>${item.user     || '-'}</td>
                             <td>${item.location || '-'}</td>
                             <td>${item.status   || '-'}</td>
+                            <td>${item.audit_result || '-'}</td>
                             <td>${item.remark   || '-'}</td>
                         </tr>
                     `);

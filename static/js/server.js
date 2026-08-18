@@ -4,8 +4,6 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    console.log("server.js loaded");
-
     // ============================================================
     // HELPERS
     // ============================================================
@@ -199,7 +197,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         }
                     })
                     .catch(function (err) {
-                        console.error("Service tag check error:", err);
+
                     });
 
             }, 300);

@@ -47,6 +47,7 @@
                         <th>Store</th>
                         <th>Status</th>
                         <th>Last Audit</th>
+                        <th>Created On</th>
                         <th class="sticky-col">Actions</th>
                     </tr>
 
@@ -70,8 +71,8 @@
                         <td>{{ c.barcode }}</td>
 
                         <!-- INLINE EDITABLE -->
-                        <td class="editable-cell" data-field="location">{{ c.location }}</td>
-                        <td class="editable-cell" data-field="reference_location">{{ c.reference_location }}</td>
+                        <td>{{ c.location }}</td>
+                        <td>{{ c.reference_location }}</td>
                         <td class="editable-cell" data-field="remark">{{ c.remark }}</td>
 
                         <!-- FROM LATEST TRANSACTION -->
@@ -84,6 +85,9 @@
                                 {{ c.last_audit_date|default:"View" }}
                             </button>
                         </td>
+                        <td>{{ c.created_at|date:"Y-m-d H:i" }}</td>
+
+
 
                         <!-- ACTIONS -->
                         <td class="action-cell sticky-col">
@@ -100,7 +104,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="18" class="text-center text-muted py-4">No CPU records found.</td>
+                        <td colspan="19" class="text-center text-muted py-4">No CPU records found.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -121,3 +125,7 @@
 {% block extra_js %}
 <script src="{% static 'js/cpu_table.js' %}"></script>
 {% endblock %}
+
+
+
+

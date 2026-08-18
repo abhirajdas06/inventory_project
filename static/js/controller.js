@@ -7,8 +7,6 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    console.log("controller.js loaded");
-
     // ----------------------------------------
     // ADD COMPONENT ROW
     // ----------------------------------------

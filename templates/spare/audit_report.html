@@ -11,9 +11,68 @@
 <div class="inventory-list-toolbar">
     <div>
         <h5 class="inventory-list-title">Audit Report</h5>
-        <div class="inventory-list-subtitle">{{ audits|length }} audit record{{ audits|length|pluralize }}</div>
-    </div>
+        <div class="inventory-list-subtitle">
+            {% if filters.q or filters.user or filters.result or filters.category or filters.date_from or filters.date_to %}
+                {{ result_count }} matching record{{ result_count|pluralize }} of {{ total_count }} total
+            {% else %}
+                {{ total_count }} audit record{{ total_count|pluralize }}
+            {% endif %}
+        </div>
 </div>
+</div>
+
+<div class="dashboard-summary mb-3">
+    <div class="dash-card"><span>Total</span><strong>{{ total_count }}</strong></div>
+    <div class="dash-card"><span>Showing</span><strong>{{ result_count }}</strong></div>
+    <div class="dash-card"><span>Filters</span><strong>{% if filters.q or filters.user or filters.result or filters.category or filters.date_from or filters.date_to %}Active{% else %}None{% endif %}</strong></div>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-sm-3">
+        <label class="form-label small mb-0">Search</label>
+        <input type="search" name="q" value="{{ filters.q }}" class="form-control form-control-sm"
+               placeholder="Product, serial, part, remark">
+    </div>
+    <div class="col-sm-2">
+        <label class="form-label small mb-0">User</label>
+        <select name="user" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for u in audit_users %}
+            <option value="{{ u.id }}" {% if filters.user == u.id|stringformat:"s" %}selected{% endif %}>{{ u.username }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-sm-2">
+        <label class="form-label small mb-0">Result</label>
+        <select name="result" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for value, label in result_choices %}
+            <option value="{{ value }}" {% if filters.result == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-sm-2">
+        <label class="form-label small mb-0">Product Type</label>
+        <select name="category" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for cat in categories %}
+            <option value="{{ cat.name }}" {% if filters.category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-sm-1">
+        <label class="form-label small mb-0">From</label>
+        <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-sm-1">
+        <label class="form-label small mb-0">To</label>
+        <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+    </div>
+    <div class="col-sm-1 d-grid gap-1">
+        <button class="btn btn-primary btn-sm">Filter</button>
+        <a href="{% url 'audit_report' %}" class="btn btn-outline-secondary btn-sm">Reset</a>
+    </div>
+</form>
 
 <div class="table-container">
 
@@ -28,6 +87,7 @@
     <th>User</th>
     <th>Location</th>
     <th>Status</th>
+    <th>Result</th>
     <th>Remark</th>
 </tr>
 </thead>
@@ -43,7 +103,12 @@
 <td>{{ a.audited_by.username }}</td>
 <td>{{ a.store_location }}</td>
 <td>{{ a.stock_status }}</td>
+<td>{{ a.get_audit_result_display|default:a.audit_result }}</td>
 <td>{{ a.audit_remark }}</td>
+</tr>
+{% empty %}
+<tr>
+    <td colspan="9" class="text-center text-muted py-4">No audit records found.</td>
 </tr>
 {% endfor %}
 
@@ -54,7 +119,14 @@
 </div>
 </div>
 </div>
-{% block extra_js %}
-<script src="{% static 'js/spare_table.js' %}"></script>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+    if (!$.fn.DataTable.isDataTable('#spareTable')) {
+        $('#spareTable').DataTable({pageLength: 25, scrollX: true, deferRender: true});
+    }
+});
+</script>
 {% endblock %}

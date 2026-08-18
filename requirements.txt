@@ -2,6 +2,8 @@ asgiref==3.11.1
 Django==6.0.3
 django-crispy-forms==2.6
 django-filter==25.2
+et_xmlfile==2.0.0
+openpyxl==3.1.5
 psycopg2-binary==2.9.11
 python-dotenv==1.2.2
 sqlparse==0.5.5

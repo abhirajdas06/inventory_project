@@ -4,8 +4,8 @@
 <link rel="stylesheet" href="{% static 'css/server.css' %}">
 {% endblock extra_css %}
 
-{% block title %}Sold Servers{% endblock %}
-{% block page_title %}Sold Servers{% endblock %}
+{% block title %}{% if is_faulty %}Faulty Servers{% else %}Sold Servers{% endif %}{% endblock %}
+{% block page_title %}{% if is_faulty %}Faulty Servers{% else %}Sold Servers{% endif %}{% endblock %}
 {% block breadcrumb %}<a href="{% url 'server_list' %}">Servers</a> / Sold{% endblock %}
 {% block nav_server_out %}active{% endblock %}
 
@@ -15,10 +15,19 @@
 
     <div class="server-list-toolbar">
         <div>
-            <h5 class="server-list-title">Sold / Stocked Out Servers</h5>
-            <div class="server-list-subtitle">{{ servers|length }} sold server{{ servers|length|pluralize }}</div>
+            <h5 class="server-list-title">{% if is_faulty %}Faulty Servers{% else %}Sold / Stocked Out Servers{% endif %}</h5>
+            <div class="server-list-subtitle">{{ servers|length }} {% if is_faulty %}faulty{% else %}sold{% endif %} server{{ servers|length|pluralize }}</div>
         </div>
-        <div class="server-list-actions">
+        <div class="server-list-actions d-flex align-items-center gap-2">
+            <select id="statusFilter" class="form-select form-select-sm" style="width: auto;">
+                <option value="">All Stock Statuses</option>
+                {% for status in available_statuses %}
+                <option value="{{ status }}" {% if status == selected_status %}selected{% endif %}>{{ status }}</option>
+                {% endfor %}
+            </select>
+            <a href="{% url 'server_export' 'sold' %}{% if selected_status %}?status={{ selected_status }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-download me-1"></i>Export CSV
+            </a>
             <a href="{% url 'server_list' %}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1"></i>Active Servers
             </a>
@@ -39,8 +48,11 @@
                     <th>Out Status</th>
                     <th>Client</th>
                     <th>Invoice</th>
+                    <th>OLF / DC No</th>
                     <th>Out Date</th>
                     <th>Components</th>
+                    <th>Action</th>
+                    <th>Ledger</th>
                 </tr>
 
             </thead>
@@ -57,6 +69,7 @@
                     <td><span class="badge bg-danger">{{ s.latest_status|default:"OUT" }}</span></td>
                     <td>{{ s.latest_client|default:"-" }}</td>
                     <td>{{ s.latest_invoice|default:"-" }}</td>
+                    <td>{{ s.latest_olf_dc|default:"-" }}</td>
                     <td>{{ s.latest_out_date|default:"-" }}</td>
                     <td class="text-center">
                         {% with cnt=s.components.count %}
@@ -68,11 +81,29 @@
                         </button>
                         {% endwith %}
                     </td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            {% if can_stock_return %}
+                            <button class="btn btn-sm btn-outline-success sales-return-btn" data-product-id="{{ s.product.id }}" title="Sales return"><i class="bi bi-box-arrow-in-down"></i></button>
+                            {% endif %}
+                            {% if is_faulty and can_stock_out %}
+                            <button class="btn btn-sm btn-outline-danger scrap-faulty-btn" data-product-id="{{ s.product.id }}" title="Scrap faulty stock"><i class="bi bi-trash3"></i></button>
+                            {% endif %}
+                            {% if not can_stock_return and not is_faulty and not can_stock_out %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <a href="{% url 'asset_movement_ledger' s.product.id %}" class="btn btn-sm btn-outline-secondary" title="Movement ledger">
+                            <i class="bi bi-clock-history"></i>
+                        </a>
+                    </td>
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="12" class="text-center text-muted py-4">
-                        No sold servers found.
+                    <td colspan="15" class="text-center text-muted py-4">
+                        No {% if is_faulty %}faulty{% else %}sold{% endif %} servers found.
                     </td>
                 </tr>
                 {% endfor %}
@@ -80,6 +111,8 @@
         </table>
     </div>
 </div>
+{% include "inventory/sales_return_modal.html" %}
+{% include "inventory/scrap_modal.html" %}
 
 <div class="modal fade" id="viewComponentsModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -121,6 +154,7 @@
                                 <th>Status</th>
                                 <th>Client</th>
                                 <th>Invoice</th>
+                                <th>OLF / DC</th>
                                 <th>Out Date</th>
                             </tr>
                         </thead>
@@ -163,4 +197,18 @@ tr.comp-in-row:hover  { background: #edfaed !important; }
 
 {% block extra_js %}
 <script src="{% static 'js/server_table.js' %}"></script>
+<script>
+$(function () {
+    $('#statusFilter').on('change', function () {
+        let val = $(this).val();
+        let url = new URL(window.location.href);
+        if (val) {
+            url.searchParams.set('status', val);
+        } else {
+            url.searchParams.delete('status');
+        }
+        window.location.href = url.toString();
+    });
+});
+</script>
 {% endblock %}

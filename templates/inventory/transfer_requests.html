@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}Transfer Requests{% endblock %}
+{% block page_title %}Stock Transfer{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+  <div class="inventory-list-shell">
+    <div class="inventory-list-toolbar align-items-start gap-3">
+      <div>
+        <h5 class="inventory-list-title">Stock Transfer Requests</h5>
+        <div class="inventory-list-subtitle">
+          Request transfer by barcode Excel, then receive one-by-one with location or upload a bulk receipt Excel.
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      {% if user.profile.role == 'STOCK_OUT' or user.profile.role == 'ADMIN' or user.is_superuser %}
+      <div class="col-lg-6">
+        <form id="requestTransferForm" class="border rounded p-3 bg-white" enctype="multipart/form-data">
+          {% csrf_token %}
+          <h6 class="mb-3">Request transfer in bulk</h6>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label">Source store</label>
+              <select class="form-select" name="source_warehouse" required>
+                {% for key, label in warehouses %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Destination store</label>
+              <select class="form-select" name="destination_warehouse" required>
+                {% for key, label in warehouses %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Barcode Excel</label>
+              <input type="file" class="form-control" name="file" accept=".xlsx" required>
+              <div class="form-text">Required heading: Barcode or Barcode No.</div>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Remarks</label>
+              <input class="form-control" name="remarks">
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm mt-3" type="submit">Create request</button>
+        </form>
+      </div>
+      {% endif %}
+
+      {% if user.profile.role == 'STOCK_IN' or user.profile.role == 'ADMIN' or user.is_superuser %}
+      <div class="col-lg-6">
+        <div class="border rounded p-3 bg-white h-100">
+          <h6 class="mb-2">Receive transfer</h6>
+          <p class="text-muted small mb-2">
+            Approve a pending line manually by entering its received location, or use the bulk receipt upload for a request.
+          </p>
+          <button type="button" class="btn btn-outline-primary btn-sm receive-transfer-btn">Bulk receipt upload</button>
+          <span class="badge bg-light text-dark border ms-2">Receipt Excel headings: Barcode and Updated Location</span>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="table-container">
+      <table class="table table-sm align-middle inventory-list-table">
+        <thead>
+          <tr>
+            <th>Request</th>
+            <th>Product</th>
+            <th>Part No</th>
+            <th>Barcode</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Source Location</th>
+            <th>Received Location</th>
+            <th>Requested By</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th class="text-end">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for request in requests %}
+            {% for item in request.items.all %}
+            <tr>
+              <td>
+                <div class="fw-semibold">TR-{{ request.id }}</div>
+              </td>
+              <td>
+                <div class="fw-semibold">{{ item.product.name }}</div>
+                <div class="text-muted small">{{ item.product.serial_no|default:"No serial" }}</div>
+              </td>
+              <td>{{ item.display_part_no|default:"-" }}</td>
+              <td><code>{{ item.display_barcode|default:"-" }}</code></td>
+              <td>{{ request.source_warehouse }}</td>
+              <td>{{ request.destination_warehouse }}</td>
+              <td>{{ item.source_location|default:"-" }}</td>
+              <td>{{ item.destination_location|default:"-" }}</td>
+              <td>{{ request.requested_by|default:"-" }}</td>
+              <td>
+                {% if item.received_at %}
+                <span class="badge bg-success">Received</span>
+                <div class="text-muted small">{{ item.received_at|date:"Y-m-d H:i" }}</div>
+                {% else %}
+                <span class="badge {% if request.status == 'PARTIAL' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">Pending</span>
+                {% endif %}
+              </td>
+              <td>{{ request.created_at|date:"Y-m-d H:i" }}</td>
+              <td class="text-end">
+                {% if not item.received_at and user.profile.role == 'STOCK_IN' or not item.received_at and user.profile.role == 'ADMIN' or not item.received_at and user.is_superuser %}
+                <button
+                  class="btn btn-sm btn-outline-primary receive-single-transfer-btn"
+                  data-request-id="{{ request.id }}"
+                  data-item-id="{{ item.id }}"
+                  data-label="TR-{{ request.id }} - {{ item.product.name }} - {{ item.display_barcode|default:'No barcode' }}"
+                >Approve one</button>
+                {% else %}
+                <span class="text-muted">-</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td>TR-{{ request.id }}</td>
+              <td colspan="11" class="text-muted">This request has no eligible items.</td>
+            </tr>
+            {% endfor %}
+          {% empty %}
+          <tr>
+            <td colspan="12" class="text-center text-muted py-4">No transfer requests yet.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="receiveTransferModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" id="receiveTransferForm" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">Receive Transfer by Excel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Transfer request</label>
+        <select class="form-select mb-3" name="request_id" id="receiveTransferRequestId" required>
+          <option value="">Select a request</option>
+          {% for request in requests %}
+          <option value="{{ request.id }}">TR-{{ request.id }} - {{ request.source_warehouse }} to {{ request.destination_warehouse }}{% if request.status != 'COMPLETED' %} - {{ request.status }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        <input type="file" class="form-control" name="file" accept=".xlsx" required>
+        <div class="form-text">Headings: Barcode/Barcode No and Location/Updated Location.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary">Confirm receipt</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="receiveSingleTransferModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" id="receiveSingleTransferForm">
+      {% csrf_token %}
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title">Approve Transfer Item</h5>
+          <p class="text-muted small mb-0" id="receiveSingleTransferLabel"></p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Received location</label>
+        <input class="form-control" name="destination_location" id="receiveSingleTransferLocation" required>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary">Approve</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let activeTransferId = null;
+let activeTransferItemId = null;
+
+async function postTransfer(url, form) {
+  const result = await fetch(url, { method: 'POST', body: new FormData(form) });
+  const payload = await result.text();
+  let data = {};
+  try { data = payload ? JSON.parse(payload) : {}; } catch (err) {
+    alert(payload || 'Request failed');
+    return;
+  }
+  if (!data.success) {
+    alert(data.error || 'Request failed');
+    return;
+  }
+  if (data.errors && data.errors.length) {
+    alert('Completed with notes:\n' + data.errors.join('\n'));
+  }
+  location.reload();
+}
+
+document.getElementById('requestTransferForm')?.addEventListener('submit', event => {
+  event.preventDefault();
+  postTransfer('{% url "create_transfer_request" %}', event.currentTarget);
+});
+
+document.addEventListener('click', event => {
+  const bulkButton = event.target.closest('.receive-transfer-btn');
+  if (bulkButton) {
+    activeTransferId = document.getElementById('receiveTransferRequestId')?.value || null;
+    if (bulkButton.dataset.id) {
+      activeTransferId = bulkButton.dataset.id;
+      const requestSelect = document.getElementById('receiveTransferRequestId');
+      if (requestSelect) requestSelect.value = activeTransferId;
+    }
+    new bootstrap.Modal(document.getElementById('receiveTransferModal')).show();
+    return;
+  }
+
+  const singleButton = event.target.closest('.receive-single-transfer-btn');
+  if (singleButton) {
+    activeTransferId = singleButton.dataset.requestId;
+    activeTransferItemId = singleButton.dataset.itemId;
+    document.getElementById('receiveSingleTransferLabel').textContent = singleButton.dataset.label || '';
+    document.getElementById('receiveSingleTransferLocation').value = '';
+    new bootstrap.Modal(document.getElementById('receiveSingleTransferModal')).show();
+  }
+});
+
+document.getElementById('receiveTransferForm')?.addEventListener('submit', event => {
+  event.preventDefault();
+  activeTransferId = document.getElementById('receiveTransferRequestId').value;
+  postTransfer('/inventory/transfer-requests/' + activeTransferId + '/receive/', event.currentTarget);
+});
+
+document.getElementById('receiveSingleTransferForm')?.addEventListener('submit', event => {
+  event.preventDefault();
+  postTransfer(
+    '/inventory/transfer-requests/' + activeTransferId + '/items/' + activeTransferItemId + '/receive/',
+    event.currentTarget
+  );
+});
+</script>
+{% endblock %}

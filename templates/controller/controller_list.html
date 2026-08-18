@@ -42,7 +42,9 @@
                         <th>Store</th>
                         <th>Status</th>
                         <th>Components</th>
+                        <th style="display:none;">Component Search</th>
                         <th>Last Audit</th>
+                        <th>Created On</th>
                         <th class="sticky-col">Actions</th>
                     </tr>
  
@@ -63,13 +65,13 @@
                         <td>{{ ctrl.specs }}</td>
                         <td>{{ ctrl.barcode }}</td>
  
-                        <td class="editable-cell" data-field="location">
+                        <td>
                             {{ ctrl.location }}
                         </td>
-                        <td class="editable-cell" data-field="reference_location">
+                        <td>
                             {{ ctrl.reference_location }}
                         </td>
-                        <td class="editable-cell" data-field="parent_child_location">
+                        <td>
                             {{ ctrl.parent_child_location }}
                         </td>
                         <td class="editable-cell" data-field="remark">
@@ -96,16 +98,19 @@
                                 {{ total }} item{{ total|pluralize }}
                             </button>
                             {% endwith %}
-                        </td>
- 
-                        <td>
+                            </td>
+
+                            <td style="display:none;">{{ ctrl.component_search }}</td>
+
+                            <td>
                             <button type="button"
                                     class="btn btn-sm btn-outline-info audit-history-btn">
                                 {{ ctrl.last_audit_date|default:"View" }}
                             </button>
                         </td>
  
-                        <td class="action-cell sticky-col">
+                        <td>{{ ctrl.created_at|date:"Y-m-d H:i" }}</td>
+<td class="action-cell sticky-col">
                             <div class="inventory-row-actions">
                                 <button type="button"
                                         class="btn btn-sm btn-outline-success add-component-list-btn"
@@ -127,7 +132,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="16" class="text-center text-muted py-4">
+                        <td colspan="18" class="text-center text-muted py-4">
                             No controllers found.
                         </td>
                     </tr>
@@ -215,7 +220,8 @@
                            id="addComponentTable">
                         <thead>
                             <tr>
-                                <th>Category</th>
+                                <th>Spare Type</th>
+                                <th>Product Name</th>
                                 <th>Brand</th>
                                 <th>Model</th>
                                 <th>Part No</th>
@@ -232,10 +238,15 @@
                         <tbody id="addCompRows">
                             <tr>
                                 <td>
-                                    <input name="comp_product_category[]"
+                                    <input name="comp_spare_type[]"
                                            list="spareCategoryList"
                                            class="form-control form-control-sm"
                                            placeholder="e.g. CARD">
+                                </td>
+                                <td>
+                                    <input name="comp_product_name[]"
+                                           class="form-control form-control-sm"
+                                           placeholder="e.g. Short Wave Fibre Channel SFP+">
                                 </td>
                                 <td>
                                     <input name="comp_brand[]"
@@ -330,3 +341,4 @@
 {% block extra_js %}
 <script src="{% static 'js/controller_table.js' %}"></script>
 {% endblock %}
+

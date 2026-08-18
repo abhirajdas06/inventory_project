@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Rentals{% endblock %}
+{% block page_title %}Rentals{% endblock %}
+{% block breadcrumb %}Inventory / Rentals{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar">
+        <div>
+            <h5 class="inventory-list-title mb-1">Rental Register</h5>
+            <div class="inventory-list-subtitle">
+                {% if filters.q or filters.date_from or filters.date_to %}
+                    {{ result_count }} matching record{{ result_count|pluralize }}
+                {% else %}
+                    {{ total_on_rent }} on rent · {{ total_all }} total rental event{{ total_all|pluralize }}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-summary mb-3">
+        <div class="dash-card"><span>On Rent</span><strong>{{ total_on_rent }}</strong></div>
+        <div class="dash-card"><span>Total Events</span><strong>{{ total_all }}</strong></div>
+        <div class="dash-card"><span>Showing</span><strong>{{ result_count }}</strong></div>
+    </div>
+
+    <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-sm-3">
+            <label class="form-label small mb-0">Search</label>
+            <input type="search" name="q" value="{{ filters.q }}" class="form-control form-control-sm"
+                   placeholder="Product, serial, client, invoice, OLF/DC">
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label small mb-0">Status</label>
+            <select name="status" class="form-select form-select-sm">
+                <option value="ON_RENT" {% if status == 'ON_RENT' %}selected{% endif %}>On Rent</option>
+                <option value="RETURNED" {% if status == 'RETURNED' %}selected{% endif %}>Returned</option>
+                <option value="ALL" {% if status == 'ALL' %}selected{% endif %}>All (History)</option>
+            </select>
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label small mb-0">From (Rent Out)</label>
+            <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label small mb-0">To (Rent Out)</label>
+            <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-sm-3 d-flex gap-1">
+            <button class="btn btn-primary btn-sm">Filter</button>
+            <a href="{% url 'rental_list' %}" class="btn btn-outline-secondary btn-sm">Reset</a>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle inventory-list-table">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Serial</th>
+                    <th>Client</th>
+                    <th>Invoice</th>
+                    <th>OLF / DC</th>
+                    <th>Warehouse</th>
+                    <th>Rent Out</th>
+                    <th>Expected Return</th>
+                    <th>Returned On</th>
+                    <th>Status</th>
+                    <th class="text-end">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in records %}
+                <tr data-rental-id="{{ r.id }}">
+                    <td>{{ r.product.name }}</td>
+                    <td><code>{{ r.product.serial_no }}</code></td>
+                    <td>{{ r.client_name|default:"—" }}</td>
+                    <td>{{ r.invoice_no|default:"—" }}</td>
+                    <td>{{ r.olf_dc_number|default:"—" }}</td>
+                    <td>{{ r.store_location|default:"—" }}</td>
+                    <td>{{ r.rent_out_date|default:"—" }}</td>
+                    <td>{{ r.expected_return_date|default:"—" }}</td>
+                    <td>{{ r.actual_return_date|default:"—" }}</td>
+                    <td>
+                        <span class="badge {% if r.status == 'ON_RENT' %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                            {{ r.get_status_display }}
+                        </span>
+                    </td>
+                    <td class="text-end">
+                        {% if r.status == 'ON_RENT' %}
+                        <button type="button" class="btn btn-sm btn-outline-success rental-return-btn"
+                                data-rental-id="{{ r.id }}"
+                                data-label="{{ r.product.name }} [{{ r.product.serial_no }}] → {{ r.client_name }}">
+                            <i class="bi bi-box-arrow-in-down"></i> Return
+                        </button>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="11" class="text-center text-muted py-4">No rental records found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+
+<!-- Return rental modal -->
+<div class="modal fade" id="rentalReturnModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content p-3">
+      <h5 class="mb-1">Return Rented Item</h5>
+      <p id="rentalReturnLabel" class="text-muted small mb-3"></p>
+      <input type="hidden" id="rentalReturnId">
+      <div class="mb-2">
+        <label class="form-label">Return Date</label>
+        <input type="date" id="rentalReturnDate" class="form-control">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Remarks</label>
+        <textarea id="rentalReturnRemarks" class="form-control" rows="2"></textarea>
+      </div>
+      <div class="alert alert-info py-2 small mb-2">
+        On return, the item goes back into stock (a fresh Stock In) and becomes available to sell or rent again.
+      </div>
+      <button class="btn btn-success w-100 mt-1" id="rentalReturnConfirm">Confirm Return</button>
+      <div id="rentalReturnMsg" class="mt-2 small"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    function csrf() {
+        return (document.cookie.split('; ').find(r => r.startsWith('csrftoken')) || '').split('=')[1] || '';
+    }
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.rental-return-btn');
+        if (!btn) return;
+        document.getElementById('rentalReturnId').value = btn.dataset.rentalId;
+        document.getElementById('rentalReturnLabel').textContent = btn.dataset.label || '';
+        document.getElementById('rentalReturnDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('rentalReturnRemarks').value = '';
+        document.getElementById('rentalReturnMsg').textContent = '';
+        new bootstrap.Modal(document.getElementById('rentalReturnModal')).show();
+    });
+    document.getElementById('rentalReturnConfirm').addEventListener('click', function () {
+        const id = document.getElementById('rentalReturnId').value;
+        const msg = document.getElementById('rentalReturnMsg');
+        const data = new URLSearchParams({
+            rental_id: id,
+            return_date: document.getElementById('rentalReturnDate').value,
+            remarks: document.getElementById('rentalReturnRemarks').value,
+            csrfmiddlewaretoken: csrf()
+        });
+        fetch('/inventory/rentals/return/', { method: 'POST', body: data })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    msg.className = 'mt-2 small text-success';
+                    msg.textContent = 'Returned and back in stock.';
+                    const row = document.querySelector(`tr[data-rental-id="${id}"]`);
+                    if (row) row.remove();
+                    setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('rentalReturnModal')).hide(), 800);
+                } else {
+                    msg.className = 'mt-2 small text-danger';
+                    msg.textContent = 'Failed: ' + (res.error || 'Unknown error');
+                }
+            })
+            .catch(() => { msg.className = 'mt-2 small text-danger'; msg.textContent = 'Server error.'; });
+    });
+})();
+</script>
+{% endblock %}

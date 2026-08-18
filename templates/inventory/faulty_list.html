@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Faulty {{ config.label }}{% endblock %}
+{% block page_title %}Faulty {{ config.label }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+  <div class="inventory-list-shell">
+    <div class="inventory-list-toolbar">
+      <div>
+        <h5 class="inventory-list-title">Faulty {{ config.label }}</h5>
+        <div class="inventory-list-subtitle">Items returned or stocked in as faulty.</div>
+      </div>
+      <div class="inventory-list-actions">
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'inventory_sold' kind %}">Sold list</a>
+      </div>
+    </div>
+
+    <form class="mb-3">
+      <input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Search product, serial, or barcode">
+    </form>
+
+    <div class="table-container">
+      <table class="table table-sm align-middle inventory-list-table">
+        <thead>
+          <tr>
+            {% for label, path in fields %}<th>{{ label }}</th>{% endfor %}
+            <th>Store</th>
+            <th>Return</th>
+            <th>Ledger</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            {% for value in row.values %}
+            <td>{{ value|default_if_none:"" }}</td>
+            {% endfor %}
+            <td>{{ row.item.latest_location }}</td>
+            <td>
+              {% if can_stock_return %}
+                <button type="button" class="btn btn-sm btn-outline-success sales-return-btn" data-product-id="{{ row.item.product.id }}" title="Stock return">
+                  <i class="bi bi-box-arrow-in-down"></i>
+                </button>
+              {% else %}
+                <span class="text-muted">-</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if can_stock_out %}
+                <button type="button" class="btn btn-sm btn-outline-danger scrap-faulty-btn" data-product-id="{{ row.item.product.id }}" title="Scrap faulty stock">
+                  <i class="bi bi-trash3"></i>
+                </button>
+              {% else %}
+                <span class="text-muted">-</span>
+              {% endif %}
+            </td>
+            <td>
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'asset_movement_ledger' row.item.product.id %}">
+                <i class="bi bi-clock-history"></i>
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="31" class="text-center text-muted py-4">No faulty {{ config.label|lower }} items.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% include "inventory/sales_return_modal.html" %}
+{% include "inventory/scrap_modal.html" %}
+{% endblock %}

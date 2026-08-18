@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Import Inventory{% endblock %}
+{% block page_title %}Import Inventory{% endblock %}
+{% block breadcrumb %}Bulk upload{% endblock %}
+
+{% block content %}
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar">
+        <div>
+            <h1>Import Inventory</h1>
+            <p>Upload the matching Excel file and process it in chunks.</p>
+        </div>
+    </div>
+
+    <form id="importForm" class="row g-3 align-items-end" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="col-md-4">
+            <label class="form-label">Model</label>
+            <select class="form-select" name="model_key" id="importModelKey" required>
+                {% if can_stock_in %}<optgroup label="Stock In">
+                    {% for key, label in stock_in_labels.items %}
+                        <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </optgroup>{% endif %}
+                {% if can_stock_out %}<optgroup label="Stock Out (Stock In + immediate Stock Out)">
+                    {% for key, label in stock_out_labels.items %}
+                        <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </optgroup>{% endif %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Excel File</label>
+            <input class="form-control" type="file" name="file" accept=".xlsx,.xls" required>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-primary w-100" type="submit">
+                <i class="bi bi-upload"></i> Import
+            </button>
+        </div>
+    </form>
+
+    <div class="mt-3 d-flex flex-wrap gap-2">
+        <a id="templateDownloadLink" href="#" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-file-earmark-spreadsheet"></i> Download selected template
+        </a>
+        <a href="/spare/import/template/stock_out_columns/" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-box-arrow-up-right"></i> Download Stock Out columns only
+        </a>
+    </div>
+    <p class="text-muted small mt-2 mb-0">
+        Stock Out upload uses the product barcode or serial to find an existing item. Client, invoice, OLF / DC, stock status, and stock-out date are optional when present; otherwise the stock-out defaults to Sale today.
+    </p>
+
+    <div class="mt-4">
+        <div class="d-flex justify-content-between small text-muted mb-1">
+            <span id="importStatus">Waiting for upload</span>
+            <span id="importPercent">0%</span>
+        </div>
+        <div class="progress" style="height: 12px;">
+            <div id="importBar" class="progress-bar" style="width:0%"></div>
+        </div>
+    </div>
+
+    <div class="mt-3 small">
+        <span class="badge text-bg-success">Success <span id="successCount">0</span></span>
+        <span class="badge text-bg-danger">Errors <span id="errorCount">0</span></span>
+    </div>
+
+    <div id="importErrors" class="mt-3"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const form = document.getElementById('importForm');
+    const bar = document.getElementById('importBar');
+    const status = document.getElementById('importStatus');
+    const percent = document.getElementById('importPercent');
+    const success = document.getElementById('successCount');
+    const errors = document.getElementById('errorCount');
+    const errorBox = document.getElementById('importErrors');
+    const modelSelect = document.getElementById('importModelKey');
+    const templateLink = document.getElementById('templateDownloadLink');
+    const csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    function updateTemplateLink() {
+        templateLink.href = `/spare/import/template/${modelSelect.value}/`;
+    }
+
+    modelSelect.addEventListener('change', updateTemplateLink);
+    updateTemplateLink();
+
+    function updateProgress(data) {
+        const pct = data.percent || 0;
+        bar.style.width = pct + '%';
+        percent.textContent = pct + '%';
+        success.textContent = data.success_count || 0;
+        errors.textContent = data.error_count || 0;
+        status.textContent = `${data.processed_rows || 0} of ${data.total_rows || 0} rows processed`;
+        errorBox.innerHTML = '';
+        (data.errors || []).forEach(function (item) {
+            const div = document.createElement('div');
+            div.className = 'alert alert-danger py-2 mb-2';
+            div.textContent = `Row ${item.row}: ${item.error}`;
+            errorBox.appendChild(div);
+        });
+    }
+
+    function processChunk(jobId) {
+        const fd = new FormData();
+        fd.append('chunk_size', '100');
+        fetch(`/spare/import/process/${jobId}/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrf},
+            body: fd
+        }).then(r => r.json()).then(function (data) {
+            if (!data.success) throw new Error(data.error || 'Import failed');
+            updateProgress(data);
+            if (data.status !== 'DONE') {
+                window.setTimeout(function () { processChunk(jobId); }, 80);
+            } else {
+                status.textContent = 'Import completed';
+            }
+        }).catch(function (err) {
+            status.textContent = err.message;
+            bar.classList.add('bg-danger');
+        });
+    }
+
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        const fd = new FormData(form);
+        bar.classList.remove('bg-danger');
+        status.textContent = 'Uploading file';
+        fetch("{% url 'inventory_import_start' %}", {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrf},
+            body: fd
+        }).then(r => r.json()).then(function (data) {
+            if (!data.success) throw new Error(data.error || 'Upload failed');
+            status.textContent = 'Processing rows';
+            processChunk(data.job_id);
+        }).catch(function (err) {
+            status.textContent = err.message;
+            bar.classList.add('bg-danger');
+        });
+    });
+})();
+</script>
+{% endblock %}

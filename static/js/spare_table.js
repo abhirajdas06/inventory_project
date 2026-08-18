@@ -10,8 +10,6 @@
 
 $(document).ready(function () {
 
-    console.log("spare_table.js loaded");
-
     // ----------------------------------------
     // INIT DATATABLE
     // ----------------------------------------
@@ -125,8 +123,10 @@ $(document).ready(function () {
             product_id:     productId,
             client_name:    $('#stockOutClient').val(),
             invoice_no:     $('#stockOutInvoice').val(),
+            olf_dc_number:   $('#stockOutOlfDc').val(),
             stock_status:   $('#stockOutStatus').val(),
             stock_out_date: $('#stockOutDate').val(),
+            expected_return_date: $('#stockOutReturnDate').val(),
             csrfmiddlewaretoken: getCSRFToken()
         };
 
@@ -150,7 +150,7 @@ $(document).ready(function () {
 
             },
             error: function (xhr) {
-                console.error('Stock Out error:', xhr.status, xhr.responseText);
+
                 alert('Server error (' + xhr.status + ') during stock out. Check console.');
             }
         });
@@ -185,6 +185,7 @@ $(document).ready(function () {
             product_id:   productId,
             audit_remark: $('#auditRemark').val(),
             audited_on:   $('#auditDate').val(),
+            audit_result: $('#auditResult').val(),
             csrfmiddlewaretoken: getCSRFToken()
         };
 
@@ -213,7 +214,7 @@ $(document).ready(function () {
 
             },
             error: function (xhr) {
-                console.error('Audit error:', xhr.status, xhr.responseText);
+
                 alert('Server error (' + xhr.status + ') during audit. Check console.');
             }
         });
@@ -237,7 +238,7 @@ $(document).ready(function () {
 
             if (!res.data || res.data.length === 0) {
                 tbody.append(
-                    '<tr><td colspan="5" class="text-center text-muted py-3">' +
+                    '<tr><td colspan="6" class="text-center text-muted py-3">' +
                     'No audit records found.</td></tr>'
                 );
             } else {
@@ -248,6 +249,7 @@ $(document).ready(function () {
                             <td>${item.user     || '-'}</td>
                             <td>${item.location || '-'}</td>
                             <td>${item.status   || '-'}</td>
+                            <td>${item.audit_result || '-'}</td>
                             <td>${item.remark   || '-'}</td>
                         </tr>
                     `);
@@ -259,7 +261,7 @@ $(document).ready(function () {
             ).show();
 
         }).fail(function (xhr) {
-            console.error('Audit history error:', xhr.status);
+
             alert('Could not load audit history.');
         });
 
@@ -276,3 +278,4 @@ function getCSRFToken() {
         .find(row => row.startsWith('csrftoken'))
         ?.split('=')[1];
 }
+

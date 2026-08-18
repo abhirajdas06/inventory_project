@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Reconciliation{% endblock %}
+{% block page_title %}Audit Reconciliation{% endblock %}
+{% block breadcrumb %}Audit / Reconciliation{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar">
+        <div>
+            <h5 class="inventory-list-title mb-1">Audit Excel Reconciliation</h5>
+            <div class="inventory-list-subtitle">
+                Upload a physical-audit Excel to update Warehouse / Location / Rack / Bin by barcode.
+            </div>
+        </div>
+        <div class="inventory-list-actions">
+            <a href="{% url 'audit_finding_list' %}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-exclamation-diamond"></i> Audit Findings
+            </a>
+        </div>
+    </div>
+
+    <div class="dashboard-summary mb-3">
+        <div class="dash-card"><span>Input</span><strong>Audit Excel</strong></div>
+        <div class="dash-card"><span>Match Key</span><strong>Barcode</strong></div>
+        <div class="dash-card"><span>Output</span><strong>Stock update + findings</strong></div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>{{ error }}</div>
+    {% endif %}
+
+    {% if completed %}
+    <div class="alert alert-success">
+        <i class="bi bi-check-circle-fill me-2"></i>Reconciliation completed for <strong>{{ file_name }}</strong>.
+    </div>
+    <div class="dashboard-summary mb-3">
+        <div class="dash-card"><span>Total Rows</span><strong>{{ summary.total }}</strong></div>
+        <div class="dash-card"><span>Updated</span><strong class="text-primary">{{ summary.updated }}</strong></div>
+        <div class="dash-card"><span>Matched (no change)</span><strong>{{ summary.matched }}</strong></div>
+        <div class="dash-card"><span>Unmatched (finding created)</span><strong class="text-warning">{{ summary.unmatched }}</strong></div>
+        <div class="dash-card"><span>Failed</span><strong class="text-danger">{{ summary.failed }}</strong></div>
+    </div>
+    {% if errors %}
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0 text-danger">{{ errors|length }} failed row{{ errors|length|pluralize }}</h6>
+        <a href="{% url 'reconciliation_error_report' %}" class="btn btn-sm btn-outline-danger">
+            <i class="bi bi-download"></i> Download error report
+        </a>
+    </div>
+    <div class="table-responsive mb-4">
+        <table class="table table-sm align-middle inventory-list-table">
+            <thead><tr><th>Row</th><th>Barcode</th><th>Error</th></tr></thead>
+            <tbody>
+                {% for e in errors %}
+                <tr><td>{{ e.row }}</td><td>{{ e.barcode }}</td><td>{{ e.error }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    <a href="{% url 'audit_reconciliation' %}" class="btn btn-outline-secondary btn-sm mb-4">
+        <i class="bi bi-arrow-repeat"></i> Reconcile another file
+    </a>
+    {% endif %}
+
+    {% if not completed %}
+    <form method="post" enctype="multipart/form-data" class="card" style="max-width:680px;">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label class="form-label">Audit Excel File</label>
+            <input type="file" name="file" class="form-control" accept=".xlsx,.xls" required>
+            <div class="form-text">
+                Expected columns: <strong>Barcode</strong>, Warehouse, Location, Rack, Bin.
+                Barcode is required; the rest are optional. Rows with an unknown barcode
+                automatically create an Audit Finding.
+            </div>
+        </div>
+        <div>
+            <button class="btn btn-primary" type="submit">
+                <i class="bi bi-upload me-1"></i>Upload &amp; Reconcile
+            </button>
+        </div>
+    </form>
+    {% endif %}
+</div>
+</div>
+{% endblock %}

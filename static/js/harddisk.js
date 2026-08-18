@@ -10,8 +10,6 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    console.log("harddisk.js loaded");
-
     // ----------------------------------------
     // ADD ROW
     // ----------------------------------------

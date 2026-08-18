@@ -48,7 +48,8 @@
     <th>Status</th>
     <th>Belongs To</th>   <!-- ← NEW COLUMN -->
     <th>Last Audit</th>
-    <th class="sticky-col">Actions</th>
+    <th>Created On</th>
+                        <th class="sticky-col">Actions</th>
 </tr>
 
 </thead>
@@ -69,8 +70,8 @@
     <td>{{ s.qty }}</td>
     <td>{{ s.barcode }}</td>
  
-    <td class="editable-cell" data-field="location">{{ s.location }}</td>
-    <td class="editable-cell" data-field="reference_location">{{ s.reference_location }}</td>
+    <td>{{ s.location }}</td>
+    <td>{{ s.reference_location }}</td>
     <td class="editable-cell" data-field="remark">{{ s.remark }}</td>
  
     <td>{{ s.latest_location|default:"-" }}</td>
@@ -109,7 +110,8 @@
         </button>
     </td>
  
-    <td class="action-cell sticky-col">
+    <td>{{ s.created_at|date:"Y-m-d H:i" }}</td>
+<td class="action-cell sticky-col">
         <div class="inventory-row-actions">
             <button type="button" class="btn btn-sm btn-outline-warning audit-btn"
                     data-product-id="{{ s.product.id }}" title="Audit">
@@ -125,7 +127,7 @@
 </tr>
 {% empty %}
 <tr>
-    <td colspan="18" class="text-center text-muted py-4">No spare records found.</td>
+    <td colspan="19" class="text-center text-muted py-4">No spare records found.</td>
 </tr>
 {% endfor %}
 </tbody>
@@ -147,3 +149,4 @@
 {% block extra_js %}
 <script src="{% static 'js/spare_table.js' %}"></script>
 {% endblock %}
+

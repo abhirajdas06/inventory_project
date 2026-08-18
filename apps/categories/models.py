@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from apps.core.models import Product, Brand
 
 
@@ -41,6 +42,7 @@ class Spare(models.Model):
     reference_location = models.CharField(max_length=255, null=True, blank=True)
 
     remark = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     class Meta:
         verbose_name = "Battery"
@@ -77,7 +79,7 @@ class Card(models.Model):
 
     # ✅ UPDATED
     interface = models.CharField(
-        max_length=10,
+        max_length=100,
         choices=INTERFACE_CHOICES,
         null=True,
         blank=True
@@ -97,6 +99,7 @@ class Card(models.Model):
     reference_location = models.CharField(max_length=255, null=True, blank=True)
 
     remark = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     class Meta:
         verbose_name = "Card"
@@ -130,6 +133,7 @@ class CPU(models.Model):
     location = models.CharField(max_length=255, null=True, blank=True)
     reference_location = models.CharField(max_length=255, null=True, blank=True)
     remark = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     class Meta:
         verbose_name = "CPU"
@@ -178,6 +182,7 @@ class Controller(models.Model):
     parent_child_location = models.CharField(max_length=255, null=True, blank=True)
  
     remark = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
  
     class Meta:
         verbose_name = "Controller"
@@ -230,6 +235,7 @@ class Memory(models.Model):
     location           = models.CharField(max_length=255, null=True, blank=True)
     reference_location = models.CharField(max_length=255, null=True, blank=True)
     remark             = models.TextField(null=True, blank=True)
+    created_at         = models.DateTimeField(default=timezone.now, editable=False)
  
     class Meta:
         verbose_name        = "Memory"
@@ -263,7 +269,7 @@ class SFP(models.Model):
     description = models.CharField(max_length=255, null=True, blank=True)
  
     fibre_type  = models.CharField(
-        max_length=10,
+        max_length=100,
         choices=FIBRE_TYPE_CHOICES,
         null=True,
         blank=True
@@ -275,6 +281,7 @@ class SFP(models.Model):
     location           = models.CharField(max_length=255, null=True, blank=True)
     reference_location = models.CharField(max_length=255, null=True, blank=True)
     remark             = models.TextField(null=True, blank=True)
+    created_at         = models.DateTimeField(default=timezone.now, editable=False)
  
     class Meta:
         verbose_name        = "SFP"
@@ -306,7 +313,7 @@ class RailKit(models.Model):
     )
  
     side            = models.CharField(
-                          max_length=10,
+                          max_length=100,
                           choices=SIDE_CHOICES,
                           null=True,
                           blank=True
@@ -320,6 +327,7 @@ class RailKit(models.Model):
     location           = models.CharField(max_length=255, null=True, blank=True)
     reference_location = models.CharField(max_length=255, null=True, blank=True)
     remark             = models.TextField(null=True, blank=True)
+    created_at         = models.DateTimeField(default=timezone.now, editable=False)
  
     class Meta:
         verbose_name        = "Rail Kit"
@@ -364,12 +372,12 @@ class HardDisk(models.Model):
     capacity  = models.CharField(max_length=20,  null=True, blank=True)   # e.g. 1TB
     rpm       = models.CharField(max_length=20,  null=True, blank=True)   # e.g. 7.2K
     interface = models.CharField(
-                    max_length=10,
+                    max_length=100,
                     choices=INTERFACE_CHOICES,
                     null=True, blank=True
                 )
     size      = models.CharField(
-                    max_length=5,
+                    max_length=100,
                     choices=SIZE_CHOICES,
                     null=True, blank=True
                 )
@@ -398,6 +406,7 @@ class HardDisk(models.Model):
     location           = models.CharField(max_length=255, null=True, blank=True)
     reference_location = models.CharField(max_length=255, null=True, blank=True)
     remark             = models.TextField(null=True, blank=True)
+    created_at         = models.DateTimeField(default=timezone.now, editable=False)
  
     class Meta:
         verbose_name        = "Hard Disk"
@@ -405,5 +414,82 @@ class HardDisk(models.Model):
  
     def __str__(self):
         return self.product.name
+
+
+class NetworkingSpare(models.Model):
+    product = models.OneToOneField(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='networking_spare'
+    )
+    brand = models.ForeignKey(
+        Brand,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    part_no = models.CharField(max_length=100, null=True, blank=True)
+    alt_part_no = models.CharField(max_length=100, null=True, blank=True)
+    alt_serial_no = models.CharField(max_length=100, null=True, blank=True)
+    specs = models.CharField(max_length=255, null=True, blank=True)
+    qty = models.IntegerField(default=1)
+    barcode = models.CharField(max_length=100, null=True, blank=True, unique=True)
+    location = models.CharField(max_length=255, null=True, blank=True)
+    reference_location = models.CharField(max_length=255, null=True, blank=True)
+    remark = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    class Meta:
+        verbose_name = "Networking Spare"
+        verbose_name_plural = "Networking Spares"
+
+    def __str__(self):
+        return self.product.name
+
+
+class ImportJob(models.Model):
+    MODEL_CHOICES = (
+        ('battery', 'Battery'),
+        ('card', 'Card'),
+        ('controller', 'Controller'),
+        ('cpu', 'CPU'),
+        ('harddisk', 'Hard Disk'),
+        ('memory', 'Memory'),
+        ('networking_spare', 'Networking Spare'),
+        ('railkit', 'Rail Kit'),
+        ('server', 'Server'),
+        ('sfp', 'SFP'),
+        ('stock_out', 'Stock Out'),
+    )
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('RUNNING', 'Running'),
+        ('DONE', 'Done'),
+        ('FAILED', 'Failed'),
+    )
+
+    model_key = models.CharField(max_length=50, choices=MODEL_CHOICES)
+    upload = models.FileField(upload_to='imports/')
+    total_rows = models.PositiveIntegerField(default=0)
+    processed_rows = models.PositiveIntegerField(default=0)
+    success_count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    errors = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    created_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='import_jobs'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_model_key_display()} import #{self.pk}"
 
 

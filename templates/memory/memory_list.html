@@ -50,6 +50,7 @@
                         <th>Store</th>
                         <th>Status</th>
                         <th>Last Audit</th>
+                        <th>Created On</th>
                         <th class="sticky-col">Actions</th>
                     </tr>
 
@@ -86,10 +87,10 @@
 
 
                         <!-- INLINE EDITABLE -->
-                        <td class="editable-cell" data-field="location">
+                        <td>
                             {{ m.location }}
                         </td>
-                        <td class="editable-cell" data-field="reference_location">
+                        <td>
                             {{ m.reference_location }}
                         </td>
                         <td class="editable-cell" data-field="remark">
@@ -115,6 +116,9 @@
                                 {{ m.last_audit_date|default:"View" }}
                             </button>
                         </td>
+                        <td>{{ m.created_at|date:"Y-m-d H:i" }}</td>
+
+
 
                         <!-- ACTIONS -->
                         <td class="action-cell sticky-col">
@@ -156,3 +160,7 @@
 {% block extra_js %}
 <script src="{% static 'js/memory_table.js' %}"></script>
 {% endblock %}
+
+
+
+

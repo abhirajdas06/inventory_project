@@ -2,8 +2,42 @@ from apps.core.models import Product, SpareCategory, Brand
 from apps.categories.models import Card, Spare
 from datetime import date
 from apps.inventory.models import InventoryTransaction
+from apps.core.activity import log_activity, log_timeline
 
 from datetime import date as _date
+
+
+def _create_stock_in_transaction(product, store_location='WH1', stock_status='LIVE', user=None, remarks=''):
+    txn = InventoryTransaction.objects.create(
+        product=product,
+        transaction_type='IN',
+        store_location=store_location or 'WH1',
+        stock_status=stock_status or 'LIVE',
+        stock_in_date=date.today(),
+        performed_by=user if getattr(user, 'is_authenticated', False) else None,
+    )
+    log_activity(
+        action='STOCK_IN',
+        module='INVENTORY',
+        entity=product.name,
+        entity_id=product.id,
+        user=user,
+        warehouse=txn.store_location,
+        new_values={
+            'transaction_id': txn.id,
+            'stock_status': txn.stock_status,
+        },
+        remarks=remarks or 'Stock in created',
+    )
+    log_timeline(
+        product=product,
+        event_type='IN',
+        user=user,
+        warehouse=txn.store_location,
+        remarks=remarks,
+        details={'stock_status': txn.stock_status},
+    )
+    return txn
 
 
 def create_product_and_spare(data):
@@ -51,12 +85,11 @@ def create_product_and_spare(data):
     store_location = data.get('store_location') or 'WH1'
     stock_status = data.get('stock_status') or 'LIVE'
 
-    InventoryTransaction.objects.create(
+    _create_stock_in_transaction(
         product=product,
-        transaction_type='IN',
         store_location=store_location,
         stock_status=stock_status,
-        stock_in_date=date.today()
+        remarks='Spare stock in',
     )
 
     # 🔥 UPDATE CURRENT STATE (IMPORTANT)
@@ -105,12 +138,11 @@ def create_product_and_card(data):
     )
 
     # 🔥 AUTO STOCK IN
-    InventoryTransaction.objects.create(
+    _create_stock_in_transaction(
         product=product,
-        transaction_type='IN',
         store_location=data.get('store_location') or 'WH1',
         stock_status=data.get('stock_status') or 'LIVE',
-        stock_in_date=date.today()
+        remarks='Card stock in',
     )
 
     return product
@@ -155,74 +187,73 @@ def create_product_and_cpu(data):
     )
 
     # AUTO STOCK IN
-    InventoryTransaction.objects.create(
+    _create_stock_in_transaction(
         product=product,
-        transaction_type='IN',
         store_location=data.get('store_location') or 'WH1',
         stock_status=data.get('stock_status') or 'LIVE',
-        stock_in_date=date.today()
+        remarks='CPU stock in',
     )
 
     return product
 
 
 
-def create_controller_with_components(cabinet_data, components):
+def create_controller_with_components(controller_data, components):
     """
-    cabinet_data  : dict with fields for the Controller/Cabinet
+    controller_data  : dict with fields for the parent Controller
     components    : list of dicts, each is a spare component row
     
     Flow:
-      1. Create Product for cabinet
+      1. Create Product for controller
       2. Create Controller record
-      3. Auto stock IN for cabinet
+      3. Auto stock IN for controller
       4. For each component → create Product + Spare (linked to controller) + stock IN
     """
     from apps.categories.models import Controller, Spare
-    _validate_barcode(cabinet_data.get('barcode'))
-    # --- CABINET PRODUCT ---
-    cabinet_category, _ = SpareCategory.objects.get_or_create(name='CABINET')
+    _validate_barcode(controller_data.get('barcode'))
+    controller_category, _ = SpareCategory.objects.get_or_create(name='CONTROLLER')
  
-    brand_name = cabinet_data.get('brand', '').strip().upper()
+    brand_name = controller_data.get('brand', '').strip().upper()
     brand = None
     if brand_name:
         brand, _ = Brand.objects.get_or_create(name=brand_name)
  
-    cabinet_name = f"CABINET - {cabinet_data.get('model', '')} - {brand_name}"
+    controller_name = (
+        controller_data.get('product_name')
+        or f"CONTROLLER - {controller_data.get('model', '')} - {brand_name}".strip(' -')
+    )
  
     cabinet_product = Product.objects.create(
-        category=cabinet_category,
-        serial_no=cabinet_data.get('serial_no'),
-        part_no=cabinet_data.get('part_no'),
+        category=controller_category,
+        serial_no=controller_data.get('serial_no'),
+        part_no=controller_data.get('part_no'),
         brand=brand,
-        model=cabinet_data.get('model'),
-        name=cabinet_name
+        model=controller_data.get('model'),
+        name=controller_name
     )
  
     # --- CONTROLLER RECORD ---
     controller = Controller.objects.create(
         product=cabinet_product,
         brand=brand,
-        model=cabinet_data.get('model'),
-        part_no=cabinet_data.get('part_no'),
-        alt_part_no=cabinet_data.get('alt_part_no'),
-        alt_serial_no=cabinet_data.get('alt_serial_no'),
-        specs=cabinet_data.get('specs'),
-        qty=cabinet_data.get('qty') or 1,
-        barcode=cabinet_data.get('barcode'),
-        location=cabinet_data.get('location'),
-        reference_location=cabinet_data.get('reference_location'),
-        parent_child_location=cabinet_data.get('parent_child_location'),
-        remark=cabinet_data.get('remark')
+        model=controller_data.get('model'),
+        part_no=controller_data.get('part_no'),
+        alt_part_no=controller_data.get('alt_part_no'),
+        alt_serial_no=controller_data.get('alt_serial_no'),
+        specs=controller_data.get('specs'),
+        qty=controller_data.get('qty') or 1,
+        barcode=controller_data.get('barcode'),
+        location=controller_data.get('location'),
+        reference_location=controller_data.get('reference_location'),
+        parent_child_location=controller_data.get('parent_child_location'),
+        remark=controller_data.get('remark')
     )
  
-    # --- AUTO STOCK IN FOR CABINET ---
-    InventoryTransaction.objects.create(
+    _create_stock_in_transaction(
         product=cabinet_product,
-        transaction_type='IN',
-        store_location=cabinet_data.get('store_location') or 'WH1',
-        stock_status=cabinet_data.get('stock_status') or 'LIVE',
-        stock_in_date=date.today()
+        store_location=controller_data.get('store_location') or 'WH1',
+        stock_status=controller_data.get('stock_status') or 'LIVE',
+        remarks='Controller stock in',
     )
  
     # --- COMPONENTS ---
@@ -232,7 +263,11 @@ def create_controller_with_components(cabinet_data, components):
         if not comp.get('serial_no', '').strip():
             continue
  
-        comp_category_name = comp.get('product_category', '').strip().upper()
+        comp_category_name = (
+            comp.get('spare_type')
+            or comp.get('product_category')
+            or ''
+        ).strip().upper()
         comp_category, _ = SpareCategory.objects.get_or_create(name=comp_category_name)
  
         comp_brand_name = comp.get('brand', '').strip().upper()
@@ -240,7 +275,10 @@ def create_controller_with_components(cabinet_data, components):
         if comp_brand_name:
             comp_brand, _ = Brand.objects.get_or_create(name=comp_brand_name)
  
-        comp_name = f"CONTROLLER - {comp_category_name} - {comp.get('model', '')} - {comp_brand_name}"
+        comp_name = (
+            comp.get('product_name')
+            or f"CONTROLLER - {comp_category_name} - {comp.get('model', '')} - {comp_brand_name}".strip(' -')
+        )
  
         comp_product = Product.objects.create(
             category=comp_category,
@@ -263,18 +301,17 @@ def create_controller_with_components(cabinet_data, components):
             specs=comp.get('specs'),
             qty=comp.get('qty') or 1,
             barcode=comp.get('barcode'),
-            location=cabinet_data.get('location'),          # inherit from cabinet
-            reference_location=cabinet_data.get('reference_location'),
+            location=controller_data.get('location'),
+            reference_location=controller_data.get('reference_location'),
             remark=comp.get('remark')
         )
  
         # Auto stock IN for component
-        InventoryTransaction.objects.create(
+        _create_stock_in_transaction(
             product=comp_product,
-            transaction_type='IN',
-            store_location=cabinet_data.get('store_location') or 'WH1',
-            stock_status=cabinet_data.get('stock_status') or 'LIVE',
-            stock_in_date=date.today()
+            store_location=controller_data.get('store_location') or 'WH1',
+            stock_status=controller_data.get('stock_status') or 'LIVE',
+            remarks='Controller component stock in',
         )
  
     return controller
@@ -324,12 +361,11 @@ def create_product_and_memory(data):
     )
  
     # AUTO STOCK IN
-    InventoryTransaction.objects.create(
-        product          = product,
-        transaction_type = 'IN',
-        store_location   = data.get('store_location') or 'WH1',
-        stock_status     = data.get('stock_status')   or 'LIVE',
-        stock_in_date    = date.today()
+    _create_stock_in_transaction(
+        product=product,
+        store_location=data.get('store_location') or 'WH1',
+        stock_status=data.get('stock_status') or 'LIVE',
+        remarks='Memory stock in',
     )
  
     return product
@@ -373,12 +409,11 @@ def create_product_and_sfp(data):
     )
  
     # AUTO STOCK IN
-    InventoryTransaction.objects.create(
-        product          = product,
-        transaction_type = 'IN',
-        store_location   = data.get('store_location') or 'WH1',
-        stock_status     = data.get('stock_status')   or 'LIVE',
-        stock_in_date    = date.today()
+    _create_stock_in_transaction(
+        product=product,
+        store_location=data.get('store_location') or 'WH1',
+        stock_status=data.get('stock_status') or 'LIVE',
+        remarks='SFP stock in',
     )
  
     return product
@@ -423,12 +458,11 @@ def create_product_and_railkit(data):
     )
  
     # AUTO STOCK IN
-    InventoryTransaction.objects.create(
-        product          = product,
-        transaction_type = 'IN',
-        store_location   = data.get('store_location') or 'WH1',
-        stock_status     = data.get('stock_status')   or 'LIVE',
-        stock_in_date    = date.today()
+    _create_stock_in_transaction(
+        product=product,
+        store_location=data.get('store_location') or 'WH1',
+        stock_status=data.get('stock_status') or 'LIVE',
+        remarks='Rail kit stock in',
     )
  
     return product
@@ -496,12 +530,11 @@ def create_product_and_harddisk(data):
     )
  
     # AUTO STOCK IN
-    InventoryTransaction.objects.create(
-        product          = product,
-        transaction_type = 'IN',
-        store_location   = data.get('store_location') or 'WH1',
-        stock_status     = data.get('stock_status')   or 'LIVE',
-        stock_in_date    = date.today()
+    _create_stock_in_transaction(
+        product=product,
+        store_location=data.get('store_location') or 'WH1',
+        stock_status=data.get('stock_status') or 'LIVE',
+        remarks='Hard disk stock in',
     )
  
     return product
@@ -825,12 +858,11 @@ def _create_server_component_product(comp_data,
 
     category_table = _route_component_to_category(product, comp_data)
 
-    InventoryTransaction.objects.create(
-        product          = product,
-        transaction_type = 'IN',
-        store_location   = server_store_location or 'WH1',
-        stock_status     = server_stock_status   or 'LIVE',
-        stock_in_date    = _date.today(),
+    _create_stock_in_transaction(
+        product=product,
+        store_location=server_store_location or 'WH1',
+        stock_status=server_stock_status or 'LIVE',
+        remarks='Server component stock in',
     )
 
     return product, category_table
@@ -935,12 +967,11 @@ def create_server_with_components(server_data, components):
     )
 
     # ── Cabinet stock IN ──────────────────────────────────────
-    InventoryTransaction.objects.create(
-        product          = cabinet_product,
-        transaction_type = 'IN',
-        store_location   = store_location,
-        stock_status     = stock_status,
-        stock_in_date    = _date.today(),
+    _create_stock_in_transaction(
+        product=cabinet_product,
+        store_location=store_location,
+        stock_status=stock_status,
+        remarks='Server cabinet stock in',
     )
 
     # ── Components ────────────────────────────────────────────

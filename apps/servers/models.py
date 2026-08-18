@@ -4,6 +4,7 @@
 
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 from apps.core.models import Product, SpareCategory, Brand
 
 
@@ -125,6 +126,7 @@ class ServerComponent(models.Model):
     remark                = models.TextField(null=True, blank=True)
  
     attached_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
  
     class Meta:
         unique_together = ('server', 'product')

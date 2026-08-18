@@ -4,8 +4,6 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    console.log("memory.js loaded");
-
     // ----------------------------------------
     // ADD ROW
     // ----------------------------------------

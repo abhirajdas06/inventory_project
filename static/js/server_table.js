@@ -12,8 +12,6 @@
 
 $(document).ready(function () {
 
-    console.log("server_table.js loaded");
-
     // ----------------------------------------
     // DATATABLE
     // ----------------------------------------
@@ -100,7 +98,7 @@ $(document).ready(function () {
 
         let body = $('#compDetailBody');
         body.html(
-            '<tr><td colspan="16" class="text-center py-3">' +
+            '<tr><td colspan="17" class="text-center py-3">' +
             '<div class="spinner-border spinner-border-sm text-secondary"></div> Loading…' +
             '</td></tr>'
         );
@@ -112,7 +110,7 @@ $(document).ready(function () {
             body.empty();
 
             if (!res.components || res.components.length === 0) {
-                body.html('<tr><td colspan="16" class="text-center text-muted py-3">No components.</td></tr>');
+                body.html('<tr><td colspan="17" class="text-center text-muted py-3">No components.</td></tr>');
                 return;
             }
 
@@ -160,13 +158,14 @@ $(document).ready(function () {
                         <td>${statusBadge}</td>
                         <td>${isOut ? `<span class="text-danger fw-semibold">${c.client}</span>` : '-'}</td>
                         <td>${isOut ? `<span class="text-danger fw-semibold">${c.invoice}</span>` : '-'}</td>
+                        <td>${isOut ? `<span class="text-danger fw-semibold">${c.olf_dc}</span>` : '-'}</td>
                         <td>${isOut ? `<span class="text-danger">${c.out_date}</span>` : '-'}</td>
                     </tr>
                 `);
             });
 
         }).fail(function () {
-            body.html('<tr><td colspan="16" class="text-center text-danger py-3">Failed to load.</td></tr>');
+            body.html('<tr><td colspan="17" class="text-center text-danger py-3">Failed to load.</td></tr>');
         });
 
     });
@@ -352,8 +351,10 @@ $(document).ready(function () {
             product_id:     productId,
             client_name:    $('#stockOutClient').val(),
             invoice_no:     $('#stockOutInvoice').val(),
+            olf_dc_number:   $('#stockOutOlfDc').val(),
             stock_status:   $('#stockOutStatus').val(),
             stock_out_date: $('#stockOutDate').val(),
+            expected_return_date: $('#stockOutReturnDate').val(),
             csrfmiddlewaretoken: getCSRFToken()
         };
 
@@ -399,6 +400,7 @@ $(document).ready(function () {
             product_id:   productId,
             audit_remark: $('#auditRemark').val(),
             audited_on:   $('#auditDate').val(),
+            audit_result: $('#auditResult').val(),
             csrfmiddlewaretoken: getCSRFToken()
         };
 
@@ -438,7 +440,7 @@ $(document).ready(function () {
             tbody.empty();
 
             if (!res.data || res.data.length === 0) {
-                tbody.html('<tr><td colspan="5" class="text-center text-muted py-3">No audit records.</td></tr>');
+                tbody.html('<tr><td colspan="6" class="text-center text-muted py-3">No audit records.</td></tr>');
             } else {
                 res.data.forEach(item => {
                     tbody.append(`
@@ -447,6 +449,7 @@ $(document).ready(function () {
                             <td>${item.user     || '-'}</td>
                             <td>${item.location || '-'}</td>
                             <td>${item.status   || '-'}</td>
+                            <td>${item.audit_result || '-'}</td>
                             <td>${item.remark   || '-'}</td>
                         </tr>
                     `);
@@ -469,3 +472,4 @@ function getCSRFToken() {
         .find(r => r.startsWith('csrftoken'))
         ?.split('=')[1];
 }
+

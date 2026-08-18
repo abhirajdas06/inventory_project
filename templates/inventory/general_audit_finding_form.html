@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Create General Audit Finding{% endblock %}
+{% block page_title %}Create General Audit Finding{% endblock %}
+{% block breadcrumb %}Audit / General Findings / Create{% endblock %}
+
+{% block content %}
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar">
+        <div>
+            <h1>Create General Audit Finding</h1>
+            <p>Record a non-asset-specific finding for stock-in follow-up.</p>
+        </div>
+        <div class="inventory-list-actions">
+            <a href="{% url 'general_audit_finding_list' %}" class="btn btn-outline-secondary btn-sm">Back</a>
+        </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="card" style="max-width:720px;">
+        {% csrf_token %}
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Audit Date</label>
+                <input type="date" name="audit_date" class="form-control">
+            </div>
+            <div class="col-md-8">
+                <label class="form-label">Title</label>
+                <input type="text" name="title" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Person</label>
+                <input type="text" name="person" class="form-control">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Attachment</label>
+                <input type="file" name="attachment" class="form-control">
+            </div>
+            <div class="col-12">
+                <label class="form-label">Remarks</label>
+                <textarea name="remarks" class="form-control" rows="4" required></textarea>
+            </div>
+            <div class="col-12">
+                <button class="btn btn-primary">Create Finding</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

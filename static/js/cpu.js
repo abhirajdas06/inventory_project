@@ -4,8 +4,6 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    console.log("cpu.js loaded");
-
     // ----------------------------------------
     // ADD ROW
     // ----------------------------------------

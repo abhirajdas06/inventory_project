@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}General Audit Findings{% endblock %}
+{% block page_title %}General Audit Findings{% endblock %}
+{% block breadcrumb %}Audit / General Findings{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar d-flex flex-wrap justify-content-between align-items-end gap-2">
+        <div>
+            <h5 class="inventory-list-title mb-1">General Audit Findings</h5>
+            <div class="inventory-list-subtitle">
+                {% if filters.q or filters.status or filters.date_from or filters.date_to %}
+                    {{ result_count }} matching record{{ result_count|pluralize }} of {{ total_count }}
+                {% else %}
+                    {{ total_count }} finding{{ total_count|pluralize }}
+                {% endif %}
+            </div>
+        </div>
+        <div class="inventory-list-actions">
+            <a href="{% url 'create_general_audit_finding' %}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i>Create Finding
+            </a>
+        </div>
+    </div>
+
+    <div class="dashboard-summary mb-3">
+        <div class="dash-card"><span>Total Findings</span><strong>{{ total_count }}</strong></div>
+        <div class="dash-card"><span>Showing</span><strong>{{ result_count }}</strong></div>
+        <div class="dash-card"><span>Status Filter</span><strong>{{ filters.status|default:"All" }}</strong></div>
+    </div>
+
+    <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-sm-3">
+            <label class="form-label small mb-0">Search</label>
+            <input type="search" name="q" value="{{ filters.q }}" class="form-control form-control-sm"
+                   placeholder="Title, remarks, person">
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label small mb-0">Status</label>
+            <select name="status" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label small mb-0">From</label>
+            <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label small mb-0">To</label>
+            <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-sm-3 d-flex gap-1">
+            <button class="btn btn-primary btn-sm">Filter</button>
+            <a href="{% url 'general_audit_finding_list' %}" class="btn btn-outline-secondary btn-sm">Reset</a>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle inventory-list-table">
+            <thead>
+                <tr>
+                    <th>Audit Date</th>
+                    <th>Title</th>
+                    <th>Person</th>
+                    <th>Status</th>
+                    <th>Attachment</th>
+                    <th>Created By</th>
+                    <th>Attended By</th>
+                    <th>Remarks</th>
+                    <th>Attend</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for finding in findings %}
+                <tr>
+                    <td>{{ finding.audit_date }}</td>
+                    <td>{{ finding.title }}</td>
+                    <td>{{ finding.person }}</td>
+                    <td>
+                        <span class="badge {% if finding.status == 'ATTENDED' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                            {{ finding.get_status_display }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if finding.attachment %}
+                        <a href="{{ finding.attachment.url }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-download"></i> File
+                        </a>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>{{ finding.created_by|default:"—" }}</td>
+                    <td>{{ finding.attended_by|default:"—" }}</td>
+                    <td style="white-space:normal;min-width:220px;">{{ finding.remarks }}</td>
+                    <td>
+                        {% if finding.status != 'ATTENDED' %}
+                        <form method="post" action="{% url 'attend_general_audit_finding' finding.id %}" class="d-flex gap-1" style="min-width:200px;">
+                            {% csrf_token %}
+                            <input name="remarks" class="form-control form-control-sm" placeholder="Remarks" required>
+                            <button class="btn btn-sm btn-outline-success">Attend</button>
+                        </form>
+                        {% else %}
+                        <span class="text-muted small">{{ finding.attended_at|date:"Y-m-d H:i" }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">No findings found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+{% endblock %}

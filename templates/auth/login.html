@@ -1,0 +1,58 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'DM Sans', sans-serif; min-height: 100vh; background: #eef3f8; display: grid; place-items: center; padding: 24px; }
+        .login-shell { width: min(960px, 100%); display: grid; grid-template-columns: 1fr 360px; background: #fff; border: 1px solid #dce5ef; border-radius: 8px; overflow: hidden; box-shadow: 0 18px 50px rgba(15, 23, 42, .12); }
+        .login-panel { padding: 42px; background: #102033; color: #e5edf7; display: flex; flex-direction: column; justify-content: space-between; min-height: 460px; }
+        .login-panel h1 { font-size: 30px; font-weight: 700; margin: 18px 0 10px; }
+        .login-panel p { color: #a9b7c9; max-width: 460px; }
+        .login-form { padding: 42px 34px; }
+        .brand-mark { width: 42px; height: 42px; border-radius: 8px; background: #2f7df6; display: grid; place-items: center; }
+        .form-control { min-height: 42px; }
+        @media (max-width: 800px) { .login-shell { grid-template-columns: 1fr; } .login-panel { min-height: auto; padding: 30px; } }
+    </style>
+</head>
+<body>
+    <main class="login-shell">
+        <section class="login-panel">
+            <div>
+                <div class="brand-mark"><i class="bi bi-boxes"></i></div>
+                <h1>Inventory System</h1>
+                <p>Sign in to add, import, audit, stock out, export, and view sold inventory. Live stock lists can still be opened without login.</p>
+            </div>
+            <a href="{% url 'spare_list' %}" class="btn btn-outline-light align-self-start">
+                <i class="bi bi-eye"></i> View without login
+            </a>
+        </section>
+        <section class="login-form">
+            <h2 class="h4 fw-bold mb-1">Login</h2>
+            <p class="text-muted mb-4">Use your inventory user account.</p>
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+            <form method="POST" action="{% url 'login' %}">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <input class="form-control" name="username" autocomplete="username" required>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">Password</label>
+                    <input class="form-control" type="password" name="password" autocomplete="current-password" required>
+                </div>
+                <button class="btn btn-primary w-100" type="submit">Login</button>
+            </form>
+        </section>
+    </main>
+</body>
+</html>

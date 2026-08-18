@@ -4,8 +4,6 @@
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    console.log("spare.js loaded");
-
     // ----------------------------------------
     // ADD ROW
     // ----------------------------------------

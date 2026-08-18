@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ status_label }} Stock{% endblock %}
+{% block page_title %}{{ status_label }} Stock{% endblock %}
+{% block breadcrumb %}Stock-out status{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/inventory-list.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="inventory-list-shell">
+  <div class="inventory-list-toolbar">
+    <div>
+      <h1 class="inventory-list-title">{{ status_label }} Stock</h1>
+      <div class="inventory-list-subtitle">{{ result_count }} current {{ status_label|lower }} item{{ result_count|pluralize }} across all models</div>
+    </div>
+  </div>
+
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-md-4">
+      <label class="form-label small mb-0">Search</label>
+      <input class="form-control form-control-sm" type="search" name="q" value="{{ q }}" placeholder="Product, serial, part, client, invoice, OLF/DC">
+    </div>
+    <div class="col-md-5">
+      <label class="form-label small mb-0">Status lists</label>
+      <div class="d-flex flex-wrap gap-1">
+        {% for value, label in statuses %}
+        <a class="btn btn-sm {% if value == status %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{% url 'stock_out_status_list' value %}">{{ label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="col-md-3 d-flex gap-1">
+      <button class="btn btn-primary btn-sm">Search</button>
+      <a href="{% url 'stock_out_status_list' status %}" class="btn btn-outline-secondary btn-sm">Reset</a>
+    </div>
+  </form>
+
+  <div class="table-container">
+    <table class="table table-sm align-middle inventory-list-table" id="stockOutStatusTable">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Product</th>
+          <th>Serial</th>
+          <th>Part No</th>
+          <th>Barcode</th>
+          <th>Store</th>
+          <th>Client</th>
+          <th>Invoice</th>
+          <th>OLF / DC No</th>
+          <th>Out Date</th>
+          <th>Return</th>
+          <th>Ledger</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr data-id="{{ row.product.id }}">
+          <td>{{ row.category|default:"-" }}</td>
+          <td>{{ row.product.name }}</td>
+          <td><code>{{ row.product.serial_no|default:"" }}</code></td>
+          <td>{{ row.part_no|default:"-" }}</td>
+          <td><code>{{ row.barcode|default:"-" }}</code></td>
+          <td>{{ row.product.latest_store|default:"-" }}</td>
+          <td>{{ row.product.latest_client|default:"" }}</td>
+          <td>{{ row.product.latest_invoice|default:"" }}</td>
+          <td>{{ row.product.latest_olf_dc|default:"" }}</td>
+          <td>{{ row.product.latest_out_date|default:"" }}</td>
+          <td>
+            {% if can_stock_return %}
+              <button class="btn btn-sm btn-outline-success sales-return-btn" data-product-id="{{ row.product.id }}" title="Stock return">
+                <i class="bi bi-box-arrow-in-down"></i>
+              </button>
+            {% else %}
+              <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{% url 'asset_movement_ledger' row.product.id %}" class="btn btn-sm btn-outline-secondary" title="Movement ledger">
+              <i class="bi bi-clock-history"></i>
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="12" class="text-center text-muted py-4">No {{ status_label|lower }} stock found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% include "inventory/sales_return_modal.html" %}
+{% include "inventory/scrap_modal.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  $('#stockOutStatusTable').DataTable({pageLength: 25, scrollX: true, deferRender: true});
+});
+</script>
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Add Networking Spare{% endblock %}
+{% block page_title %}Add Networking Spare{% endblock %}
+{% block breadcrumb %}Networking Spare / Add{% endblock %}
+
+{% block content %}
+<form method="POST" class="spare-form-shell">
+    {% csrf_token %}
+    <div class="spare-form-header">
+        <div>
+            <h1>Networking Spare</h1>
+            <p>Add networking parts and stock them in automatically.</p>
+        </div>
+        <button type="button" class="btn btn-outline-primary btn-sm" id="addNetworkingRow">
+            <i class="bi bi-plus-lg"></i> Add Row
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle spare-add-table" id="networkingAddTable">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Brand</th>
+                    <th>Part No</th>
+                    <th>Alt Part</th>
+                    <th>Serial</th>
+                    <th>Alt Serial</th>
+                    <th>Specs</th>
+                    <th>Qty</th>
+                    <th>Barcode</th>
+                    <th>Location</th>
+                    <th>Ref Location</th>
+                    <th>Remark</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><input name="category[]" class="form-control form-control-sm" value="NETWORKING SPARE"></td>
+                    <td><input name="brand[]" class="form-control form-control-sm"></td>
+                    <td><input name="part_no[]" class="form-control form-control-sm"></td>
+                    <td><input name="alt_part_no[]" class="form-control form-control-sm"></td>
+                    <td><input name="serial_no[]" class="form-control form-control-sm"></td>
+                    <td><input name="alt_serial_no[]" class="form-control form-control-sm"></td>
+                    <td><input name="specs[]" class="form-control form-control-sm"></td>
+                    <td><input name="qty[]" type="number" min="1" value="1" class="form-control form-control-sm"></td>
+                    <td><input name="barcode[]" class="form-control form-control-sm"></td>
+                    <td><input name="location[]" class="form-control form-control-sm"></td>
+                    <td><input name="reference_location[]" class="form-control form-control-sm"></td>
+                    <td><input name="remark[]" class="form-control form-control-sm"></td>
+                    <td><button type="button" class="btn btn-sm btn-outline-danger remove-networking-row"><i class="bi bi-trash"></i></button></td>
+                    <input type="hidden" name="store_location[]" value="WH1">
+                    <input type="hidden" name="stock_status[]" value="LIVE">
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="spare-form-footer">
+        <span>Default stock in: WH1 / LIVE</span>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Save Networking Spare
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const table = document.querySelector('#networkingAddTable tbody');
+    const addBtn = document.getElementById('addNetworkingRow');
+    addBtn.addEventListener('click', function () {
+        const clone = table.querySelector('tr').cloneNode(true);
+        clone.querySelectorAll('input').forEach(function (input) {
+            if (input.name === 'category[]') input.value = 'NETWORKING SPARE';
+            else if (input.name === 'qty[]') input.value = '1';
+            else if (input.type !== 'hidden') input.value = '';
+        });
+        table.appendChild(clone);
+    });
+    document.addEventListener('click', function (event) {
+        if (!event.target.closest('.remove-networking-row')) return;
+        if (table.querySelectorAll('tr').length > 1) {
+            event.target.closest('tr').remove();
+        }
+    });
+})();
+</script>
+{% endblock %}

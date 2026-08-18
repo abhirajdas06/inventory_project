@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Create Audit Finding{% endblock %}
+{% block page_title %}Create Audit Finding{% endblock %}
+{% block breadcrumb %}Audit / Findings / Create{% endblock %}
+
+{% block content %}
+<form method="post" enctype="multipart/form-data" class="inventory-list-shell">
+    {% csrf_token %}
+    <div class="inventory-list-toolbar">
+        <div>
+            <h1>Create Audit Finding</h1>
+            <p>Record inventory-specific audit observations.</p>
+        </div>
+    </div>
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label">Audit Date</label>
+            <input type="date" name="audit_date" class="form-control" required>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Person Involved</label>
+            <input name="person_involved" class="form-control">
+        </div>
+        <div class="col-md-5">
+            <label class="form-label">Attachment</label>
+            <input type="file" name="attachment" class="form-control" accept=".xlsx,.xls,.csv">
+        </div>
+        <div class="col-12">
+            <label class="form-label">Remarks</label>
+            <textarea name="remarks" class="form-control" rows="5" required></textarea>
+        </div>
+        <div class="col-12 d-flex justify-content-end gap-2">
+            <a href="{% url 'audit_finding_list' %}" class="btn btn-outline-secondary">Cancel</a>
+            <button class="btn btn-primary" type="submit">Create Finding</button>
+        </div>
+    </div>
+</form>
+{% endblock %}
