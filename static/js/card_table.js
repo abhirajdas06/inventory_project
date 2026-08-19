@@ -48,13 +48,14 @@ $(document).ready(function () {
 
                 let value = $(this).val();
                 let field = cell.data('field');
-                let id = cell.closest('tr').data('id');
+                let id = cell.closest('tr').data('card-id');
 
                 $.ajax({
                     url: "/spare/update/",
                     method: "POST",
                     data: {
                         id: id,
+                        model: 'card',
                         field: field,
                         value: value,
                         csrfmiddlewaretoken: getCSRFToken()

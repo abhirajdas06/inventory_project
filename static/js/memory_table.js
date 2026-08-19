@@ -63,7 +63,7 @@ $(document).ready(function () {
                 let memId = cell.closest('tr').data('mem-id');
 
                 $.ajax({
-                    url: '/memory/update/',
+                    url: '/spare/memory-update/',
                     method: 'POST',
                     data: {
                         id:    memId,

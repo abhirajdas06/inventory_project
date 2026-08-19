@@ -60,7 +60,7 @@ $(document).ready(function () {
                 let sfpId = cell.closest('tr').data('sfp-id');
 
                 $.ajax({
-                    url:    '/sfp/update/',
+                    url:    '/spare/sfp-update/',
                     method: 'POST',
                     data: {
                         id:    sfpId,

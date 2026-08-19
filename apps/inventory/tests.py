@@ -391,6 +391,9 @@ class StockOutTests(TestCase):
         self.assertEqual(str(rental.actual_return_date), '2026-06-20')
         latest = InventoryTransaction.objects.filter(product=product).latest('created_at')
         self.assertEqual(latest.transaction_type, 'IN')  # available again
+        spare = Spare.objects.get(product=product)
+        spare.refresh_from_db()
+        self.assertIn('2026-06-20 - returned', spare.remark)
         self.assertTrue(ActivityLog.objects.filter(action='RENT_RETURN', entity_id=str(product.id)).exists())
 
     def test_frozen_product_cannot_be_stocked_out(self):
@@ -494,6 +497,60 @@ class StockOutTests(TestCase):
         self.assertTrue(response.json()['success'])
         latest = self.server_product.transactions.latest('created_at')
         self.assertEqual(latest.stock_status, 'FAULTY')
+
+    def test_sales_return_stores_dated_remarks(self):
+        self.client.post(reverse('stock_out'), {'product_id': self.server_product.id, 'stock_status': 'SALE'})
+        response = self.client.post(reverse('sales_return'), {
+            'product_id': self.server_product.id,
+            'reason': 'NORMAL',
+            'returned_on': '2026-07-03',
+            'remarks': 'Customer accepted replacement',
+        })
+        self.assertTrue(response.json()['success'])
+        record = SalesReturn.objects.filter(product=self.server_product).latest('created_at')
+        self.assertIn('2026-07-03 - Customer accepted replacement', record.remarks)
+        self.server.refresh_from_db()
+        self.assertIn('2026-07-03 - Customer accepted replacement', self.server.remark)
+
+    def test_sales_return_allows_warehouse_and_location_update(self):
+        category = SpareCategory.objects.create(name='RETURN-SPARE')
+        product = Product.objects.create(
+            category=category,
+            serial_no='RETURN-001',
+            name='Return item',
+        )
+        spare = Spare.objects.create(
+            product=product,
+            barcode='RETURN-BC-1',
+            location='Old Rack',
+            part_no='PN-RETURN',
+        )
+        InventoryTransaction.objects.create(
+            product=product,
+            transaction_type='IN',
+            store_location='WH1',
+            stock_status='LIVE',
+            performed_by=self.user,
+        )
+        self.client.post(reverse('stock_out'), {
+            'product_id': product.id,
+            'stock_status': 'SALE',
+            'stock_out_date': '2026-07-01',
+        })
+        response = self.client.post(reverse('sales_return'), {
+            'product_id': product.id,
+            'reason': 'NORMAL',
+            'returned_on': '2026-07-02',
+            'location': 'WH2',
+            'physical_location': 'Rack 9 / Shelf 2',
+            'remarks': 'Moved back to staging',
+        })
+        self.assertTrue(response.json()['success'])
+        latest = product.transactions.latest('created_at')
+        self.assertEqual(latest.transaction_type, 'IN')
+        self.assertEqual(latest.store_location, 'WH2')
+        spare.refresh_from_db()
+        self.assertEqual(spare.location, 'Rack 9 / Shelf 2')
 
     def test_stock_out_user_can_scrap_faulty_stock_and_components(self):
         self.client.post(reverse('stock_out'), {

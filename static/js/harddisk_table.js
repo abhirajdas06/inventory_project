@@ -59,7 +59,7 @@ $(document).ready(function () {
             let hdId  = cell.closest('tr').data('hd-id');
 
             $.ajax({
-                url:    '/harddisk/update/',
+                url:    '/spare/harddisk-update/',
                 method: 'POST',
                 data: {
                     id:    hdId,

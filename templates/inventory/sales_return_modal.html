@@ -7,6 +7,23 @@
         <input type="hidden" name="product_id" id="salesReturnProductId">
         <div class="mb-3"><label class="form-label">Return reason</label><select class="form-select" name="reason" id="salesReturnReason" required><option value="NORMAL">Normal return</option><option value="FAULTY">Faulty</option><option value="DAMAGED">Damaged</option></select></div>
         <div class="mb-3 d-none" id="salesReturnDisposition"><label class="form-label">Return disposition</label><select class="form-select" name="disposition"><option value="LIVE">Add back to stock</option><option value="FAULTY">Move to faulty stock</option><option value="SCRAP">Move to scrap</option></select></div>
+        <div class="mb-3">
+          <label class="form-label">Return warehouse</label>
+          <select class="form-select" name="location">
+            <option value="">Use current warehouse</option>
+            <option value="WH1">WH1</option>
+            <option value="WH2">WH2</option>
+            <option value="DELHI">Delhi</option>
+            <option value="BANGALORE">Bangalore</option>
+            <option value="HYDERABAD">Hyderabad</option>
+            <option value="CHENNAI">Chennai</option>
+            <option value="KOLKATA">Kolkata</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Physical location</label>
+          <input class="form-control" name="physical_location" placeholder="Rack / shelf / box / room">
+        </div>
         <div class="mb-3"><label class="form-label">Return date</label><input class="form-control" type="date" name="returned_on"></div>
         <div><label class="form-label">Remarks</label><textarea class="form-control" name="remarks" rows="3" placeholder="Reason, inspection notes, or customer details"></textarea></div>
       </div>

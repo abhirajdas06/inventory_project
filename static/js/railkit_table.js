@@ -59,7 +59,7 @@ $(document).ready(function () {
             let rkId  = cell.closest('tr').data('rk-id');
 
             $.ajax({
-                url:    '/railkit-update/',
+                url:    '/spare/railkit-update/',
                 method: 'POST',
                 data: {
                     id:    rkId,

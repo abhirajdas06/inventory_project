@@ -61,77 +61,34 @@
       {% endif %}
     </div>
 
-    <div class="table-container">
-      <table class="table table-sm align-middle inventory-list-table">
-        <thead>
-          <tr>
-            <th>Request</th>
-            <th>Product</th>
-            <th>Part No</th>
-            <th>Barcode</th>
-            <th>From</th>
-            <th>To</th>
-            <th>Source Location</th>
-            <th>Received Location</th>
-            <th>Requested By</th>
-            <th>Status</th>
-            <th>Created</th>
-            <th class="text-end">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for request in requests %}
-            {% for item in request.items.all %}
-            <tr>
-              <td>
-                <div class="fw-semibold">TR-{{ request.id }}</div>
-              </td>
-              <td>
-                <div class="fw-semibold">{{ item.product.name }}</div>
-                <div class="text-muted small">{{ item.product.serial_no|default:"No serial" }}</div>
-              </td>
-              <td>{{ item.display_part_no|default:"-" }}</td>
-              <td><code>{{ item.display_barcode|default:"-" }}</code></td>
-              <td>{{ request.source_warehouse }}</td>
-              <td>{{ request.destination_warehouse }}</td>
-              <td>{{ item.source_location|default:"-" }}</td>
-              <td>{{ item.destination_location|default:"-" }}</td>
-              <td>{{ request.requested_by|default:"-" }}</td>
-              <td>
-                {% if item.received_at %}
-                <span class="badge bg-success">Received</span>
-                <div class="text-muted small">{{ item.received_at|date:"Y-m-d H:i" }}</div>
-                {% else %}
-                <span class="badge {% if request.status == 'PARTIAL' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">Pending</span>
-                {% endif %}
-              </td>
-              <td>{{ request.created_at|date:"Y-m-d H:i" }}</td>
-              <td class="text-end">
-                {% if not item.received_at and user.profile.role == 'STOCK_IN' or not item.received_at and user.profile.role == 'ADMIN' or not item.received_at and user.is_superuser %}
-                <button
-                  class="btn btn-sm btn-outline-primary receive-single-transfer-btn"
-                  data-request-id="{{ request.id }}"
-                  data-item-id="{{ item.id }}"
-                  data-label="TR-{{ request.id }} - {{ item.product.name }} - {{ item.display_barcode|default:'No barcode' }}"
-                >Approve one</button>
-                {% else %}
-                <span class="text-muted">-</span>
-                {% endif %}
-              </td>
-            </tr>
-            {% empty %}
-            <tr>
-              <td>TR-{{ request.id }}</td>
-              <td colspan="11" class="text-muted">This request has no eligible items.</td>
-            </tr>
-            {% endfor %}
-          {% empty %}
-          <tr>
-            <td colspan="12" class="text-center text-muted py-4">No transfer requests yet.</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <ul class="nav nav-tabs mb-3" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#pendingPane" type="button" role="tab">
+          Pending ({{ pending_requests|length }})
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#completedPane" type="button" role="tab">
+          Completed ({{ completed_requests|length }})
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="pendingPane" role="tabpanel">
+        {% if pending_requests %}
+          {% include "inventory/transfer_request_table.html" with requests=pending_requests show_actions=True %}
+        {% else %}
+          <div class="text-center text-muted py-5 border rounded bg-white">No pending transfer requests.</div>
+        {% endif %}
+      </div>
+      <div class="tab-pane fade" id="completedPane" role="tabpanel">
+        {% if completed_requests %}
+          {% include "inventory/transfer_request_table.html" with requests=completed_requests show_actions=False %}
+        {% else %}
+          <div class="text-center text-muted py-5 border rounded bg-white">No completed transfer requests yet.</div>
+        {% endif %}
+      </div>
     </div>
   </div>
 </div>
@@ -148,7 +105,7 @@
         <label class="form-label">Transfer request</label>
         <select class="form-select mb-3" name="request_id" id="receiveTransferRequestId" required>
           <option value="">Select a request</option>
-          {% for request in requests %}
+          {% for request in receivable_requests %}
           <option value="{{ request.id }}">TR-{{ request.id }} - {{ request.source_warehouse }} to {{ request.destination_warehouse }}{% if request.status != 'COMPLETED' %} - {{ request.status }}{% endif %}</option>
           {% endfor %}
         </select>

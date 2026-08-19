@@ -1,3 +1,5 @@
+from django.utils import timezone
+
 from apps.core.models import ActivityLog, AssetTimelineEvent
 
 
@@ -10,6 +12,24 @@ def get_user_role(user):
     if getattr(user, 'is_superuser', False):
         return 'ADMIN'
     return ''
+
+
+def format_dated_remark(remark, when=None):
+    text = (remark or '').strip()
+    if not text:
+        return ''
+    stamp = (when or timezone.localdate()).isoformat()
+    return f'{stamp} - {text}'
+
+
+def append_dated_remark(existing, new_remark, when=None, separator='\n'):
+    existing_text = (existing or '').strip()
+    new_text = format_dated_remark(new_remark, when)
+    if not new_text:
+        return existing_text
+    if not existing_text:
+        return new_text
+    return f'{existing_text}{separator}{new_text}'
 
 
 def log_activity(

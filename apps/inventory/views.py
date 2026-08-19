@@ -15,7 +15,7 @@ from apps.inventory.models import (
     TransferRequestItem,
 )
 from apps.core.models import Product
-from apps.core.activity import log_activity, log_timeline
+from apps.core.activity import log_activity, log_timeline, format_dated_remark, append_dated_remark
 from apps.core.models import ActivityLog, Notification
 from apps.core.permissions import require_any_permission, require_permission
 from django.utils.timezone import now
@@ -44,21 +44,49 @@ def _latest_stock_out(product):
     return product.transactions.filter(transaction_type='OUT').order_by('-created_at', '-id').first()
 
 
-def _create_return(product, stock_out, reason, disposition, remarks, user, returned_on):
+def _append_remark_to_asset(product, remarks, when):
+    formatted_remarks = format_dated_remark(remarks, when)
+    if not formatted_remarks:
+        return ''
+
+    related_attrs = (
+        'spare', 'card', 'cpu', 'controller', 'memory',
+        'sfp', 'railkit', 'harddisk', 'networking_spare', 'server',
+    )
+    for attr in related_attrs:
+        asset = getattr(product, attr, None)
+        if asset is None or not hasattr(asset, 'remark'):
+            continue
+        current = getattr(asset, 'remark', '') or ''
+        asset.remark = append_dated_remark(current, remarks, when)
+        asset.save(update_fields=['remark'])
+        break
+
+    return formatted_remarks
+
+
+def _create_return(product, stock_out, reason, disposition, remarks, user, returned_on, return_warehouse='', return_location=''):
+    valid_locations = dict(InventoryTransaction.STORE_LOCATION)
+    preferred_warehouse = (return_warehouse or '').strip().upper()
+    final_warehouse = preferred_warehouse if preferred_warehouse in valid_locations else (stock_out.store_location or 'WH1')
+    asset_location = (return_location or '').strip()
+    formatted_remarks = _append_remark_to_asset(product, remarks, returned_on)
     SalesReturn.objects.create(
         product=product, stock_out_transaction=stock_out, reason=reason,
-        disposition=disposition, remarks=remarks, returned_by=user, returned_on=returned_on,
+        disposition=disposition, remarks=formatted_remarks, returned_by=user, returned_on=returned_on,
     )
     InventoryTransaction.objects.create(
-        product=product, transaction_type='IN', store_location=stock_out.store_location or 'WH1',
+        product=product, transaction_type='IN', store_location=final_warehouse,
         stock_status=disposition, stock_in_date=returned_on, performed_by=user,
     )
+    if asset_location:
+        _set_product_location(product, asset_location)
     log_timeline(product=product, event_type='RETURN', user=user,
-                 warehouse=stock_out.store_location, location=_latest_location(product), remarks=remarks,
+                 warehouse=final_warehouse, location=asset_location or _latest_location(product), remarks=formatted_remarks,
                  details={'reason': reason, 'disposition': disposition, 'stock_out_id': stock_out.id})
 
 
-def _return_server_components(product, reason, disposition, remarks, user, returned_on, stock_status='SALE'):
+def _return_server_components(product, reason, disposition, remarks, user, returned_on, stock_status='SALE', return_warehouse='', return_location=''):
     server = getattr(product, 'server', None)
     if not server:
         return 0
@@ -67,15 +95,22 @@ def _return_server_components(product, reason, disposition, remarks, user, retur
         component_out = _latest_stock_out(component.product)
         latest = component.product.transactions.order_by('-created_at', '-id').first()
         if component_out and latest and latest.id == component_out.id and component_out.stock_status == stock_status:
-            _create_return(component.product, component_out, reason, disposition, remarks, user, returned_on)
+            _create_return(
+                component.product, component_out, reason, disposition, remarks, user, returned_on,
+                return_warehouse=return_warehouse, return_location=return_location,
+            )
             returned += 1
     return returned
 
 
-def _create_scrap_transaction(product, remarks, user, scrapped_on=None):
+def _create_scrap_transaction(product, remarks, user, scrapped_on=None, scrap_location=''):
     latest = product.transactions.order_by('-created_at', '-id').first()
-    store_location = latest.store_location if latest else _latest_store_location(product)
-    return InventoryTransaction.objects.create(
+    valid_locations = dict(InventoryTransaction.STORE_LOCATION)
+    preferred_location = (scrap_location or '').strip().upper()
+    fallback_location = latest.store_location if latest else _latest_store_location(product)
+    store_location = preferred_location if preferred_location in valid_locations else fallback_location
+    formatted_remarks = _append_remark_to_asset(product, remarks, scrapped_on or date.today())
+    txn = InventoryTransaction.objects.create(
         product=product,
         transaction_type='OUT',
         store_location=store_location or 'WH1',
@@ -86,6 +121,17 @@ def _create_scrap_transaction(product, remarks, user, scrapped_on=None):
         olf_dc_number=getattr(latest, 'olf_dc_number', '') or '',
         performed_by=user if getattr(user, 'is_authenticated', False) else None,
     )
+    if formatted_remarks:
+        log_timeline(
+            product=product,
+            event_type='SCRAP',
+            user=user,
+            warehouse=store_location or 'WH1',
+            location=_latest_location(product),
+            remarks=formatted_remarks,
+            details={'auto_scrap': True},
+        )
+    return txn
 
 
 def _scrap_server_components(product, remarks, user, scrapped_on=None):
@@ -197,6 +243,7 @@ def create_rental_record(product, store_location, stock_out_date, client_name,
                          user=None, remarks=''):
     """Open a rental when an item is stocked out as RENT. Shared by the UI
     stock-out flow and the Excel stock-out import."""
+    formatted_remarks = format_dated_remark(remarks, stock_out_date)
     return RentalRecord.objects.create(
         product=product,
         client_name=client_name or '',
@@ -207,7 +254,7 @@ def create_rental_record(product, store_location, stock_out_date, client_name,
         expected_return_date=expected_return_date,
         status='ON_RENT',
         rented_out_by=user if getattr(user, 'is_authenticated', False) else None,
-        remarks=remarks or '',
+        remarks=formatted_remarks or '',
     )
 
 
@@ -391,6 +438,8 @@ def sales_return(request):
     product = get_object_or_404(Product, id=request.POST.get('product_id'))
     reason = request.POST.get('reason', '').strip().upper()
     disposition = request.POST.get('disposition', '').strip().upper()
+    return_warehouse = request.POST.get('location', '').strip().upper()
+    return_location = request.POST.get('physical_location', '').strip()
     remarks = request.POST.get('remarks', '').strip()
     returned_on = _parse_date(request.POST.get('returned_on', '')) or date.today()
     if reason not in dict(SalesReturn.REASON_CHOICES):
@@ -406,14 +455,19 @@ def sales_return(request):
     if not stock_out or not latest or latest.id != stock_out.id:
         return JsonResponse({'success': False, 'error': 'Only an item currently stocked out can be returned'})
     with transaction.atomic():
-        _create_return(product, stock_out, reason, disposition, remarks, request.user, returned_on)
+        _create_return(
+            product, stock_out, reason, disposition, remarks, request.user, returned_on,
+            return_warehouse=return_warehouse,
+            return_location=return_location,
+        )
         components_returned = _return_server_components(
-            product, reason, disposition, remarks, request.user, returned_on, stock_out.stock_status
+            product, reason, disposition, remarks, request.user, returned_on, stock_out.stock_status,
+            return_warehouse=return_warehouse, return_location=return_location,
         )
     log_activity(action='SALES_RETURN', module='INVENTORY', entity=product.name, entity_id=product.id,
                  user=request.user, warehouse=stock_out.store_location, location=_latest_location(product),
                  new_values={'reason': reason, 'disposition': disposition, 'components_returned': components_returned},
-                 remarks=remarks or 'Sales return processed')
+                 remarks=format_dated_remark(remarks, returned_on) or 'Sales return processed')
     return JsonResponse({'success': True, 'disposition': disposition, 'components_returned': components_returned})
 
 
@@ -423,13 +477,17 @@ def scrap_faulty_stock(request):
         return JsonResponse({'success': False, 'error': 'Invalid method'})
     product = get_object_or_404(Product, id=request.POST.get('product_id'))
     remarks = request.POST.get('remarks', '').strip()
+    scrap_location = request.POST.get('location', '').strip().upper()
     scrapped_on = _parse_date(request.POST.get('scrapped_on', '')) or date.today()
     latest = product.transactions.order_by('-created_at', '-id').first()
     if not latest or latest.stock_status not in ('FAULTY', 'DAMAGED'):
         return JsonResponse({'success': False, 'error': 'Only faulty or damaged stock can be scrapped'})
     with transaction.atomic():
-        scrap_txn = _create_scrap_transaction(product, remarks, request.user, scrapped_on=scrapped_on)
+        scrap_txn = _create_scrap_transaction(
+            product, remarks, request.user, scrapped_on=scrapped_on, scrap_location=scrap_location
+        )
         components_scrapped = _scrap_server_components(product, remarks, request.user, scrapped_on=scrapped_on)
+    formatted_remarks = format_dated_remark(remarks, scrapped_on)
     log_activity(
         action='SCRAP',
         module='INVENTORY',
@@ -444,7 +502,7 @@ def scrap_faulty_stock(request):
             'stock_out_date': str(scrapped_on),
             'components_scrapped': components_scrapped,
         },
-        remarks=remarks or 'Faulty stock scrapped',
+        remarks=formatted_remarks or 'Faulty stock scrapped',
     )
     log_timeline(
         product=product,
@@ -452,7 +510,7 @@ def scrap_faulty_stock(request):
         user=request.user,
         warehouse=scrap_txn.store_location,
         location=_latest_location(product),
-        remarks=remarks or 'Faulty stock scrapped',
+        remarks=formatted_remarks or 'Faulty stock scrapped',
         details={'components_scrapped': components_scrapped},
     )
     return JsonResponse({'success': True, 'status': 'SCRAP', 'components_scrapped': components_scrapped})
@@ -730,7 +788,7 @@ def transfer_inventory(request):
             transfer_request = TransferRequest.objects.create(
                 source_warehouse=source_warehouse,
                 destination_warehouse=destination_warehouse,
-                remarks=remarks,
+                remarks=format_dated_remark(remarks) or remarks,
                 requested_by=request.user,
             )
             TransferRequestItem.objects.create(
@@ -745,12 +803,12 @@ def transfer_inventory(request):
             entity_id=product.id, user=request.user, warehouse=source_warehouse,
             location=source_location,
             new_values={'transfer_request_id': transfer_request.id, 'destination_warehouse': destination_warehouse},
-            remarks=remarks,
+            remarks=format_dated_remark(remarks) or remarks,
         )
         log_timeline(
             product=product, event_type='TRANSFER', user=request.user,
             warehouse=source_warehouse, location=source_location,
-            remarks=f'Transfer request TR-{transfer_request.id}: {remarks}',
+            remarks=format_dated_remark(f'Transfer request TR-{transfer_request.id}: {remarks}') or remarks,
             details={'destination_warehouse': destination_warehouse, 'pending_receipt': True},
         )
         return JsonResponse({'success': True, 'transfer_request_id': transfer_request.id, 'message': 'Transfer request created. It must be received by Stock In or Admin.'})
@@ -763,7 +821,7 @@ def transfer_inventory(request):
                 destination_warehouse=destination_warehouse,
                 source_location=source_location,
                 destination_location=destination_location,
-                remarks=remarks,
+                remarks=format_dated_remark(remarks) or remarks,
                 transferred_by=request.user,
             )
             InventoryTransaction.objects.create(
@@ -791,7 +849,7 @@ def transfer_inventory(request):
             location=destination_location,
             old_values={'warehouse': source_warehouse, 'location': source_location},
             new_values={'warehouse': destination_warehouse, 'location': destination_location, 'transfer_id': transfer.id},
-            remarks=remarks,
+            remarks=format_dated_remark(remarks) or remarks,
         )
         log_timeline(
             product=product,
@@ -799,7 +857,7 @@ def transfer_inventory(request):
             user=request.user,
             warehouse=destination_warehouse,
             location=destination_location,
-            remarks=remarks,
+            remarks=format_dated_remark(remarks) or remarks,
             details={'source_warehouse': source_warehouse, 'source_location': source_location},
         )
         Notification.objects.create(
@@ -844,7 +902,13 @@ def transfer_request_page(request):
             detail = _inventory_detail(item.product)
             item.display_part_no = detail.get('part_no') or item.product.part_no or ''
             item.display_barcode = item.barcode or detail.get('barcode') or item.product.serial_no or ''
-    return render(request, 'inventory/transfer_requests.html', {'requests': requests, 'warehouses': InventoryTransaction.STORE_LOCATION})
+    pending_requests = [req for req in requests if req.status == 'PENDING']
+    completed_requests = [req for req in requests if req.status in ('PARTIAL', 'COMPLETED')]
+    return render(request, 'inventory/transfer_requests.html', {
+        'pending_requests': pending_requests,
+        'completed_requests': completed_requests,
+        'warehouses': InventoryTransaction.STORE_LOCATION,
+    })
 
 
 @login_required
@@ -864,8 +928,9 @@ def create_transfer_request(request):
         return JsonResponse({'success': False, 'error': 'Upload an Excel file containing barcodes'})
     errors, seen = [], set()
     with transaction.atomic():
+        formatted_remarks = format_dated_remark(request.POST.get('remarks', '').strip())
         transfer_request = TransferRequest.objects.create(source_warehouse=source, destination_warehouse=destination,
-            remarks=request.POST.get('remarks', '').strip(), requested_by=request.user)
+            remarks=formatted_remarks, requested_by=request.user)
         try:
             rows = _transfer_sheet_rows(upload)
             for row_no, barcode, _ in rows:
@@ -924,7 +989,9 @@ def receive_transfer_request(request, request_id):
                 _set_product_location(product, destination_location)
                 InventoryTransfer.objects.create(product=product, source_warehouse=transfer_request.source_warehouse,
                     destination_warehouse=transfer_request.destination_warehouse, source_location=item.source_location,
-                    destination_location=destination_location, remarks=f'Transfer request TR-{transfer_request.id}', transferred_by=request.user)
+                    destination_location=destination_location,
+                    remarks=format_dated_remark(f'Transfer request TR-{transfer_request.id}', date.today()),
+                    transferred_by=request.user)
                 InventoryTransaction.objects.create(product=product, transaction_type='IN', store_location=transfer_request.destination_warehouse,
                     stock_status='LIVE', stock_in_date=date.today(), performed_by=request.user)
                 item.destination_location = destination_location
@@ -962,7 +1029,7 @@ def receive_transfer_item(request, request_id, item_id):
             product=item.product, source_warehouse=transfer_request.source_warehouse,
             destination_warehouse=transfer_request.destination_warehouse,
             source_location=item.source_location, destination_location=destination_location,
-            remarks=f'Transfer request TR-{transfer_request.id}', transferred_by=request.user,
+            remarks=format_dated_remark(f'Transfer request TR-{transfer_request.id}', date.today()), transferred_by=request.user,
         )
         InventoryTransaction.objects.create(
             product=item.product, transaction_type='IN', store_location=transfer_request.destination_warehouse,
@@ -1191,7 +1258,7 @@ def create_audit_finding(request):
     if request.method == 'POST':
         finding = AuditFinding.objects.create(
             audit_date=request.POST.get('audit_date') or now().date(),
-            remarks=request.POST.get('remarks', '').strip(),
+            remarks=format_dated_remark(request.POST.get('remarks', '').strip()) or request.POST.get('remarks', '').strip(),
             attachment=request.FILES.get('attachment'),
             person_involved=request.POST.get('person_involved', '').strip(),
             created_by=request.user,
@@ -1252,7 +1319,7 @@ def create_general_audit_finding(request):
         finding = GeneralAuditFinding.objects.create(
             audit_date=request.POST.get('audit_date') or now().date(),
             title=request.POST.get('title', '').strip(),
-            remarks=request.POST.get('remarks', '').strip(),
+            remarks=format_dated_remark(request.POST.get('remarks', '').strip()) or request.POST.get('remarks', '').strip(),
             attachment=request.FILES.get('attachment'),
             person=request.POST.get('person', '').strip(),
             created_by=request.user,
@@ -1279,7 +1346,7 @@ def attend_general_audit_finding(request, finding_id):
         finding.status = 'ATTENDED'
         finding.attended_by = request.user
         finding.attended_at = now()
-        finding.attended_remarks = remarks
+        finding.attended_remarks = format_dated_remark(remarks) or remarks
         finding.save(update_fields=['status', 'attended_by', 'attended_at', 'attended_remarks'])
         log_activity(
             action='GENERAL_AUDIT_FINDING_ATTENDED',
@@ -1287,7 +1354,7 @@ def attend_general_audit_finding(request, finding_id):
             entity='GeneralAuditFinding',
             entity_id=finding.id,
             user=request.user,
-            remarks=remarks,
+            remarks=format_dated_remark(remarks) or remarks,
         )
         return redirect('general_audit_finding_list')
     return redirect('general_audit_finding_list')
@@ -1547,12 +1614,12 @@ def map_inventory(request):
         warehouse=parent_warehouse,
         location=parent_location,
         new_values={'target_type': target_type, 'target_id': target_id, 'parent': parent_label},
-        remarks=remarks or f'Mapped into {parent_label}',
+        remarks=format_dated_remark(remarks) or f'Mapped into {parent_label}',
     )
     log_timeline(
         product=product, event_type='MAP', user=request.user,
         warehouse=parent_warehouse, location=parent_location,
-        remarks=remarks or f'Mapped into {parent_label}',
+        remarks=format_dated_remark(remarks) or f'Mapped into {parent_label}',
         details={'target_type': target_type, 'parent': parent_label},
     )
     return JsonResponse({'success': True, 'parent': parent_label})
@@ -1583,11 +1650,11 @@ def unmap_inventory(request):
         entity_id=product.id,
         user=request.user,
         old_values={'parent': label, 'target_type': mapping_type},
-        remarks=remarks or f'Unmapped from {label}',
+        remarks=format_dated_remark(remarks) or f'Unmapped from {label}',
     )
     log_timeline(
         product=product, event_type='UNMAP', user=request.user,
-        remarks=remarks or f'Unmapped from {label}',
+        remarks=format_dated_remark(remarks) or f'Unmapped from {label}',
         details={'target_type': mapping_type, 'parent': label},
     )
     return JsonResponse({'success': True})
@@ -1622,13 +1689,14 @@ def return_rental(request):
 
     product = record.product
     store_location = record.store_location or _latest_store_location(product)
+    formatted_remarks = _append_remark_to_asset(product, remarks, return_date)
 
     with transaction.atomic():
         record.status = 'RETURNED'
         record.actual_return_date = return_date
         record.returned_by = request.user if request.user.is_authenticated else None
-        if remarks:
-            record.remarks = (record.remarks + ' | ' if record.remarks else '') + f'Return: {remarks}'
+        if formatted_remarks:
+            record.remarks = (record.remarks + ' | ' if record.remarks else '') + f'Return: {formatted_remarks}'
         record.save(update_fields=['status', 'actual_return_date', 'returned_by', 'remarks'])
 
         # Bring the asset back in stock → latest transaction becomes IN, so it
@@ -1652,11 +1720,11 @@ def return_rental(request):
         location=_latest_location(product),
         old_values={'status': 'ON_RENT', 'client': record.client_name},
         new_values={'status': 'RETURNED', 'return_date': str(return_date), 'available': True},
-        remarks=remarks or 'Rental returned — back in stock',
+        remarks=formatted_remarks or 'Rental returned — back in stock',
     )
     log_timeline(
         product=product, event_type='IN', user=request.user,
-        warehouse=store_location, remarks=remarks or 'Rental returned — back in stock',
+        warehouse=store_location, remarks=formatted_remarks or 'Rental returned — back in stock',
         details={'rental_id': record.id, 'client': record.client_name},
     )
     return JsonResponse({'success': True})

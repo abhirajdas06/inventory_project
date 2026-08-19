@@ -72,6 +72,7 @@ $(document).ready(function () {
                     method: 'POST',
                     data: {
                         id:    spareId,
+                        model: 'spare',
                         field: field,
                         value: value,
                         csrfmiddlewaretoken: getCSRFToken()

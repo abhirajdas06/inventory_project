@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from openpyxl import Workbook, load_workbook
 
-from apps.categories.models import Card, Controller, ImportJob, NetworkingSpare, Spare
+from apps.categories.models import Card, Controller, ImportJob, Memory, NetworkingSpare, Spare
 from apps.core.importers import import_controller_row
 from apps.core.models import Brand, Product, SpareCategory, UserProfile
 from apps.inventory.models import InventoryTransaction
@@ -111,6 +111,61 @@ class AuthAndNetworkingSpareTests(TestCase):
         headers = [cell.value for cell in next(workbook.active.iter_rows(min_row=1, max_row=1))]
         self.assertEqual(headers[:4], ['Product', 'Brand', 'Part no', 'Alt Part No'])
         self.assertIn('Barcode No', headers)
+
+    def test_spare_remark_edit_appends_with_date(self):
+        self.client.force_login(self.user)
+        category = SpareCategory.objects.create(name='SPARE-REMARK')
+        product = Product.objects.create(category=category, serial_no='RM-1', name='Remark test')
+        spare = Spare.objects.create(product=product, barcode='RM-BC-1', remark='2026-08-18 - Initial note')
+
+        response = self.client.post(reverse('update_spare'), {
+            'id': spare.id,
+            'field': 'remark',
+            'value': 'Follow-up note',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        spare.refresh_from_db()
+        self.assertIn('2026-08-18 - Initial note', spare.remark)
+        self.assertIn('2026-08-19 - Follow-up note', spare.remark)
+
+    def test_card_remark_edit_uses_shared_inline_endpoint(self):
+        self.client.force_login(self.user)
+        category = SpareCategory.objects.create(name='CARD-REMARK')
+        product = Product.objects.create(category=category, serial_no='CARD-1', name='Card test')
+        card = Card.objects.create(product=product, barcode='CARD-BC-1', remark='2026-08-18 - Existing card note')
+
+        response = self.client.post(reverse('update_spare'), {
+            'id': card.id,
+            'model': 'card',
+            'field': 'remark',
+            'value': 'Fresh card note',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        card.refresh_from_db()
+        self.assertIn('2026-08-18 - Existing card note', card.remark)
+        self.assertIn('2026-08-19 - Fresh card note', card.remark)
+
+    def test_memory_remark_edit_uses_memory_update_endpoint(self):
+        self.client.force_login(self.user)
+        category = SpareCategory.objects.create(name='MEMORY-REMARK')
+        product = Product.objects.create(category=category, serial_no='MEM-1', name='Memory test')
+        memory = Memory.objects.create(product=product, barcode='MEM-BC-1', remark='2026-08-18 - Existing memory note')
+
+        response = self.client.post('/spare/memory-update/', {
+            'id': memory.id,
+            'field': 'remark',
+            'value': 'Fresh memory note',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        memory.refresh_from_db()
+        self.assertIn('2026-08-18 - Existing memory note', memory.remark)
+        self.assertIn('2026-08-19 - Fresh memory note', memory.remark)
 
     def test_chunked_stock_out_import_by_barcode(self):
         self.client.force_login(self.user)

@@ -4,7 +4,7 @@ from django.db.models import OuterRef, Q, Subquery
 
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
-from apps.categories.models import CPU, Spare, Card, Controller, NetworkingSpare
+from apps.categories.models import CPU, Spare, Card, Controller, NetworkingSpare, Memory, SFP, RailKit, HardDisk
 from apps.core.services import create_product_and_railkit, create_controller_with_components, create_product_and_card, create_product_and_cpu, create_product_and_memory, create_product_and_sfp, create_product_and_spare, create_product_and_harddisk
 from apps.core.models import Product, SpareCategory, Brand
 from django.db.models import OuterRef, Subquery, Value, CharField
@@ -20,6 +20,7 @@ from apps.core.permissions import require_any_permission
 
 from apps.inventory.models import InventoryFreezeRecord, InventoryTransaction
 from apps.core.permissions import has_permission
+from apps.core.activity import append_dated_remark
 from django.http import HttpResponseForbidden
 
 
@@ -182,18 +183,40 @@ def spare_list(request):
 #     return JsonResponse({'components': data})
 
 # 🔥 INLINE UPDATE (AJAX)
+def _update_remark_field(model_cls, obj_id, value):
+    obj = model_cls.objects.get(id=obj_id)
+    current = getattr(obj, 'remark', '')
+    setattr(obj, 'remark', append_dated_remark(current, value))
+    obj.save(update_fields=['remark'])
+    return obj
+
+
 def update_spare_field(request):
     if request.method == "POST":
+        model_name = (request.POST.get('model') or 'spare').strip().lower()
         spare_id = request.POST.get('id')
         field = request.POST.get('field')
         value = request.POST.get('value')
 
         if field != 'remark':
             return JsonResponse({'success': False, 'error': 'Only remarks can be updated from a list'})
-        spare = Spare.objects.get(id=spare_id)
 
-        setattr(spare, field, value)
-        spare.save()
+        model_map = {
+            'spare': Spare,
+            'card': Card,
+            'cpu': CPU,
+            'controller': Controller,
+            'memory': Memory,
+            'sfp': SFP,
+            'railkit': RailKit,
+            'harddisk': HardDisk,
+        }
+        model_cls = model_map.get(model_name, Spare)
+
+        try:
+            _update_remark_field(model_cls, spare_id, value)
+        except model_cls.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Record not found'})
 
         return JsonResponse({'success': True})
 
@@ -415,7 +438,7 @@ def update_cpu_field(request):
  
         try:
             cpu = CPU.objects.get(id=cpu_id)
-            setattr(cpu, field, value)
+            setattr(cpu, field, append_dated_remark(getattr(cpu, field), value))
             cpu.save()
             return JsonResponse({'success': True})
         except CPU.DoesNotExist:
@@ -544,7 +567,7 @@ def update_controller_field(request):
  
         try:
             ctrl = Controller.objects.get(id=ctrl_id)
-            setattr(ctrl, field, value)
+            setattr(ctrl, field, append_dated_remark(getattr(ctrl, field), value))
             ctrl.save()
             return JsonResponse({'success': True})
         except Controller.DoesNotExist:
@@ -820,7 +843,7 @@ def update_memory_field(request):
  
         try:
             mem = Memory.objects.get(id=mem_id)
-            setattr(mem, field, value)
+            setattr(mem, field, append_dated_remark(getattr(mem, field), value))
             mem.save()
             return JsonResponse({'success': True})
         except Memory.DoesNotExist:
@@ -922,7 +945,7 @@ def update_sfp_field(request):
  
         try:
             sfp = SFP.objects.get(id=sfp_id)
-            setattr(sfp, field, value)
+            setattr(sfp, field, append_dated_remark(getattr(sfp, field), value))
             sfp.save()
             return JsonResponse({'success': True})
         except SFP.DoesNotExist:
@@ -1024,7 +1047,7 @@ def update_railkit_field(request):
  
         try:
             rk = RailKit.objects.get(id=rk_id)
-            setattr(rk, field, value)
+            setattr(rk, field, append_dated_remark(getattr(rk, field), value))
             rk.save()
             return JsonResponse({'success': True})
         except RailKit.DoesNotExist:
@@ -1141,7 +1164,7 @@ def update_harddisk_field(request):
  
         try:
             hd = HardDisk.objects.get(id=hd_id)
-            setattr(hd, field, value)
+            setattr(hd, field, append_dated_remark(getattr(hd, field), value))
             hd.save()
             return JsonResponse({'success': True})
         except HardDisk.DoesNotExist:

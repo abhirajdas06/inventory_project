@@ -10,7 +10,8 @@ urlpatterns = [
     path('add-spare/', require_permission('stock_in')(add_spare), name='add_spare'),
     path('check-serial/', check_serial, name='check_serial'),
     path('spares/', spare_list, name='spare_list'),
-    path('update-spare/', require_permission('mapping')(update_spare_field), name='update_spare'),
+    path('update/', require_permission('mapping')(update_spare_field), name='update_spare'),
+    path('update-spare/', require_permission('mapping')(update_spare_field), name='update_spare_legacy'),
     path('spare-out-report/', require_any_permission('sold_view', 'reports')(spare_out_report), name='spare_out_report'),
     
     

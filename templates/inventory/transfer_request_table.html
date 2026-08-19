@@ -1,0 +1,70 @@
+<div class="table-container">
+  <table class="table table-sm align-middle inventory-list-table">
+    <thead>
+      <tr>
+        <th>Request</th>
+        <th>Product</th>
+        <th>Part No</th>
+        <th>Barcode</th>
+        <th>From</th>
+        <th>To</th>
+        <th>Source Location</th>
+        <th>Received Location</th>
+        <th>Requested By</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th class="text-end">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for request in requests %}
+        {% for item in request.items.all %}
+        <tr>
+          <td><div class="fw-semibold">TR-{{ request.id }}</div></td>
+          <td>
+            <div class="fw-semibold">{{ item.product.name }}</div>
+            <div class="text-muted small">{{ item.product.serial_no|default:"No serial" }}</div>
+          </td>
+          <td>{{ item.display_part_no|default:"-" }}</td>
+          <td><code>{{ item.display_barcode|default:"-" }}</code></td>
+          <td>{{ request.source_warehouse }}</td>
+          <td>{{ request.destination_warehouse }}</td>
+          <td>{{ item.source_location|default:"-" }}</td>
+          <td>{{ item.destination_location|default:"-" }}</td>
+          <td>{{ request.requested_by|default:"-" }}</td>
+          <td>
+            {% if item.received_at %}
+              <span class="badge bg-success">Received</span>
+              <div class="text-muted small">{{ item.received_at|date:"Y-m-d H:i" }}</div>
+            {% else %}
+              <span class="badge {% if request.status == 'PARTIAL' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">Pending</span>
+            {% endif %}
+          </td>
+          <td>{{ request.created_at|date:"Y-m-d H:i" }}</td>
+          <td class="text-end">
+            {% if show_actions and not item.received_at %}
+            <button
+              class="btn btn-sm btn-outline-primary receive-single-transfer-btn"
+              data-request-id="{{ request.id }}"
+              data-item-id="{{ item.id }}"
+              data-label="TR-{{ request.id }} - {{ item.product.name }} - {{ item.display_barcode|default:'No barcode' }}"
+            >Approve one</button>
+            {% else %}
+            <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td>TR-{{ request.id }}</td>
+          <td colspan="11" class="text-muted">This request has no eligible items.</td>
+        </tr>
+        {% endfor %}
+      {% empty %}
+      <tr>
+        <td colspan="12" class="text-center text-muted py-4">No transfer requests yet.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
