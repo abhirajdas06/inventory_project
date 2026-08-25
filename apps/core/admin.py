@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ActivityLog, AssetTimelineEvent, Brand, Notification, Product, SpareCategory, UserProfile
+from .models import ActivityLog, AssetTimelineEvent, Brand, Notification, Product, RolePermission, SpareCategory, UserProfile
 
 
 @admin.register(SpareCategory)
@@ -25,6 +25,12 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'role', 'created_at')
     search_fields = ('user__username', 'user__email')
     list_filter = ('role',)
+
+
+@admin.register(RolePermission)
+class RolePermissionAdmin(admin.ModelAdmin):
+    list_display = ('role', 'updated_at')
+    readonly_fields = ('updated_at',)
 
 
 @admin.register(ActivityLog)

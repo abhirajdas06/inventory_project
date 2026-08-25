@@ -57,6 +57,16 @@ class UserProfile(models.Model):
         return f"{self.user.username} ({self.role})"
 
 
+class RolePermission(models.Model):
+    """Optional role-level overrides for the inventory permission defaults."""
+    role = models.CharField(max_length=20, choices=UserProfile.ROLE_CHOICES, unique=True)
+    permissions = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Permissions: {self.get_role_display()}"
+
+
 class ActivityLog(models.Model):
     MODULE_CHOICES = (
         ('INVENTORY', 'Inventory'),

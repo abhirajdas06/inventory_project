@@ -26,6 +26,7 @@ urlpatterns = [
     path('login/', core_views.login_view, name='login'),
     path('logout/', core_views.logout_view, name='logout'),
     path('users/', core_views.user_list, name='user_list'),
+    path('users/permissions/', core_views.role_permission_settings, name='role_permission_settings'),
     path('users/create/', core_views.user_create, name='user_create'),
     path('users/<int:user_id>/edit/', core_views.user_edit, name='user_edit'),
     path('admin/', admin.site.urls),

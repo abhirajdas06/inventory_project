@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from openpyxl import Workbook, load_workbook
 
-from apps.categories.models import Card, Controller, ImportJob, Memory, NetworkingSpare, Spare
+from apps.categories.models import CPU, Card, Controller, HardDisk, ImportJob, Memory, NetworkingSpare, RailKit, SFP, Spare
 from apps.core.importers import import_controller_row
 from apps.core.models import Brand, Product, SpareCategory, UserProfile
 from apps.inventory.models import InventoryTransaction
@@ -128,7 +128,7 @@ class AuthAndNetworkingSpareTests(TestCase):
         self.assertTrue(response.json()['success'])
         spare.refresh_from_db()
         self.assertIn('2026-08-18 - Initial note', spare.remark)
-        self.assertIn('2026-08-19 - Follow-up note', spare.remark)
+        self.assertIn(f'{date.today().isoformat()} - Follow-up note', spare.remark)
 
     def test_card_remark_edit_uses_shared_inline_endpoint(self):
         self.client.force_login(self.user)
@@ -147,7 +147,7 @@ class AuthAndNetworkingSpareTests(TestCase):
         self.assertTrue(response.json()['success'])
         card.refresh_from_db()
         self.assertIn('2026-08-18 - Existing card note', card.remark)
-        self.assertIn('2026-08-19 - Fresh card note', card.remark)
+        self.assertIn(f'{date.today().isoformat()} - Fresh card note', card.remark)
 
     def test_memory_remark_edit_uses_memory_update_endpoint(self):
         self.client.force_login(self.user)
@@ -165,7 +165,42 @@ class AuthAndNetworkingSpareTests(TestCase):
         self.assertTrue(response.json()['success'])
         memory.refresh_from_db()
         self.assertIn('2026-08-18 - Existing memory note', memory.remark)
-        self.assertIn('2026-08-19 - Fresh memory note', memory.remark)
+        self.assertIn(f'{date.today().isoformat()} - Fresh memory note', memory.remark)
+
+    def test_every_category_remark_endpoint_updates_its_own_record(self):
+        """Catches mismatched JavaScript URLs and Product-vs-category IDs."""
+        self.client.force_login(self.user)
+        category = SpareCategory.objects.create(name='INLINE-REMARKS')
+        endpoints = [
+            (CPU, reverse('update_cpu')),
+            (Controller, reverse('update_controller')),
+            (Memory, reverse('update_memory')),
+            (SFP, reverse('update_sfp')),
+            (RailKit, reverse('update_railkit')),
+            (HardDisk, reverse('update_harddisk')),
+        ]
+        for index, (model, endpoint) in enumerate(endpoints, start=1):
+            product = Product.objects.create(category=category, serial_no=f'INLINE-{index}', name=f'Inline {index}')
+            item = model.objects.create(product=product, barcode=f'INLINE-BC-{index}', remark='Original note')
+            response = self.client.post(endpoint, {'id': item.id, 'field': 'remark', 'value': 'Updated note'})
+            self.assertEqual(response.status_code, 200, endpoint)
+            self.assertTrue(response.json()['success'], endpoint)
+            item.refresh_from_db()
+            self.assertIn('Original note', item.remark)
+            self.assertIn('Updated note', item.remark)
+
+    def test_spare_stock_out_report_can_filter_every_stock_out_status(self):
+        self.client.force_login(self.user)
+        category = SpareCategory.objects.create(name='SPARE-STATUS')
+        product = Product.objects.create(category=category, serial_no='STATUS-1', name='Status spare')
+        spare = Spare.objects.create(product=product, barcode='STATUS-BC')
+        InventoryTransaction.objects.create(product=product, transaction_type='OUT', store_location='WH1', stock_status='RENT')
+
+        response = self.client.get(reverse('spare_out_report'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('RENT', response.context['available_statuses'])
+        self.assertContains(response, spare.barcode)
 
     def test_chunked_stock_out_import_by_barcode(self):
         self.client.force_login(self.user)

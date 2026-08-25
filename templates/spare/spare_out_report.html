@@ -66,6 +66,7 @@
     <th>Brand</th>
     <th>Model</th>
     <th>Serial</th>
+    <th>Barcode</th>
     <th>Client</th>
     <th>Invoice</th>
     <th>OLF / DC No</th>
@@ -84,6 +85,7 @@
     <td>{{ s.brand }}</td>
     <td>{{ s.model }}</td>
     <td><code>{{ s.product.serial_no }}</code></td>
+    <td><code>{{ s.barcode|default:"-" }}</code></td>
     <td>{{ s.latest_client }}</td>
     <td>{{ s.latest_invoice }}</td>
     <td>{{ s.latest_olf_dc|default:"—" }}</td>
@@ -106,7 +108,7 @@
 </tr>
 {% empty %}
 <tr>
-    <td colspan="13" class="text-center text-muted py-4">No stocked out spares found.</td>
+    <td colspan="14" class="text-center text-muted py-4">No stocked out spares found.</td>
 </tr>
 {% endfor %}
 </tbody>

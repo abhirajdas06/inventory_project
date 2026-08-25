@@ -168,7 +168,12 @@ async function postTransfer(url, form) {
 
 document.getElementById('requestTransferForm')?.addEventListener('submit', event => {
   event.preventDefault();
-  postTransfer('{% url "create_transfer_request" %}', event.currentTarget);
+  const form = event.currentTarget;
+  if (form.source_warehouse.value === form.destination_warehouse.value) {
+    alert('Source and destination stores must be different.');
+    return;
+  }
+  postTransfer('{% url "create_transfer_request" %}', form);
 });
 
 document.addEventListener('click', event => {

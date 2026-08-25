@@ -225,7 +225,7 @@ def update_spare_field(request):
 
 @require_any_permission('sold_view', 'reports')
 def spare_out_report(request):
-    selected_status = 'SALE'
+    selected_status = request.GET.get('status', '').strip()
     q = request.GET.get('q', '').strip()
     date_from = request.GET.get('date_from', '').strip()
     date_to = request.GET.get('date_to', '').strip()
@@ -246,8 +246,6 @@ def spare_out_report(request):
         latest_type='OUT'   # 🔥 ONLY STOCKED OUT
     )
 
-    all_out_spares = all_out_spares.filter(latest_status='SALE')
-
     available_statuses = sorted([
         s for s in all_out_spares.values_list('latest_status', flat=True).distinct() if s
     ])
@@ -255,6 +253,8 @@ def spare_out_report(request):
     total_count = all_out_spares.count()
 
     spares = all_out_spares
+    if selected_status:
+        spares = spares.filter(latest_status=selected_status)
     if date_from:
         spares = spares.filter(latest_out_date__gte=date_from)
     if date_to:

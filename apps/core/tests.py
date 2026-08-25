@@ -4,10 +4,13 @@ from tempfile import TemporaryDirectory
 
 from django.core.management import call_command
 from django.test import TestCase
+from django.contrib.auth.models import User
+from django.urls import reverse
 from openpyxl import load_workbook
 
 from apps.core.importers import HEADER_MAPS, IMPORT_LABELS, import_combined_stock_out_row
-from apps.core.models import Product
+from apps.core.models import Product, RolePermission, UserProfile
+from apps.core.permissions import has_permission
 from apps.inventory.models import InventoryTransaction
 
 
@@ -67,6 +70,27 @@ class StockOutImportTests(TestCase):
         self.assertEqual(out.invoice_no, 'INV-9')
         self.assertEqual(out.olf_dc_number, 'OLF-9')
         self.assertEqual(str(out.stock_out_date), '2026-06-26')
+
+
+class RoleSettingsTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(username='settings-admin', password='pass12345')
+        UserProfile.objects.create(user=self.admin, role='ADMIN')
+        self.stock_in = User.objects.create_user(username='settings-stock-in', password='pass12345')
+        UserProfile.objects.create(user=self.stock_in, role='STOCK_IN')
+
+    def test_custom_role_permissions_control_authorization(self):
+        self.assertFalse(has_permission(self.stock_in, 'stock_out'))
+        RolePermission.objects.create(role='STOCK_IN', permissions=['stock_in', 'stock_out'])
+        self.assertTrue(has_permission(self.stock_in, 'stock_out'))
+
+    def test_admin_can_save_role_permission_settings(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('role_permission_settings'), {
+            'role': 'AUDIT', 'audit': 'on', 'audit_view': 'on',
+        })
+        self.assertRedirects(response, reverse('role_permission_settings'))
+        self.assertEqual(RolePermission.objects.get(role='AUDIT').permissions, ['audit', 'audit_view'])
 
 
 class DailyExportTests(TestCase):

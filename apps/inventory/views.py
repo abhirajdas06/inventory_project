@@ -907,6 +907,7 @@ def transfer_request_page(request):
     return render(request, 'inventory/transfer_requests.html', {
         'pending_requests': pending_requests,
         'completed_requests': completed_requests,
+        'receivable_requests': [req for req in requests if req.status in ('PENDING', 'PARTIAL')],
         'warehouses': InventoryTransaction.STORE_LOCATION,
     })
 

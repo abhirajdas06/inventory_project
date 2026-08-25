@@ -38,6 +38,7 @@
     <th>Serial</th>
     <th>Capacity</th>
     <th>Port</th>
+    <th>Barcode</th>
     <th>Belongs To</th>   <!-- ← NEW COLUMN -->
     <th>Location</th>
     <th>Ref Location</th>
@@ -70,6 +71,7 @@
 <td>{{ c.product.serial_no }}</td>
 <td>{{ c.capacity }}</td>
 <td>{{ c.port }}</td>
+<td><code>{{ c.barcode|default:"-" }}</code></td>
 
 <!-- BELONGS TO COLUMN -->
 <td>

@@ -2,6 +2,7 @@ from functools import wraps
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
+from apps.core.models import RolePermission
 
 
 ROLE_PERMISSIONS = {
@@ -26,6 +27,28 @@ ROLE_PERMISSIONS = {
     },
 }
 
+PERMISSION_LABELS = {
+    'user_management': 'Manage users and role settings',
+    'stock_in': 'Add stock and components',
+    'stock_out': 'Stock out products',
+    'stock_out_import': 'Import stock-out Excel files',
+    'transfer_request': 'Create transfer requests',
+    'transfer_receive': 'Receive and approve transfers',
+    'audit': 'Perform single-product audits',
+    'audit_view': 'View audit reports and findings',
+    'audit_findings': 'Create audit and general findings',
+    'attend_audit_finding': 'Attend audit findings',
+    'product_history': 'View product history and ledgers',
+    'sales_return': 'Process sales returns',
+    'stock_return': 'Return non-sale stocked-out products',
+    'rent_return': 'Process rental returns',
+    'sold_view': 'View sold, faulty, and stock-status lists',
+    'reconciliation': 'Reconcile audit differences',
+    'mapping': 'Map products and update list remarks',
+    'freeze': 'Freeze and unfreeze stock',
+    'reports': 'View and export reports',
+}
+
 
 def user_role(user):
     if not getattr(user, 'is_authenticated', False):
@@ -37,7 +60,14 @@ def user_role(user):
 
 
 def has_permission(user, permission):
+    if not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
     role = user_role(user)
+    override = RolePermission.objects.filter(role=role).only('permissions').first()
+    if override is not None:
+        return permission in (override.permissions or [])
     return permission in ROLE_PERMISSIONS.get(role, set())
 
 

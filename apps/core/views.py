@@ -8,8 +8,8 @@ from django.views.decorators.http import require_POST
 
 from apps.categories.models import Card, CPU, Controller, HardDisk, Memory, NetworkingSpare, RailKit, SFP, Spare
 from apps.core.activity import log_activity
-from apps.core.models import UserProfile
-from apps.core.permissions import require_permission
+from apps.core.models import RolePermission, UserProfile
+from apps.core.permissions import PERMISSION_LABELS, ROLE_PERMISSIONS, require_permission
 from apps.inventory.models import InventoryTransaction
 from apps.servers.models import Server
 
@@ -98,6 +98,38 @@ def user_list(request):
     return render(request, 'auth/user_list.html', {
         'rows': rows,
         'roles': UserProfile.ROLE_CHOICES,
+    })
+
+
+@require_permission('user_management')
+def role_permission_settings(request):
+    roles = list(UserProfile.ROLE_CHOICES)
+    if request.method == 'POST':
+        role = request.POST.get('role', '')
+        valid_roles = {value for value, _ in roles}
+        if role not in valid_roles:
+            messages.error(request, 'Invalid role.')
+            return redirect('role_permission_settings')
+        selected = [key for key in PERMISSION_LABELS if request.POST.get(key) == 'on']
+        # Do not let an administrator remove the only way back into these settings.
+        if role == 'ADMIN' and 'user_management' not in selected:
+            selected.append('user_management')
+        RolePermission.objects.update_or_create(role=role, defaults={'permissions': selected})
+        log_activity(action='ROLE_PERMISSIONS_UPDATED', module='USER', entity=role,
+                     user=request.user, new_values={'permissions': selected},
+                     remarks='Role permissions updated')
+        messages.success(request, f'{dict(roles)[role]} permissions updated.')
+        return redirect('role_permission_settings')
+
+    overrides = {row.role: set(row.permissions or []) for row in RolePermission.objects.all()}
+    role_rows = [
+        {'role': role, 'label': label, 'permissions': overrides.get(role, ROLE_PERMISSIONS.get(role, set())),
+         'customized': role in overrides}
+        for role, label in roles
+    ]
+    return render(request, 'auth/role_permission_settings.html', {
+        'role_rows': role_rows,
+        'permission_options': PERMISSION_LABELS.items(),
     })
 
 

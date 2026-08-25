@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Role Settings{% endblock %}
+{% block page_title %}Role Settings{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+  <div class="inventory-list-shell">
+    <div class="inventory-list-toolbar">
+      <div>
+        <h5 class="inventory-list-title">Role Permissions</h5>
+        <div class="inventory-list-subtitle">Choose which functions each user role can use. Changes apply immediately.</div>
+      </div>
+    </div>
+    <div class="accordion" id="rolePermissionAccordion">
+      {% for row in role_rows %}
+      <div class="accordion-item">
+        <h2 class="accordion-header" id="role-heading-{{ row.role }}">
+          <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#role-{{ row.role }}">
+            {{ row.label }}
+            {% if row.customized %}<span class="badge text-bg-primary ms-2">Custom</span>{% else %}<span class="badge text-bg-light border text-dark ms-2">Default</span>{% endif %}
+          </button>
+        </h2>
+        <div id="role-{{ row.role }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" data-bs-parent="#rolePermissionAccordion">
+          <div class="accordion-body">
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="role" value="{{ row.role }}">
+              <div class="row g-2">
+                {% for permission, label in permission_options %}
+                <div class="col-md-6 col-xl-4">
+                  <label class="form-check border rounded px-3 py-2 h-100">
+                    <input class="form-check-input me-2" type="checkbox" name="{{ permission }}" {% if permission in row.permissions %}checked{% endif %} {% if row.role == 'ADMIN' and permission == 'user_management' %}disabled{% endif %}>
+                    <span class="form-check-label">{{ label }}</span>
+                  </label>
+                </div>
+                {% endfor %}
+              </div>
+              {% if row.role == 'ADMIN' %}<input type="hidden" name="user_management" value="on">{% endif %}
+              <button class="btn btn-primary btn-sm mt-3" type="submit"><i class="bi bi-check2-circle me-1"></i>Save {{ row.label }} Permissions</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
