@@ -1,9 +1,22 @@
+from datetime import datetime
 from pathlib import Path
 
 from django.conf import settings
 from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
+
+
+def _clean_cell(value):
+    """openpyxl cannot write timezone-aware datetimes — strip the tzinfo
+    (converting to local time first) so exports don't blow up with real data."""
+    if isinstance(value, datetime) and value.tzinfo is not None:
+        return timezone.localtime(value).replace(tzinfo=None)
+    return value
+
+
+def _append_row(ws, values):
+    ws.append([_clean_cell(v) for v in values])
 
 
 def _safe_sheet_name(name):
@@ -34,7 +47,7 @@ def _write_category_sheet(ws, items, fields):
     ])
     _style_header(ws)
     for item in items:
-        ws.append([
+        _append_row(ws, [
             _resolve_attr(item, path) for _, path in fields
         ] + [
             getattr(item, 'latest_location', '') or '',
@@ -136,3 +149,41 @@ def export_daily_inventory_snapshots(output_dir=None, export_date=None):
         outputs[state] = str(file_path)
 
     return outputs
+
+
+def send_daily_inventory_email(recipients=None, output_dir=None, export_date=None):
+    """Generate the daily snapshots and email them as Excel attachments.
+
+    Recipients default to settings.DAILY_REPORT_RECIPIENTS. Returns a dict with
+    the send result and the generated file paths.
+    """
+    from django.core.mail import EmailMessage
+
+    export_date = export_date or timezone.localdate()
+    outputs = export_daily_inventory_snapshots(output_dir=output_dir, export_date=export_date)
+
+    recipients = recipients or list(getattr(settings, 'DAILY_REPORT_RECIPIENTS', []) or [])
+    if not recipients:
+        return {'sent': False, 'reason': 'no recipients configured', 'outputs': outputs}
+
+    subject = f'Daily Inventory Report — {export_date.isoformat()}'
+    body = (
+        f'Attached are the automated inventory snapshots for {export_date.isoformat()}:\n\n'
+        '  • inventory-live — everything currently in stock\n'
+        '  • inventory-stocked_out — everything stocked out / sold\n\n'
+        'Each workbook has one sheet per category plus a grouped Servers sheet.\n\n'
+        'This is an automated message from InvenTrack.'
+    )
+    email = EmailMessage(
+        subject=subject,
+        body=body,
+        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+        to=recipients,
+    )
+    content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    for path in outputs.values():
+        p = Path(path)
+        email.attach(p.name, p.read_bytes(), content_type)
+
+    email.send(fail_silently=False)
+    return {'sent': True, 'recipients': recipients, 'outputs': outputs}

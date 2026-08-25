@@ -1,20 +1,30 @@
-# Inventory Project Deployment Guide
+# Inventory Project — Deployment Guide (Ubuntu 22.04)
 
-This guide follows the same Ubuntu + PostgreSQL pattern as your current setup script, but in a cleaner deployment format.
+Target server: **Ubuntu 22.04**, **Python 3.10.12** (the default `python3` on 22.04),
+PostgreSQL, Gunicorn behind Nginx, static files served by **WhiteNoise**.
+
+> **Django version note.** Django 6.x requires Python 3.12+. On Python 3.10.12 this
+> project runs on the **Django 5.2 LTS** series (pinned in `requirements.txt`). If you
+> would rather run Django 6.x, install Python 3.12 first (e.g. via the `deadsnakes`
+> PPA) and create the virtualenv with `python3.12`.
 
 ## 1. Server prerequisites
 
 ```bash
 sudo apt update
-sudo apt install -y python3-venv python3-dev build-essential libpq-dev nginx curl git
+sudo apt install -y python3-venv python3-dev python3-pip build-essential \
+    libpq-dev nginx curl git
+# Make cron/systemd timers fire at local midnight:
+sudo timedatectl set-timezone Asia/Kolkata
 ```
 
 ## 2. Get the code and create a virtual environment
 
 ```bash
+cd /home/ubuntu
 git clone <your-repo-url> inventory_project
 cd inventory_project
-python3 -m venv venv
+python3 -m venv venv          # Python 3.10.12
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -26,8 +36,6 @@ pip install -r requirements.txt
 sudo apt install -y postgresql postgresql-contrib
 sudo -u postgres psql
 ```
-
-Inside `psql`:
 
 ```sql
 CREATE DATABASE inventory_db;
@@ -41,17 +49,32 @@ GRANT ALL PRIVILEGES ON DATABASE inventory_db TO inventory_user;
 
 ## 4. Environment variables
 
-Create a `.env` file in the project root:
+Create `.env` in the project root (see `.env.example`):
 
 ```env
-SECRET_KEY=your-secret-key
+SECRET_KEY=generate-a-strong-random-secret
 DEBUG=False
+ALLOWED_HOSTS=your-domain.com,www.your-domain.com
+
 DB_NAME=inventory_db
 DB_USER=inventory_user
 DB_PASSWORD=strong-password-here
 DB_HOST=127.0.0.1
 DB_PORT=5432
+
+# Email (SMTP) for the automated midnight report
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your-sender@gmail.com
+EMAIL_HOST_PASSWORD=your-app-password        # Gmail: use an App Password
+DEFAULT_FROM_EMAIL=InvenTrack Reports <your-sender@gmail.com>
+DAILY_REPORT_RECIPIENTS=abhiraj@zacocomputer.com
 ```
+
+> Gmail requires an **App Password** (Google Account → Security → 2‑Step
+> Verification → App passwords), not your normal password. If `EMAIL_HOST_USER`
+> is left blank the app uses the console backend (prints emails, sends nothing).
 
 ## 5. Django setup
 
@@ -59,34 +82,12 @@ DB_PORT=5432
 source venv/bin/activate
 python manage.py migrate
 python manage.py createsuperuser
-python manage.py collectstatic --noinput
+python manage.py collectstatic --noinput      # WhiteNoise serves from staticfiles/
 ```
 
 ## 6. Gunicorn systemd service
 
-Create `/etc/systemd/system/inventory.service`:
-
-```ini
-[Unit]
-Description=Inventory Project Gunicorn
-Requires=inventory.socket
-After=network.target
-
-[Service]
-User=www-data
-Group=www-data
-WorkingDirectory=/home/ubuntu/inventory_project
-ExecStart=/home/ubuntu/inventory_project/venv/bin/gunicorn \
-    --access-logfile - \
-    --workers 3 \
-    --bind unix:/run/inventory.sock \
-    inventory_project.wsgi:application
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Create `/etc/systemd/system/inventory.socket`:
+`/etc/systemd/system/inventory.socket`:
 
 ```ini
 [Unit]
@@ -99,28 +100,46 @@ ListenStream=/run/inventory.sock
 WantedBy=sockets.target
 ```
 
-Then enable it:
+`/etc/systemd/system/inventory.service`:
+
+```ini
+[Unit]
+Description=Inventory Project Gunicorn
+Requires=inventory.socket
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/home/ubuntu/inventory_project
+EnvironmentFile=/home/ubuntu/inventory_project/.env
+ExecStart=/home/ubuntu/inventory_project/venv/bin/gunicorn \
+    --access-logfile - \
+    --workers 3 \
+    --bind unix:/run/inventory.sock \
+    inventory_project.wsgi:application
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl start inventory.socket
-sudo systemctl enable inventory.socket
-sudo systemctl start inventory.service
-sudo systemctl enable inventory.service
+sudo systemctl enable --now inventory.socket
+sudo systemctl enable --now inventory.service
 ```
 
 ## 7. Nginx configuration
 
-Create `/etc/nginx/sites-available/inventory`:
+WhiteNoise already serves `/static/`, so Nginx only needs to proxy the app and
+serve uploaded media. `/etc/nginx/sites-available/inventory`:
 
 ```nginx
 server {
     listen 80;
     server_name your-domain.com www.your-domain.com;
 
-    location /static/ {
-        alias /home/ubuntu/inventory_project/static/;
-    }
+    client_max_body_size 25M;   # allow Excel uploads
 
     location /media/ {
         alias /home/ubuntu/inventory_project/media/;
@@ -133,7 +152,10 @@ server {
 }
 ```
 
-Enable it:
+> Optional: for slightly faster static delivery you can let Nginx serve the
+> collected files directly by adding
+> `location /static/ { alias /home/ubuntu/inventory_project/staticfiles/; }`.
+> It is not required — WhiteNoise handles static either way.
 
 ```bash
 sudo ln -s /etc/nginx/sites-available/inventory /etc/nginx/sites-enabled/
@@ -148,44 +170,95 @@ sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d your-domain.com -d www.your-domain.com
 ```
 
-## 9. Daily Excel export at midnight
+## 9. Midnight Excel export + email
 
-The project includes a management command that exports:
+The management command exports two workbooks (live + stocked-out, one sheet per
+category plus a grouped Servers sheet) and **emails them** to
+`DAILY_REPORT_RECIPIENTS` when run with `--email`:
 
-- live inventory workbook
-- stocked-out inventory workbook
+```bash
+# Test it once (writes files under media/exports/<date>/ AND emails them):
+source venv/bin/activate
+python manage.py export_daily_inventory --email \
+    --output-dir /home/ubuntu/inventory_project/media
+```
 
-Use cron to run it every day at 12:00 AM:
+### Preferred: systemd timer (fires at local midnight)
+
+`/etc/systemd/system/inventory-daily-report.service`:
+
+```ini
+[Unit]
+Description=Daily inventory Excel export + email
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/home/ubuntu/inventory_project
+EnvironmentFile=/home/ubuntu/inventory_project/.env
+ExecStart=/home/ubuntu/inventory_project/venv/bin/python manage.py \
+    export_daily_inventory --email --output-dir /home/ubuntu/inventory_project/media
+```
+
+`/etc/systemd/system/inventory-daily-report.timer`:
+
+```ini
+[Unit]
+Description=Run the daily inventory report at midnight
+
+[Timer]
+OnCalendar=*-*-* 00:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now inventory-daily-report.timer
+systemctl list-timers inventory-daily-report.timer   # verify next run
+sudo systemctl start inventory-daily-report.service   # run once now to test
+```
+
+### Alternative: cron
 
 ```bash
 crontab -e
 ```
 
-Add:
-
 ```cron
-0 0 * * * /home/ubuntu/inventory_project/venv/bin/python /home/ubuntu/inventory_project/manage.py export_daily_inventory --output-dir /home/ubuntu/inventory_project/media >> /home/ubuntu/inventory_project/export.log 2>&1
+0 0 * * * cd /home/ubuntu/inventory_project && /home/ubuntu/inventory_project/venv/bin/python manage.py export_daily_inventory --email --output-dir /home/ubuntu/inventory_project/media >> /home/ubuntu/inventory_project/export.log 2>&1
 ```
 
-The files will be written under:
+Files are also written to
+`/home/ubuntu/inventory_project/media/exports/YYYY-MM-DD/` as a backup.
 
-```text
-/home/ubuntu/inventory_project/media/exports/YYYY-MM-DD/
-```
-
-## 10. Useful service commands
+## 10. Useful commands
 
 ```bash
 sudo systemctl status inventory.service
 sudo systemctl restart inventory.service
 sudo journalctl -u inventory.service -f
-sudo journalctl -u nginx -f
+sudo journalctl -u inventory-daily-report.service -n 50
 ```
 
 ## 11. Final checks
 
 ```bash
-python manage.py check
+python manage.py check --deploy
 python manage.py test
 ```
 
+## 12. Updating the app
+
+```bash
+cd /home/ubuntu/inventory_project
+git pull
+source venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py collectstatic --noinput
+sudo systemctl restart inventory.service
+```

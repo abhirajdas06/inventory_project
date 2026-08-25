@@ -86,3 +86,21 @@ class DailyExportTests(TestCase):
             self.assertIn('Servers', sold_wb.sheetnames)
             live_wb.close()
             sold_wb.close()
+
+    def test_daily_export_email_sends_both_workbooks(self):
+        from django.core import mail
+        from django.test import override_settings
+
+        with TemporaryDirectory() as tmpdir:
+            with override_settings(
+                EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+                DAILY_REPORT_RECIPIENTS=['abhiraj@zacocomputer.com'],
+            ):
+                call_command('export_daily_inventory', '--email',
+                             output_dir=tmpdir, verbosity=0)
+                self.assertEqual(len(mail.outbox), 1)
+                message = mail.outbox[0]
+                self.assertEqual(message.to, ['abhiraj@zacocomputer.com'])
+                names = sorted(attachment[0] for attachment in message.attachments)
+                self.assertEqual(len(names), 2)
+                self.assertTrue(all(n.endswith('.xlsx') for n in names))

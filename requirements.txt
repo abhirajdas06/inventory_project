@@ -1,10 +1,29 @@
-asgiref==3.11.1
-Django==6.0.3
-django-crispy-forms==2.6
-django-filter==25.2
-et_xmlfile==2.0.0
-openpyxl==3.1.5
-psycopg2-binary==2.9.11
-python-dotenv==1.2.2
-sqlparse==0.5.5
-tzdata==2025.3
+# Target: Ubuntu 22.04, Python 3.10.12
+# NOTE: Django 6.x requires Python 3.12+, so this project is pinned to the
+# Django 5.2 LTS series which supports Python 3.10–3.13. (If you later move to
+# Python 3.12+, you may bump to Django 6.x.)
+
+Django>=5.2,<5.3
+asgiref>=3.8
+sqlparse>=0.5
+tzdata>=2024.1
+
+# Database
+psycopg2-binary>=2.9.9
+
+# Excel import/export
+openpyxl>=3.1.5
+et_xmlfile>=1.1
+
+# Config / env
+python-dotenv>=1.0.1
+
+# Static files (production)
+whitenoise[brotli]>=6.6
+
+# WSGI server (production)
+gunicorn>=21.2
+
+# Forms / filtering
+django-crispy-forms>=2.1
+django-filter>=23.5
