@@ -261,6 +261,52 @@ class AuthAndNetworkingSpareTests(TestCase):
         self.assertEqual(latest.invoice_no, 'INV-900')
         self.assertEqual(latest.olf_dc_number, 'OLF-900')
 
+    def test_stock_out_import_uses_selected_store_location_not_products_current_warehouse(self):
+        self.client.force_login(self.user)
+        category = SpareCategory.objects.create(name='SPARE-WH')
+        product = Product.objects.create(
+            category=category,
+            serial_no='STOCKOUT-WH-001',
+            name='Stock Out Warehouse Test',
+        )
+        Spare.objects.create(product=product, barcode='BC-STOCKOUT-WH-001')
+        InventoryTransaction.objects.create(
+            product=product, transaction_type='IN', store_location='WH1', stock_status='LIVE',
+        )
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append([
+            'Serial No', 'Barcode No', 'Client Name', 'Invoice No',
+            'OLF / DC No', 'Stock Status', 'Stock Out Date'
+        ])
+        sheet.append([
+            '', 'BC-STOCKOUT-WH-001', 'Import Client', 'INV-901',
+            'OLF-901', 'SALE', '2026-06-27'
+        ])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        buffer.seek(0)
+        upload = SimpleUploadedFile(
+            'STOCK_OUT_WH.xlsx', buffer.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+        start = self.client.post(reverse('inventory_import_start'), {
+            'model_key': 'stock_out',
+            'store_location': 'DELHI',
+            'file': upload,
+        })
+        self.assertEqual(start.status_code, 200)
+        process = self.client.post(reverse('inventory_import_process', args=[start.json()['job_id']]), {
+            'chunk_size': 10,
+        })
+        self.assertEqual(process.json()['status'], 'DONE')
+
+        latest = InventoryTransaction.objects.filter(product=product).latest('created_at')
+        self.assertEqual(latest.transaction_type, 'OUT')
+        self.assertEqual(latest.store_location, 'DELHI')
+
     def test_stock_out_import_defaults_to_sale_and_today_when_optional_columns_missing(self):
         self.client.force_login(self.user)
         category = SpareCategory.objects.create(name='SPARE-DEFAULTS')

@@ -492,6 +492,8 @@ def import_combined_stock_out_row(base_key, row, user=None):
         'olf_dc_number': row.get('so_olf_dc_number') or '',
         'stock_status': row.get('so_stock_status') or 'SALE',
         'stock_out_date': row.get('so_stock_out_date') or '',
+        # Carry the import's selected warehouse through to the stock-out side too.
+        'store_location': row.get('store_location') or '',
     }
     _apply_stock_out(product, so_row, user=user)
     return product
@@ -555,7 +557,12 @@ def _apply_stock_out(product, row, user=None):
         except ValueError:
             stock_out_date = date.today()
 
-    store_location = _latest_store_location(product)
+    # Use the import's selected warehouse when one was provided (dropdown on
+    # the import page); otherwise fall back to the product's current warehouse
+    # (e.g. the standalone "Stock Out" import for pre-existing products).
+    valid_locations = dict(InventoryTransaction.STORE_LOCATION)
+    row_store_location = (row.get('store_location') or '').strip().upper()
+    store_location = row_store_location if row_store_location in valid_locations else _latest_store_location(product)
     client_name = row.get('client_name') or ''
     invoice_no = row.get('invoice_no') or ''
     olf_dc_number = row.get('olf_dc_number') or ''
