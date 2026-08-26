@@ -30,7 +30,15 @@
                 </optgroup>{% endif %}
             </select>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-3">
+            <label class="form-label">Store Location <span class="text-danger">*</span></label>
+            <select class="form-select" name="store_location" id="importStoreLocation" required>
+                {% for value, label in store_locations %}
+                    <option value="{{ value }}" {% if value == 'WH1' %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
             <label class="form-label">Excel File</label>
             <input class="form-control" type="file" name="file" accept=".xlsx,.xls" required>
         </div>
@@ -40,6 +48,10 @@
             </button>
         </div>
     </form>
+    <p class="text-muted small mt-2 mb-0">
+        Every row in this file will be stocked into the warehouse selected above (unless the
+        row is a stock-out row for an existing item, which stocks out from its current warehouse).
+    </p>
 
     <div class="mt-3 d-flex flex-wrap gap-2">
         <a id="templateDownloadLink" href="#" class="btn btn-outline-secondary btn-sm">

@@ -305,7 +305,7 @@ def count_rows(path):
     return total
 
 
-def start_import_job(model_key, upload, user):
+def start_import_job(model_key, upload, user, store_location=None):
     if model_key not in HEADER_MAPS:
         raise ValueError('Unknown import model')
 
@@ -314,6 +314,7 @@ def start_import_job(model_key, upload, user):
         upload=upload,
         created_by=user if getattr(user, 'is_authenticated', False) else None,
         status='PENDING',
+        store_location=(store_location or DEFAULT_STORE).strip().upper(),
     )
 
     headers = read_headers(job.upload.path)
@@ -355,7 +356,7 @@ def process_import_chunk(job, chunk_size=100, user=None):
         raw = dict(zip(headers, values))
         row = {target: clean_value(raw.get(source)) for source, target in field_map.items()}
         row['qty'] = normalize_qty(row.get('qty'))
-        row['store_location'] = DEFAULT_STORE
+        row['store_location'] = job.store_location or DEFAULT_STORE
         if job.model_key == 'stock_out':
             row['stock_status'] = row.get('stock_status') or 'SALE'
             row['stock_out_date'] = row.get('stock_out_date') or date.today().isoformat()
@@ -804,9 +805,10 @@ def import_controller_row(row, user=None):
     ).order_by('-created_at').first()
 
     from apps.core.services import _create_stock_in_transaction
+    fallback_store = (row.get('store_location') or DEFAULT_STORE).strip().upper()
     _create_stock_in_transaction(
         product=product,
-        store_location=last_controller_txn.store_location if last_controller_txn else DEFAULT_STORE,
+        store_location=last_controller_txn.store_location if last_controller_txn else fallback_store,
         stock_status=last_controller_txn.stock_status if last_controller_txn else DEFAULT_STATUS,
         user=user,
         remarks='Controller component import stock-in',
@@ -819,6 +821,8 @@ def import_server_row(row, user=None):
     service_tag = (row.get('service_tag') or '').strip().upper()
     if not service_tag:
         raise ValueError('System Service Tag No is required')
+
+    store_location = (row.get('store_location') or DEFAULT_STORE).strip().upper()
 
     server_data = {
         'testing_date': row.get('testing_date'),
@@ -839,7 +843,7 @@ def import_server_row(row, user=None):
         'reference_location': row.get('reference_location'),
         'parent_child_location': row.get('parent_child_location'),
         'remark': row.get('remark'),
-        'store_location': DEFAULT_STORE,
+        'store_location': store_location,
         'stock_status': DEFAULT_STATUS,
     }
     component = {
@@ -865,6 +869,6 @@ def import_server_row(row, user=None):
         server = create_server_with_components(server_data, [component])
         mark_latest_stock_user(server.product, user)
     else:
-        product = add_server_component(server, component, DEFAULT_STORE, DEFAULT_STATUS).product
+        product = add_server_component(server, component, store_location, DEFAULT_STATUS).product
         mark_latest_stock_user(product, user)
     return server.product

@@ -476,6 +476,9 @@ class ImportJob(models.Model):
     error_count = models.PositiveIntegerField(default=0)
     errors = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    # Warehouse every row in this import is stocked into. User-selected at
+    # upload time instead of always defaulting to WH1.
+    store_location = models.CharField(max_length=50, default='WH1')
     created_by = models.ForeignKey(
         'auth.User',
         on_delete=models.SET_NULL,

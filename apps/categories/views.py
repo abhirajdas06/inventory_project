@@ -1733,12 +1733,14 @@ def import_inventory_page(request):
     can_stock_out = has_permission(request.user, 'stock_out_import')
     if not (can_stock_in or can_stock_out):
         return HttpResponseForbidden('Permission denied')
+    from apps.inventory.models import InventoryTransaction
     return render(request, 'inventory/import.html', {
         'import_labels': IMPORT_LABELS,
         'stock_in_labels': stock_in_labels,
         'stock_out_labels': stock_out_labels,
         'can_stock_in': can_stock_in,
         'can_stock_out': can_stock_out,
+        'store_locations': InventoryTransaction.STORE_LOCATION,
     })
 
 
@@ -1793,6 +1795,7 @@ def import_template_download(request, model_key):
 @require_POST
 def start_import(request):
     from apps.core.importers import start_import_job
+    from apps.inventory.models import InventoryTransaction
     try:
         model_key = request.POST.get('model_key')
         is_stock_out = model_key == 'stock_out' or (model_key or '').endswith('_stock_out')
@@ -1801,7 +1804,11 @@ def start_import(request):
         upload = request.FILES.get('file')
         if not upload:
             return JsonResponse({'success': False, 'error': 'Please select an Excel file.'}, status=400)
-        job = start_import_job(model_key, upload, request.user)
+        store_location = (request.POST.get('store_location') or '').strip().upper()
+        valid_locations = dict(InventoryTransaction.STORE_LOCATION)
+        if store_location and store_location not in valid_locations:
+            return JsonResponse({'success': False, 'error': 'Please select a valid store location.'}, status=400)
+        job = start_import_job(model_key, upload, request.user, store_location=store_location or None)
         return JsonResponse({'success': True, 'job_id': job.id, 'total_rows': job.total_rows})
     except Exception as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
