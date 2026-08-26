@@ -29,6 +29,7 @@ urlpatterns = [
     path('users/permissions/', core_views.role_permission_settings, name='role_permission_settings'),
     path('users/create/', core_views.user_create, name='user_create'),
     path('users/<int:user_id>/edit/', core_views.user_edit, name='user_edit'),
+    path('users/<int:user_id>/toggle-active/', core_views.user_toggle_active, name='user_toggle_active'),
     path('admin/', admin.site.urls),
     path('spare/', include('apps.categories.urls')),
     path('inventory/', include('apps.inventory.urls')),

@@ -451,8 +451,26 @@ def import_row(model_key, row, user=None):
     return creator(row)
 
 
+# Appended Stock Out columns (see STOCK_OUT_APPEND_COLUMNS) — a row is only
+# stocked out when at least one of these carries a value; otherwise the row is
+# stocked in only.
+STOCK_OUT_DETAIL_FIELDS = (
+    'so_client_name', 'so_invoice_no', 'so_olf_dc_number',
+    'so_stock_status', 'so_stock_out_date',
+)
+
+
+def _row_has_stock_out_details(row):
+    return any((row.get(field) or '').strip() for field in STOCK_OUT_DETAIL_FIELDS)
+
+
 def import_combined_stock_out_row(base_key, row, user=None):
-    """Stock out an existing product when possible; otherwise create it first."""
+    """Stock in every row; stock out only rows that actually carry Stock Out
+    details (Client / Invoice / OLF-DC / Stock Status / Stock Out Date).
+
+    So in a 10-row file where only 2 rows have stock-out columns filled, those
+    2 are stocked out and the other 8 are stocked in only.
+    """
     if base_key not in HEADER_MAPS:
         raise ValueError(f'Unknown stock-out base model: {base_key}')
 
@@ -460,6 +478,10 @@ def import_combined_stock_out_row(base_key, row, user=None):
         product = _product_from_stock_out_row(row)
     except ValueError:
         product = import_row(base_key, row, user=user)
+
+    # No stock-out details on this row → stock in only.
+    if not _row_has_stock_out_details(row):
+        return product
 
     so_row = {
         'serial_no': product.serial_no or '',

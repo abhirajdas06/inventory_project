@@ -98,13 +98,23 @@
                     <td style="white-space:normal;min-width:220px;">{{ finding.remarks }}</td>
                     <td>
                         {% if finding.status != 'ATTENDED' %}
-                        <form method="post" action="{% url 'attend_general_audit_finding' finding.id %}" class="d-flex gap-1" style="min-width:200px;">
+                        <form method="post" action="{% url 'attend_general_audit_finding' finding.id %}"
+                              enctype="multipart/form-data" class="d-flex flex-column gap-1" style="min-width:220px;">
                             {% csrf_token %}
                             <input name="remarks" class="form-control form-control-sm" placeholder="Remarks" required>
+                            <input name="attended_attachment" type="file" class="form-control form-control-sm"
+                                   accept=".xlsx,.xls,.csv,.pdf" title="Attach Excel (optional)">
                             <button class="btn btn-sm btn-outline-success">Attend</button>
                         </form>
                         {% else %}
-                        <span class="text-muted small">{{ finding.attended_at|date:"Y-m-d H:i" }}</span>
+                        <div class="small text-muted">
+                            {{ finding.attended_at|date:"Y-m-d H:i" }}
+                            {% if finding.attended_attachment %}
+                            <a href="{{ finding.attended_attachment.url }}" target="_blank" class="btn btn-sm btn-outline-secondary mt-1">
+                                <i class="bi bi-paperclip"></i> Attended file
+                            </a>
+                            {% endif %}
+                        </div>
                         {% endif %}
                     </td>
                 </tr>

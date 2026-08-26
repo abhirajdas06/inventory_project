@@ -221,3 +221,28 @@ def user_edit(request, user_id):
         'profile': profile,
         'roles': UserProfile.ROLE_CHOICES,
     })
+
+
+@require_permission('user_management')
+@require_POST
+def user_toggle_active(request, user_id):
+    """Activate / deactivate a user. Inactive users cannot log in
+    (Django's auth backend rejects is_active=False)."""
+    target = get_object_or_404(User, id=user_id)
+    if target == request.user:
+        messages.error(request, 'You cannot deactivate your own account.')
+        return redirect('user_list')
+
+    target.is_active = not target.is_active
+    target.save(update_fields=['is_active'])
+    log_activity(
+        action='USER_ACTIVATE' if target.is_active else 'USER_DEACTIVATE',
+        module='USER', entity=target.username, entity_id=target.id, user=request.user,
+        new_values={'is_active': target.is_active},
+        remarks=('Marked active' if target.is_active else 'Marked inactive — login blocked'),
+    )
+    messages.success(
+        request,
+        f'"{target.username}" is now {"active" if target.is_active else "inactive (cannot log in)"}.'
+    )
+    return redirect('user_list')

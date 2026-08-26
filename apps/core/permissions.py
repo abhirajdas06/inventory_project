@@ -59,6 +59,19 @@ def user_role(user):
     return profile.role if profile else ''
 
 
+def permissions_for(user):
+    """Return the set of permission keys the user currently holds."""
+    if not getattr(user, 'is_authenticated', False):
+        return set()
+    if getattr(user, 'is_superuser', False):
+        return set(PERMISSION_LABELS.keys())
+    role = user_role(user)
+    override = RolePermission.objects.filter(role=role).only('permissions').first()
+    if override is not None:
+        return set(override.permissions or [])
+    return set(ROLE_PERMISSIONS.get(role, set()))
+
+
 def has_permission(user, permission):
     if not getattr(user, 'is_authenticated', False):
         return False

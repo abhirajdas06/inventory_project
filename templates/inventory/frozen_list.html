@@ -62,14 +62,13 @@
                                     title="Stock out / mark sold">
                                 <i class="bi bi-box-arrow-up-right"></i> Stock Out
                             </button>
-                            <form method="post" action="{% url 'unfreeze_inventory' %}" class="d-inline">
-                                {% csrf_token %}
-                                <input type="hidden" name="product_id" value="{{ product.id }}">
-                                <input type="hidden" name="reason" value="Manual unfreeze from frozen page">
-                                <button class="btn btn-sm btn-outline-success" title="Unfreeze">
-                                    <i class="bi bi-fire"></i> Unfreeze
-                                </button>
-                            </form>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-success unfreeze-btn"
+                                    data-id="{{ product.id }}"
+                                    data-label="{{ product.name }} [{{ product.serial_no }}]"
+                                    title="Unfreeze">
+                                <i class="bi bi-fire"></i> Unfreeze
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -125,6 +124,46 @@
     </div>
   </div>
 </div>
+
+<!-- Unfreeze modal (sales-return style: disposition + warehouse + location + remarks) -->
+<div class="modal fade" id="unfreezeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content p-3">
+      <h5 class="mb-1">Unfreeze Stock</h5>
+      <p id="unfreezeLabel" class="text-muted small mb-3"></p>
+      <input type="hidden" id="unfreezeProductId">
+      <div class="mb-2">
+        <label class="form-label">Disposition</label>
+        <select id="unfreezeDisposition" class="form-select">
+          <option value="LIVE">Keep in stock (Live)</option>
+          <option value="FAULTY">Move to faulty stock</option>
+          <option value="DAMAGED">Damaged</option>
+          <option value="SCRAP">Scrap</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Warehouse</label>
+        <select id="unfreezeWarehouse" class="form-select">
+          <option value="">Use current warehouse</option>
+          <option value="WH1">WH1</option><option value="WH2">WH2</option>
+          <option value="DELHI">Delhi</option><option value="BANGALORE">Bangalore</option>
+          <option value="HYDERABAD">Hyderabad</option><option value="CHENNAI">Chennai</option>
+          <option value="KOLKATA">Kolkata</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Physical location</label>
+        <input type="text" id="unfreezeLocation" class="form-control" placeholder="Rack / shelf / box / room">
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Remarks <span class="text-danger">*</span></label>
+        <textarea id="unfreezeRemarks" class="form-control" rows="2" placeholder="Reason for unfreezing"></textarea>
+      </div>
+      <button class="btn btn-success w-100 mt-1" id="unfreezeConfirm">Confirm Unfreeze</button>
+      <div id="unfreezeMsg" class="mt-2 small"></div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -168,6 +207,57 @@
                     const row = document.querySelector(`tr[data-id="${productId}"]`);
                     if (row) row.remove();
                     setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('frozenStockOutModal')).hide(), 800);
+                } else {
+                    msgEl.className = 'mt-2 small text-danger';
+                    msgEl.textContent = 'Failed: ' + (res.error || 'Unknown error');
+                }
+            })
+            .catch(() => { msgEl.className = 'mt-2 small text-danger'; msgEl.textContent = 'Server error.'; });
+    });
+
+    // ── Unfreeze modal ──
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.unfreeze-btn');
+        if (!btn) return;
+        document.getElementById('unfreezeProductId').value = btn.dataset.id;
+        document.getElementById('unfreezeLabel').textContent = btn.dataset.label || '';
+        document.getElementById('unfreezeDisposition').value = 'LIVE';
+        document.getElementById('unfreezeWarehouse').value = '';
+        document.getElementById('unfreezeLocation').value = '';
+        document.getElementById('unfreezeRemarks').value = '';
+        document.getElementById('unfreezeMsg').textContent = '';
+        new bootstrap.Modal(document.getElementById('unfreezeModal')).show();
+    });
+    document.getElementById('unfreezeConfirm').addEventListener('click', function () {
+        const productId = document.getElementById('unfreezeProductId').value;
+        const msgEl = document.getElementById('unfreezeMsg');
+        const reason = document.getElementById('unfreezeRemarks').value.trim();
+        if (!reason) {
+            msgEl.className = 'mt-2 small text-danger';
+            msgEl.textContent = 'Remarks are required.';
+            return;
+        }
+        const data = new URLSearchParams({
+            product_id: productId,
+            reason: reason,
+            disposition: document.getElementById('unfreezeDisposition').value,
+            return_warehouse: document.getElementById('unfreezeWarehouse').value,
+            return_location: document.getElementById('unfreezeLocation').value,
+            csrfmiddlewaretoken: csrf()
+        });
+        fetch('/inventory/unfreeze/', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: data
+        })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    msgEl.className = 'mt-2 small text-success';
+                    msgEl.textContent = 'Unfrozen successfully.';
+                    const row = document.querySelector(`tr[data-id="${productId}"]`);
+                    if (row) row.remove();
+                    setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('unfreezeModal')).hide(), 800);
                 } else {
                     msgEl.className = 'mt-2 small text-danger';
                     msgEl.textContent = 'Failed: ' + (res.error || 'Unknown error');

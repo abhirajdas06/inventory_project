@@ -88,6 +88,12 @@ class InventoryTransaction(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            # "latest transaction per product" lookups drive every list view.
+            models.Index(fields=['product', '-created_at'], name='invtxn_prod_created_idx'),
+            models.Index(fields=['product', 'transaction_type', '-created_at'], name='invtxn_prod_type_idx'),
+            models.Index(fields=['transaction_type', 'stock_status'], name='invtxn_type_status_idx'),
+        ]
 
     def __str__(self):
         return f"{self.product.serial_no} - {self.transaction_type}"
@@ -213,6 +219,9 @@ class InventoryFreezeRecord(models.Model):
 
     class Meta:
         ordering = ['-frozen_at']
+        indexes = [
+            models.Index(fields=['product', '-frozen_at'], name='freeze_prod_frozen_idx'),
+        ]
 
     def __str__(self):
         return f"{self.product_id}:{self.status}"
@@ -307,6 +316,7 @@ class GeneralAuditFinding(models.Model):
     )
     attended_at = models.DateTimeField(null=True, blank=True)
     attended_remarks = models.TextField(blank=True)
+    attended_attachment = models.FileField(upload_to='general_audit_findings/attended/', null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     class Meta:

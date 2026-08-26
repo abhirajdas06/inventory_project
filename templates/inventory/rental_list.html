@@ -115,6 +115,29 @@
       <p id="rentalReturnLabel" class="text-muted small mb-3"></p>
       <input type="hidden" id="rentalReturnId">
       <div class="mb-2">
+        <label class="form-label">Return disposition</label>
+        <select id="rentalReturnDisposition" class="form-select">
+          <option value="LIVE">Add back to stock (Live)</option>
+          <option value="FAULTY">Move to faulty stock</option>
+          <option value="DAMAGED">Damaged</option>
+          <option value="SCRAP">Scrap</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Return warehouse</label>
+        <select id="rentalReturnWarehouse" class="form-select">
+          <option value="">Use rental warehouse</option>
+          <option value="WH1">WH1</option><option value="WH2">WH2</option>
+          <option value="DELHI">Delhi</option><option value="BANGALORE">Bangalore</option>
+          <option value="HYDERABAD">Hyderabad</option><option value="CHENNAI">Chennai</option>
+          <option value="KOLKATA">Kolkata</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <label class="form-label">Physical location</label>
+        <input type="text" id="rentalReturnLocation" class="form-control" placeholder="Rack / shelf / box / room">
+      </div>
+      <div class="mb-2">
         <label class="form-label">Return Date</label>
         <input type="date" id="rentalReturnDate" class="form-control">
       </div>
@@ -122,10 +145,7 @@
         <label class="form-label">Remarks</label>
         <textarea id="rentalReturnRemarks" class="form-control" rows="2"></textarea>
       </div>
-      <div class="alert alert-info py-2 small mb-2">
-        On return, the item goes back into stock (a fresh Stock In) and becomes available to sell or rent again.
-      </div>
-      <button class="btn btn-success w-100 mt-1" id="rentalReturnConfirm">Confirm Return</button>
+      <button class="btn btn-success w-100 mt-1" id="rentalReturnConfirm">Process Return</button>
       <div id="rentalReturnMsg" class="mt-2 small"></div>
     </div>
   </div>
@@ -145,6 +165,9 @@
         document.getElementById('rentalReturnLabel').textContent = btn.dataset.label || '';
         document.getElementById('rentalReturnDate').value = new Date().toISOString().split('T')[0];
         document.getElementById('rentalReturnRemarks').value = '';
+        document.getElementById('rentalReturnDisposition').value = 'LIVE';
+        document.getElementById('rentalReturnWarehouse').value = '';
+        document.getElementById('rentalReturnLocation').value = '';
         document.getElementById('rentalReturnMsg').textContent = '';
         new bootstrap.Modal(document.getElementById('rentalReturnModal')).show();
     });
@@ -155,6 +178,9 @@
             rental_id: id,
             return_date: document.getElementById('rentalReturnDate').value,
             remarks: document.getElementById('rentalReturnRemarks').value,
+            disposition: document.getElementById('rentalReturnDisposition').value,
+            return_warehouse: document.getElementById('rentalReturnWarehouse').value,
+            return_location: document.getElementById('rentalReturnLocation').value,
             csrfmiddlewaretoken: csrf()
         });
         fetch('/inventory/rentals/return/', { method: 'POST', body: data })

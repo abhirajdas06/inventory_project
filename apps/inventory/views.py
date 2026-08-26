@@ -1168,25 +1168,52 @@ def unfreeze_inventory(request):
             if wants_json:
                 return JsonResponse({'success': False, 'error': 'Asset is not frozen'})
             return redirect('frozen_inventory_list')
-        InventoryFreezeRecord.objects.create(
-            product=product,
-            status='UNFROZEN',
-            reason=reason,
-            frozen_by=latest.frozen_by,
-            unfrozen_by=request.user,
-            unfrozen_at=now(),
+
+        # Disposition + warehouse/location, mirroring the Sales Return flow.
+        disposition = (request.POST.get('disposition') or 'LIVE').strip().upper()
+        if disposition not in {'LIVE', 'FAULTY', 'DAMAGED', 'SCRAP'}:
+            disposition = 'LIVE'
+        return_warehouse = (request.POST.get('return_warehouse') or '').strip().upper()
+        return_location = (request.POST.get('return_location') or '').strip()
+        valid_locations = dict(InventoryTransaction.STORE_LOCATION)
+        store_location = (
+            return_warehouse if return_warehouse in valid_locations
+            else _latest_store_location(product)
         )
+
+        with transaction.atomic():
+            InventoryFreezeRecord.objects.create(
+                product=product,
+                status='UNFROZEN',
+                reason=reason,
+                frozen_by=latest.frozen_by,
+                unfrozen_by=request.user,
+                unfrozen_at=now(),
+            )
+            # Optionally change disposition on unfreeze.
+            if disposition == 'SCRAP':
+                _create_scrap_transaction(product, reason, request.user, scrap_location=store_location)
+            elif disposition in {'FAULTY', 'DAMAGED'}:
+                InventoryTransaction.objects.create(
+                    product=product, transaction_type='IN', store_location=store_location,
+                    stock_status=disposition, stock_in_date=now().date(),
+                    performed_by=request.user if request.user.is_authenticated else None,
+                )
+            if return_location:
+                _set_product_location(product, return_location)
+
         log_activity(
             action='UNFREEZE',
             module='INVENTORY',
             entity=product.name,
             entity_id=product.id,
             user=request.user,
-            warehouse=_latest_store_location(product),
-            location=_latest_location(product),
+            warehouse=store_location,
+            location=return_location or _latest_location(product),
+            new_values={'disposition': disposition},
             remarks=reason,
         )
-        log_timeline(product=product, event_type='UNFREEZE', user=request.user, warehouse=_latest_store_location(product), location=_latest_location(product), remarks=reason)
+        log_timeline(product=product, event_type='UNFREEZE', user=request.user, warehouse=store_location, location=return_location or _latest_location(product), remarks=reason)
         if wants_json:
             return JsonResponse({'success': True})
         return redirect('frozen_inventory_list')
@@ -1348,7 +1375,12 @@ def attend_general_audit_finding(request, finding_id):
         finding.attended_by = request.user
         finding.attended_at = now()
         finding.attended_remarks = format_dated_remark(remarks) or remarks
-        finding.save(update_fields=['status', 'attended_by', 'attended_at', 'attended_remarks'])
+        update_fields = ['status', 'attended_by', 'attended_at', 'attended_remarks']
+        attachment = request.FILES.get('attended_attachment')
+        if attachment:
+            finding.attended_attachment = attachment
+            update_fields.append('attended_attachment')
+        finding.save(update_fields=update_fields)
         log_activity(
             action='GENERAL_AUDIT_FINDING_ATTENDED',
             module='AUDIT',
@@ -1683,13 +1715,23 @@ def return_rental(request):
     rental_id = request.POST.get('rental_id')
     remarks = request.POST.get('remarks', '').strip()
     return_date = _parse_date(request.POST.get('return_date', '')) or date.today()
+    # Disposition + warehouse/location, mirroring the Sales Return flow.
+    disposition = (request.POST.get('disposition') or 'LIVE').strip().upper()
+    if disposition not in {'LIVE', 'FAULTY', 'DAMAGED', 'SCRAP'}:
+        disposition = 'LIVE'
+    return_warehouse = (request.POST.get('return_warehouse') or '').strip().upper()
+    return_location = (request.POST.get('return_location') or '').strip()
 
     record = get_object_or_404(RentalRecord, id=rental_id)
     if record.status == 'RETURNED':
         return JsonResponse({'success': False, 'error': 'This rental is already returned'})
 
     product = record.product
-    store_location = record.store_location or _latest_store_location(product)
+    valid_locations = dict(InventoryTransaction.STORE_LOCATION)
+    store_location = (
+        return_warehouse if return_warehouse in valid_locations
+        else (record.store_location or _latest_store_location(product))
+    )
     formatted_remarks = _append_remark_to_asset(product, remarks, return_date)
 
     with transaction.atomic():
@@ -1700,16 +1742,23 @@ def return_rental(request):
             record.remarks = (record.remarks + ' | ' if record.remarks else '') + f'Return: {formatted_remarks}'
         record.save(update_fields=['status', 'actual_return_date', 'returned_by', 'remarks'])
 
-        # Bring the asset back in stock → latest transaction becomes IN, so it
-        # reappears in active lists and is available to sell or rent again.
-        InventoryTransaction.objects.create(
-            product=product,
-            transaction_type='IN',
-            store_location=store_location,
-            stock_status='LIVE',
-            stock_in_date=return_date,
-            performed_by=request.user if request.user.is_authenticated else None,
-        )
+        if disposition == 'SCRAP':
+            # Returned but scrapped → stays out of active stock.
+            _create_scrap_transaction(product, remarks, request.user, scrapped_on=return_date,
+                                      scrap_location=store_location)
+        else:
+            # Bring the asset back in stock (LIVE / FAULTY / DAMAGED) → it reappears
+            # in active lists and is available to sell or rent again.
+            InventoryTransaction.objects.create(
+                product=product,
+                transaction_type='IN',
+                store_location=store_location,
+                stock_status=disposition,
+                stock_in_date=return_date,
+                performed_by=request.user if request.user.is_authenticated else None,
+            )
+        if return_location:
+            _set_product_location(product, return_location)
 
     log_activity(
         action='RENT_RETURN',
@@ -1718,9 +1767,10 @@ def return_rental(request):
         entity_id=product.id,
         user=request.user,
         warehouse=store_location,
-        location=_latest_location(product),
+        location=return_location or _latest_location(product),
         old_values={'status': 'ON_RENT', 'client': record.client_name},
-        new_values={'status': 'RETURNED', 'return_date': str(return_date), 'available': True},
+        new_values={'status': 'RETURNED', 'return_date': str(return_date),
+                    'disposition': disposition, 'available': disposition != 'SCRAP'},
         remarks=formatted_remarks or 'Rental returned — back in stock',
     )
     log_timeline(

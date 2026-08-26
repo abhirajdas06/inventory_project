@@ -1313,10 +1313,17 @@
         function esc(s) { return (s || '').toString().replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
         universalResults.innerHTML = items.map(function (item) {
             let actionBtns = '';
-            if (isLoggedIn && (canAudit || canStockOut)) {
+            const anyAction = canAudit || canStockOut || canTransferRequest || canFreeze || canMap || canProductHistory;
+            if (isLoggedIn && anyAction) {
+                const pid = item.product_id || '';
+                const lbl = esc(item.title);
                 actionBtns = '<div class="universal-result-actions mt-1">';
-                if (canAudit) actionBtns += '<button type="button" class="btn btn-sm btn-outline-warning search-result-audit-btn" data-product-id="' + (item.product_id || '') + '" data-item-label="' + esc(item.title) + '" title="Audit"><i class="bi bi-clipboard2-check me-1"></i>Audit</button>';
-                if (canStockOut) actionBtns += '<button type="button" class="btn btn-sm btn-outline-danger search-result-stockout-btn" data-product-id="' + (item.product_id || '') + '" data-item-label="' + esc(item.title) + '" title="Stock Out"><i class="bi bi-box-arrow-up-right me-1"></i>Stock Out</button>';
+                if (canAudit) actionBtns += '<button type="button" class="btn btn-sm btn-outline-warning search-result-audit-btn" data-product-id="' + pid + '" data-item-label="' + lbl + '" title="Audit"><i class="bi bi-clipboard2-check me-1"></i>Audit</button>';
+                if (canStockOut) actionBtns += '<button type="button" class="btn btn-sm btn-outline-danger search-result-stockout-btn" data-product-id="' + pid + '" data-item-label="' + lbl + '" title="Stock Out"><i class="bi bi-box-arrow-up-right me-1"></i>Stock Out</button>';
+                if (canTransferRequest) actionBtns += '<button type="button" class="btn btn-sm btn-outline-primary transfer-btn search-close-first" data-product-id="' + pid + '" data-item-label="' + lbl + '" title="Transfer"><i class="bi bi-arrow-left-right me-1"></i>Transfer</button>';
+                if (canFreeze) actionBtns += '<button type="button" class="btn btn-sm btn-outline-info freeze-btn search-close-first" data-product-id="' + pid + '" data-item-label="' + lbl + '" title="Freeze"><i class="bi bi-snow2 me-1"></i>Freeze</button>';
+                if (canMap) actionBtns += '<button type="button" class="btn btn-sm btn-outline-secondary map-btn search-close-first" data-product-id="' + pid + '" data-item-label="' + lbl + '" title="Map"><i class="bi bi-diagram-3 me-1"></i>Map</button>';
+                if (canProductHistory && pid) actionBtns += '<a href="/inventory/asset-ledger/' + pid + '/" class="btn btn-sm btn-outline-dark" title="History"><i class="bi bi-clock-history me-1"></i>History</a>';
                 actionBtns += '</div>';
             }
             let membership = '';
@@ -1340,6 +1347,15 @@
                 </div>`;
         }).join('');
     }
+
+    // Transfer/Freeze/Map from a search result: close the search modal so the
+    // action modal isn't stacked behind it (the global .transfer/.freeze/.map
+    // handlers then open their modal).
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('#universalSearchResults .search-close-first')) return;
+        const sm = universalModalEl && bootstrap.Modal.getInstance(universalModalEl);
+        if (sm) sm.hide();
+    });
 
     function runUniversalSearch(term) {
         const value = (term || '').trim();

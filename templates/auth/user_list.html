@@ -52,9 +52,26 @@
                     </td>
                     <td>{{ row.user.last_login|date:"Y-m-d H:i"|default:"Never" }}</td>
                     <td class="text-end">
-                        <a href="{% url 'user_edit' row.user.id %}" class="btn btn-sm btn-outline-primary">
-                            <i class="bi bi-pencil"></i> Edit
-                        </a>
+                        <div class="d-inline-flex gap-1 justify-content-end">
+                            <a href="{% url 'user_edit' row.user.id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-pencil"></i> Edit
+                            </a>
+                            {% if row.user != request.user %}
+                            <form method="post" action="{% url 'user_toggle_active' row.user.id %}" class="d-inline">
+                                {% csrf_token %}
+                                {% if row.user.is_active %}
+                                <button class="btn btn-sm btn-outline-danger"
+                                        onclick="return confirm('Mark {{ row.user.username }} inactive? They will not be able to log in.');">
+                                    <i class="bi bi-person-x"></i> Deactivate
+                                </button>
+                                {% else %}
+                                <button class="btn btn-sm btn-outline-success">
+                                    <i class="bi bi-person-check"></i> Activate
+                                </button>
+                                {% endif %}
+                            </form>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% empty %}
