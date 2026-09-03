@@ -202,6 +202,41 @@ class AuthAndNetworkingSpareTests(TestCase):
         self.assertIn('RENT', response.context['available_statuses'])
         self.assertContains(response, spare.barcode)
 
+    def test_spare_list_uses_database_pagination(self):
+        category = SpareCategory.objects.create(name='PAGED-SPARES')
+        products = [
+            Product(category=category, serial_no=f'PAGED-{number}', name=f'Paged spare {number}')
+            for number in range(55)
+        ]
+        Product.objects.bulk_create(products)
+        created_products = list(Product.objects.filter(category=category).order_by('id'))
+        Spare.objects.bulk_create([
+            Spare(product=product, barcode=f'PAGED-BC-{index}')
+            for index, product in enumerate(created_products)
+        ])
+        InventoryTransaction.objects.bulk_create([
+            InventoryTransaction(product=product, transaction_type='IN', store_location='WH1', stock_status='LIVE')
+            for product in created_products
+        ])
+
+        response = self.client.get(reverse('spare_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['spares']), 50)
+        self.assertEqual(response.context['page_obj'].paginator.count, 55)
+
+    def test_universal_search_is_bounded_and_requires_three_characters(self):
+        category = SpareCategory.objects.create(name='UNIVERSAL-SEARCH')
+        product = Product.objects.create(category=category, serial_no='SEARCH-001', name='Universal search item')
+        Spare.objects.create(product=product, barcode='SEARCH-BC')
+
+        too_short = self.client.get(reverse('universal_search'), {'q': 'se'})
+        response = self.client.get(reverse('universal_search'), {'q': 'SEA'})
+
+        self.assertEqual(too_short.json()['results'], [])
+        self.assertLessEqual(len(response.json()['results']), 40)
+        self.assertTrue(any(item['product_id'] == product.id for item in response.json()['results']))
+
     def test_chunked_stock_out_import_by_barcode(self):
         self.client.force_login(self.user)
         category = SpareCategory.objects.create(name='SPARE')

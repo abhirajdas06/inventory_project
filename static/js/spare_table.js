@@ -23,7 +23,7 @@ $(document).ready(function () {
         autoWidth: false,
         orderCellsTop: true,
         fixedHeader: true,
-        deferRender: true
+        deferRender: true, paging: false, searching: false, info: false
     });
 
     setTimeout(function () {

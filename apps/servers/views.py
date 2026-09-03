@@ -13,6 +13,7 @@ from django.contrib.postgres.aggregates import StringAgg
 from apps.core.models import Product, SpareCategory, Brand
 from apps.core.services import create_server_with_components, add_server_component
 from apps.core.permissions import has_permission
+from apps.core.pagination import paginated_list_context
 from apps.inventory.models import InventoryFreezeRecord, InventoryTransaction
 from apps.servers.models import Server, ServerComponent
  
@@ -111,12 +112,12 @@ def add_server(request):
     })
  
  
-def _server_queryset():
+def _server_queryset(include_component_search=False):
     latest_txn = InventoryTransaction.objects.filter(
         product=OuterRef('product')
     ).order_by('-created_at')
 
-    return Server.objects.select_related(
+    queryset = Server.objects.select_related(
         'product', 'brand'
     ).annotate(
         latest_type     = Subquery(latest_txn.values('transaction_type')[:1]),
@@ -126,7 +127,9 @@ def _server_queryset():
         latest_invoice  = Subquery(latest_txn.values('invoice_no')[:1]),
         latest_olf_dc   = Subquery(latest_txn.values('olf_dc_number')[:1]),
         latest_out_date = Subquery(latest_txn.values('stock_out_date')[:1]),
-        component_search = StringAgg(
+    )
+    if include_component_search:
+        queryset = queryset.annotate(component_search=StringAgg(
             Concat(
                 Coalesce('components__spare_type', Value('')),
                 Value(' '),
@@ -143,19 +146,29 @@ def _server_queryset():
             ),
             delimiter=' ',
             distinct=True,
-        ),
-    ).order_by('-created_at')
+        ))
+    return queryset.order_by('-created_at')
 
 
 # ── List ──────────────────────────────────────────────────
 def server_list(request):
-    servers = _exclude_out_or_frozen(_server_queryset())
+    q = (request.GET.get('q') or '').strip()
+    servers = _server_queryset(include_component_search=bool(q))
+    if q:
+        server_filter = (
+            Q(machine_no__icontains=q) | Q(service_tag__icontains=q) |
+            Q(model__icontains=q) | Q(part_no__icontains=q) |
+            Q(barcode__icontains=q) | Q(location__icontains=q) |
+            Q(component_search__icontains=q)
+        )
+        servers = servers.filter(server_filter)
+    servers = _exclude_out_or_frozen(servers)
  
-    return render(request, 'servers/server_list.html', {
-        'servers':          servers,
-        'spare_categories': SpareCategory.objects.all(),   # ← this
-        'brands':           Brand.objects.all(),
-    })
+    return render(request, 'servers/server_list.html', paginated_list_context(
+        request, servers, 'servers',
+        spare_categories=SpareCategory.objects.all(),
+        brands=Brand.objects.all(),
+    ))
 
 
 def server_out_list(request):

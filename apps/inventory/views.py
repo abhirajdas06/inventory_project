@@ -23,6 +23,7 @@ from django.db.models import Count, OuterRef, Subquery, Q
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
 from apps.core.permissions import has_permission
+from apps.core.pagination import paginated_list_context
 from openpyxl import load_workbook
 
 
@@ -555,8 +556,9 @@ def stock_out_status_list(request, status):
             Q(latest_olf_dc__icontains=q)
         )
 
+    page_context = paginated_list_context(request, products.order_by('-id'), 'products')
     rows = []
-    for product in products[:2000]:
+    for product in page_context['products']:
         detail = _inventory_detail(product)
         rows.append({
             'product': product,
@@ -571,7 +573,9 @@ def stock_out_status_list(request, status):
         'status': status,
         'status_label': status_labels.get(status, status),
         'statuses': [(value, status_labels.get(value, value)) for value in OPERATIONAL_STOCK_OUT_STATUSES],
-        'result_count': len(rows),
+        'result_count': page_context['total_count'],
+        'total_count': page_context['total_count'],
+        'page_obj': page_context['page_obj'],
         'can_stock_return': has_permission(request.user, 'stock_return'),
         'can_stock_out': has_permission(request.user, 'stock_out'),
     })

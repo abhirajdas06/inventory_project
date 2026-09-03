@@ -1207,6 +1207,7 @@
     const universalResults = document.getElementById('universalSearchResults');
     const universalModalEl = document.getElementById('universalSearchModal');
     let universalTimer = null;
+    let universalAbortController = null;
 
     function csrfToken() {
         return (document.cookie.split('; ').find(r => r.startsWith('csrftoken')) || '').split('=')[1] || '';
@@ -1360,15 +1361,18 @@
     function runUniversalSearch(term) {
         const value = (term || '').trim();
         if (!universalResults) return;
-        if (value.length < 2) {
-            universalResults.innerHTML = '<div class="text-muted small">Type at least two characters.</div>';
+        if (value.length < 3) {
+            universalResults.innerHTML = '<div class="text-muted small">Type at least three characters.</div>';
             return;
         }
+        if (universalAbortController) universalAbortController.abort();
+        universalAbortController = new AbortController();
         universalResults.innerHTML = '<div class="text-muted small">Searching...</div>';
-        fetch('/spare/universal-search/?q=' + encodeURIComponent(value))
+        fetch('/spare/universal-search/?q=' + encodeURIComponent(value), { signal: universalAbortController.signal })
             .then(function (res) { return res.json(); })
             .then(function (data) { renderUniversalResults(data.results || []); })
-            .catch(function () {
+            .catch(function (error) {
+                if (error.name === 'AbortError') return;
                 universalResults.innerHTML = '<div class="text-danger small">Search failed.</div>';
             });
     }
@@ -1377,7 +1381,7 @@
         window.clearTimeout(universalTimer);
         universalTimer = window.setTimeout(function () {
             runUniversalSearch(value);
-        }, 220);
+        }, 350);
     }
 
     if (universalSearchInput && universalModalEl) {

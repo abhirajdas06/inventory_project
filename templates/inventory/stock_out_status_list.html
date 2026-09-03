@@ -89,6 +89,7 @@
       </tbody>
     </table>
   </div>
+  {% include "partials/list_pagination.html" %}
 </div>
 {% include "inventory/sales_return_modal.html" %}
 {% include "inventory/scrap_modal.html" %}
@@ -97,7 +98,7 @@
 {% block extra_js %}
 <script>
 $(function () {
-  $('#stockOutStatusTable').DataTable({pageLength: 25, scrollX: true, deferRender: true});
+  $('#stockOutStatusTable').DataTable({scrollX: true, deferRender: true, paging: false, searching: false, info: false});
 });
 </script>
 {% endblock %}

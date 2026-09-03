@@ -1,0 +1,13 @@
+<form method="get" class="inventory-list-query row g-2 align-items-center mb-3">
+    <div class="col-sm-7 col-lg-5">
+        <div class="input-group input-group-sm">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="search" class="form-control" name="q" value="{{ q }}" placeholder="Search product, serial, part number, barcode, or location">
+        </div>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary btn-sm" type="submit">Search</button>
+        {% if q %}<a class="btn btn-outline-secondary btn-sm" href="{{ request.path }}">Clear</a>{% endif %}
+    </div>
+    {% if total_count is not None %}<div class="col-auto text-muted small">{{ total_count }} record{{ total_count|pluralize }}</div>{% endif %}
+</form>

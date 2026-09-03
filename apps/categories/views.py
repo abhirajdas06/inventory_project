@@ -21,6 +21,7 @@ from apps.core.permissions import require_any_permission
 from apps.inventory.models import InventoryFreezeRecord, InventoryTransaction
 from apps.core.permissions import has_permission
 from apps.core.activity import append_dated_remark
+from apps.core.pagination import paginated_list_context
 from django.http import HttpResponseForbidden
 
 
@@ -33,6 +34,18 @@ def _exclude_out_or_frozen(qs):
     ).exclude(latest_type='OUT').filter(
         Q(latest_freeze_status__isnull=True) | ~Q(latest_freeze_status='FROZEN')
     )
+
+
+def _list_search(queryset, query, model_class):
+    """Apply indexed identity/location filters before the costly list annotations."""
+    if not query:
+        return queryset
+    model_fields = {field.name for field in model_class._meta.get_fields()}
+    filters = Q(product__name__icontains=query) | Q(product__serial_no__icontains=query) | Q(product__part_no__icontains=query)
+    for field in ('barcode', 'part_no', 'alt_part_no', 'location', 'reference_location', 'remark', 'model'):
+        if field in model_fields:
+            filters |= Q(**{f'{field}__icontains': query})
+    return queryset.filter(filters)
 
 
 def _mark_latest_stock_in_user(product, user):
@@ -111,10 +124,11 @@ def spare_list(request):
         transaction_type='AUDIT'
     ).order_by('-created_at')
  
-    spares = Spare.objects.select_related(
+    q = (request.GET.get('q') or '').strip()
+    spares = _list_search(Spare.objects.select_related(
         'product', 'product__category',
         'controller', 'controller__product',
-    ).annotate(
+    ), q, Spare).annotate(
         latest_type     = Subquery(latest_txn.values('transaction_type')[:1]),
         latest_location = Subquery(latest_txn.values('store_location')[:1]),
         latest_status   = Subquery(latest_txn.values('stock_status')[:1]),
@@ -143,7 +157,7 @@ def spare_list(request):
     )
     spares = _exclude_out_or_frozen(spares)
  
-    return render(request, 'spare/list.html', {'spares': spares})
+    return render(request, 'spare/list.html', paginated_list_context(request, spares.order_by('-id'), 'spares'))
  
  
 # # NEW VIEW — components API used by controller list page
@@ -519,6 +533,7 @@ def controller_list(request):
         transaction_type='AUDIT'
     ).order_by('-created_at')
  
+    q = (request.GET.get('q') or '').strip()
     controllers = Controller.objects.select_related(
         'product', 'product__category', 'brand'
     ).annotate(
@@ -526,7 +541,9 @@ def controller_list(request):
         latest_location = Subquery(latest_txn.values('store_location')[:1]),
         latest_status   = Subquery(latest_txn.values('stock_status')[:1]),
         last_audit_date = Subquery(latest_audit.values('audited_on')[:1]),
-        component_search = StringAgg(
+    )
+    if q:
+        controllers = controllers.annotate(component_search=StringAgg(
             Concat(
                 Coalesce('components__product__name', Value('')),
                 Value(' '),
@@ -541,15 +558,19 @@ def controller_list(request):
             ),
             delimiter=' ',
             distinct=True,
-        ),
-    )
+        ))
+        controllers = controllers.filter(
+            Q(product__name__icontains=q) | Q(product__serial_no__icontains=q) |
+            Q(part_no__icontains=q) | Q(barcode__icontains=q) |
+            Q(location__icontains=q) | Q(component_search__icontains=q)
+        )
     controllers = _exclude_out_or_frozen(controllers)
  
-    return render(request, 'controller/controller_list.html', {
-        'controllers':      controllers,
-        'spare_categories': SpareCategory.objects.all(),   # for add-component modal
-        'brands':           Brand.objects.all(),           # for add-component modal
-    })
+    return render(request, 'controller/controller_list.html', paginated_list_context(
+        request, controllers.order_by('-id'), 'controllers',
+        spare_categories=SpareCategory.objects.all(),
+        brands=Brand.objects.all(),
+    ))
  
  
 def update_controller_field(request):
@@ -1287,6 +1308,7 @@ def _list_view_annotated(model_class, template, context_key):
             product_id=OuterRef('product_id')
         )
 
+        q = (request.GET.get('q') or '').strip()
         qs = (
             model_class.objects
             .select_related(
@@ -1331,14 +1353,13 @@ def _list_view_annotated(model_class, template, context_key):
                 ),
             )
         )
+        qs = _list_search(qs, q, model_class)
         qs = _exclude_out_or_frozen(qs)
 
         return render(
             request,
             template,
-            {
-                context_key: qs
-            }
+            paginated_list_context(request, qs.order_by('-id'), context_key)
         )
 
     return view
@@ -1501,11 +1522,10 @@ def _resolve_attr(obj, path):
     return current
 
 
-def _generic_list_context(kind, sold=False, status=None, filters=None):
+def _generic_list_context(kind, sold=False, status=None, filters=None, request=None):
     config = LIST_MODELS[kind]
     filters = filters or {}
     base_items = _annotated_category_queryset(config['model'], sold=sold)
-    total_count = base_items.count()
     items = base_items
     if sold and status:
         items = items.filter(latest_status=status)
@@ -1532,8 +1552,10 @@ def _generic_list_context(kind, sold=False, status=None, filters=None):
             )
         items = items.filter(q_obj)
 
+    page_context = paginated_list_context(request, items.order_by('-id'), 'items') if request else None
+    page_items = page_context['items'] if page_context else items
     rows = []
-    for item in items:
+    for item in page_items:
         rows.append({
             'item': item,
             'values': [_resolve_attr(item, path) for _, path in config['fields']],
@@ -1543,12 +1565,14 @@ def _generic_list_context(kind, sold=False, status=None, filters=None):
         'title': ('Sold ' if sold else '') + config['label'],
         'config': config,
         'fields': config['fields'],
-        'items': items,
+        'items': page_items,
         'rows': rows,
         'sold': sold,
-        'total_count': total_count,
+        'total_count': page_context['total_count'] if page_context else items.count(),
         'result_count': len(rows),
         'filters': {'q': q, 'date_from': date_from, 'date_to': date_to},
+        'page_obj': page_context['page_obj'] if page_context else None,
+        'q': q,
     }
 
 
@@ -1569,7 +1593,7 @@ def inventory_sold_list(request, kind):
         'date_from': request.GET.get('date_from', ''),
         'date_to': request.GET.get('date_to', ''),
     }
-    context = _generic_list_context(kind, sold=True, status=selected_status, filters=filters)
+    context = _generic_list_context(kind, sold=True, status=selected_status, filters=filters, request=request)
     context['available_statuses'] = available_statuses
     context['selected_status'] = selected_status
     context['can_stock_return'] = has_permission(request.user, 'stock_return')
@@ -1587,12 +1611,16 @@ def inventory_faulty_list(request, kind):
     if q:
         items = items.filter(Q(product__name__icontains=q) | Q(product__serial_no__icontains=q) | Q(barcode__icontains=q))
     rows = [{'item': item, 'values': [_resolve_attr(item, path) for _, path in config['fields']]} for item in items]
+    page_context = paginated_list_context(request, items.order_by('-id'), 'items')
+    rows = [{'item': item, 'values': [_resolve_attr(item, path) for _, path in config['fields']]} for item in page_context['items']]
     return render(request, 'inventory/faulty_list.html', {
         'kind': kind,
         'config': config,
         'fields': config['fields'],
         'rows': rows,
         'q': q,
+        'page_obj': page_context['page_obj'],
+        'total_count': page_context['total_count'],
         'can_stock_return': has_permission(request.user, 'stock_return'),
         'can_stock_out': has_permission(request.user, 'stock_out'),
     })
@@ -1841,7 +1869,7 @@ def process_import(request, job_id):
 
 
 def networking_spare_list(request):
-    return render(request, 'inventory/generic_live_list.html', _generic_list_context('networking_spare', sold=False))
+    return render(request, 'inventory/generic_live_list.html', _generic_list_context('networking_spare', sold=False, request=request))
 
 
 @login_required
@@ -1878,74 +1906,61 @@ def add_networking_spare(request):
     return render(request, 'inventory/add_networking_spare.html')
 
 
-def _product_membership(product_id):
-    """Return server / controller membership info for a product.
-
-    Used by universal search so a component is shown once (from its own
-    category) with a highlighted "part of" label, rather than also listing
-    the parent server / controller as a separate result.
-    """
+def _product_memberships(product_ids):
+    """Fetch membership information for a result set in two queries, not N queries."""
     from apps.servers.models import ServerComponent
     from apps.categories.models import Spare
 
-    info = {'in_server': False, 'server_label': '', 'in_controller': False, 'controller_label': ''}
-
-    sc = ServerComponent.objects.filter(product_id=product_id).select_related('server').first()
-    if sc and sc.server:
-        s = sc.server
-        info['in_server'] = True
-        info['server_label'] = (
-            f"{s.machine_no or s.model or 'Server'} [{s.service_tag or '—'}]"
-        )
-
-    sp = Spare.objects.filter(
-        product_id=product_id, controller__isnull=False
-    ).select_related('controller__product').first()
-    if sp and sp.controller:
-        c = sp.controller
-        info['in_controller'] = True
-        info['controller_label'] = (
-            f"{c.model or 'Controller'} [{getattr(c.product, 'serial_no', '') or '—'}]"
-        )
-    return info
+    memberships = {
+        product_id: {'in_server': False, 'server_label': '', 'in_controller': False, 'controller_label': ''}
+        for product_id in product_ids
+    }
+    for component in ServerComponent.objects.filter(product_id__in=product_ids).select_related('server'):
+        if component.server:
+            server = component.server
+            memberships[component.product_id].update(
+                in_server=True,
+                server_label=f"{server.machine_no or server.model or 'Server'} [{server.service_tag or '-'}]",
+            )
+    for spare in Spare.objects.filter(product_id__in=product_ids, controller__isnull=False).select_related('controller__product'):
+        if spare.controller:
+            controller = spare.controller
+            memberships[spare.product_id].update(
+                in_controller=True,
+                controller_label=f"{controller.model or 'Controller'} [{controller.product.serial_no or '-'}]",
+            )
+    return memberships
 
 
 def universal_search(request):
     query = (request.GET.get('q') or '').strip()
-    if len(query) < 2:
+    if len(query) < 3:
         return JsonResponse({'results': []})
 
-    results = []
-    # Universal search covers every searchable field EXCEPT Product.name itself,
-    # per spec — match identity, location, metadata and remarks.
-    search_fields = ['product__serial_no', 'product__part_no', 'barcode',
-                     'alt_part_no', 'alt_serial_no', 'location',
-                     'reference_location', 'remark']
-    from django.db.models import Q
-
+    raw_results = []
+    # Do not use the expensive list annotations here. Search only direct indexed
+    # asset fields and limit each model before building display results.
     for kind, config in LIST_MODELS.items():
-        q_obj = Q()
-        model_fields = {f.name for f in config['model']._meta.get_fields()}
-        for field in search_fields:
-            local = field.split('__')[0]
-            if local == 'product' or local in model_fields:
-                q_obj |= Q(**{f'{field}__icontains': query})
-        if not q_obj:
-            continue
-        for item in _annotated_category_queryset(config['model'], sold=False).filter(q_obj)[:8]:
-            membership = _product_membership(item.product.id)
-            results.append({
-                'type': config['label'],
-                'title': str(item.product.name),
-                'serial': item.product.serial_no or '',
-                'part_no': item.product.part_no or '',
-                'barcode': getattr(item, 'barcode', '') or '',
-                'location': getattr(item, 'location', '') or '',
-                'status': item.latest_status or '',
-                'product_id': item.product.id,
-                'url': request.build_absolute_uri(),
-                **membership,
-            })
+        matches = _list_search(
+            config['model'].objects.select_related('product'), query, config['model']
+        ).order_by('-id')[:4]
+        raw_results.extend((config, item) for item in matches)
+
+    memberships = _product_memberships([item.product_id for _, item in raw_results])
+    results = []
+    for config, item in raw_results:
+        results.append({
+            'type': config['label'],
+            'title': str(item.product.name),
+            'serial': item.product.serial_no or '',
+            'part_no': item.product.part_no or getattr(item, 'part_no', '') or '',
+            'barcode': getattr(item, 'barcode', '') or '',
+            'location': getattr(item, 'location', '') or '',
+            'status': '',
+            'product_id': item.product_id,
+            'url': request.build_absolute_uri(),
+            **memberships[item.product_id],
+        })
 
     # Servers are matched ONLY by their own identity. A component match surfaces
     # the component (above, from its category) with a "part of" label instead of
@@ -1957,7 +1972,7 @@ def universal_search(request):
         Q(barcode__icontains=query) | Q(location__icontains=query) |
         Q(alt_serial_no__icontains=query) | Q(alt_part_no__icontains=query)
     )
-    for server in Server.objects.filter(server_q).distinct().select_related('product')[:10]:
+    for server in Server.objects.filter(server_q).select_related('product').order_by('-id')[:4]:
         results.append({
             'type': 'Server',
             'title': server.model or 'Server',

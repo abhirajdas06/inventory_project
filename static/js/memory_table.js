@@ -17,7 +17,7 @@ $(document).ready(function () {
         autoWidth: false,          // IMPORTANT for alignment
         orderCellsTop: true,
         fixedHeader: true,
-        deferRender: true
+        deferRender: true, paging: false, searching: false, info: false
     });
 
     setTimeout(function () {

@@ -30,6 +30,7 @@
             {% endif %}
         </div>
     </div>
+    {% include "partials/list_search.html" %}
     <div class="table-responsive">
         <table class="table table-sm align-middle inventory-list-table" id="networkingTable">
             <thead>
@@ -68,6 +69,7 @@
             </tbody>
         </table>
     </div>
+    {% include "partials/list_pagination.html" %}
 </div>
 
 {% include "spare/modals/stock_out_modal.html" %}
@@ -80,7 +82,7 @@
 <script>
 $(function () {
     if (!$.fn.DataTable.isDataTable('#networkingTable')) {
-        $('#networkingTable').DataTable({pageLength: 25, scrollX: true, deferRender: true});
+        $('#networkingTable').DataTable({scrollX: true, deferRender: true, paging: false, searching: false, info: false});
     }
 });
 </script>

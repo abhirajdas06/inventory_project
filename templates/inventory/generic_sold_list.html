@@ -102,6 +102,7 @@
             </tbody>
         </table>
     </div>
+    {% include "partials/list_pagination.html" %}
 </div>
 {% include "inventory/sales_return_modal.html" %}
 {% endblock %}
@@ -109,7 +110,7 @@
 {% block extra_js %}
 <script>
 $(function () {
-    $('#soldTable').DataTable({pageLength: 25, scrollX: true, deferRender: true});
+    $('#soldTable').DataTable({scrollX: true, deferRender: true, paging: false, searching: false, info: false});
     $('#statusFilter').on('change', function () {
         let val = $(this).val();
         let url = new URL(window.location.href);
