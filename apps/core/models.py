@@ -67,6 +67,34 @@ class RolePermission(models.Model):
         return f"Permissions: {self.get_role_display()}"
 
 
+class ReportRecipient(models.Model):
+    """Who gets the automated emails. Edit these in the Django admin
+    (Admin Panel -> Report recipients) — no code or .env change needed.
+
+    DAILY_REPORT  — receives the nightly live / stocked-out Excel files.
+    FAILURE_ALERT — receives "why did it fail" mails (import failures and
+                    failures of the nightly export/email job).
+    """
+    KIND_CHOICES = (
+        ('DAILY_REPORT', 'Daily inventory report (Excel files)'),
+        ('FAILURE_ALERT', 'Failure alerts (import / nightly job errors)'),
+    )
+
+    email = models.EmailField()
+    name = models.CharField(max_length=100, blank=True)
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default='DAILY_REPORT')
+    is_active = models.BooleanField(default=True, help_text='Untick to pause without deleting.')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('email', 'kind')
+        ordering = ['kind', 'email']
+        verbose_name = 'Report recipient'
+
+    def __str__(self):
+        return f'{self.email} ({self.get_kind_display()})'
+
+
 class ActivityLog(models.Model):
     MODULE_CHOICES = (
         ('INVENTORY', 'Inventory'),

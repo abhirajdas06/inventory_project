@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ActivityLog, AssetTimelineEvent, Brand, Notification, Product, RolePermission, SpareCategory, UserProfile
+from .models import ActivityLog, AssetTimelineEvent, Brand, Notification, Product, ReportRecipient, RolePermission, SpareCategory, UserProfile
 
 
 @admin.register(SpareCategory)
@@ -56,3 +56,11 @@ class NotificationAdmin(admin.ModelAdmin):
     search_fields = ('title', 'message', 'user__username')
     list_filter = ('notification_type', 'is_read', 'created_at')
 
+
+
+@admin.register(ReportRecipient)
+class ReportRecipientAdmin(admin.ModelAdmin):
+    list_display = ('email', 'name', 'kind', 'is_active')
+    list_filter = ('kind', 'is_active')
+    list_editable = ('is_active',)
+    search_fields = ('email', 'name')

@@ -106,8 +106,8 @@ class DailyExportTests(TestCase):
 
             live_wb = load_workbook(live_file, read_only=True)
             sold_wb = load_workbook(sold_file, read_only=True)
-            self.assertIn('Servers', live_wb.sheetnames)
-            self.assertIn('Servers', sold_wb.sheetnames)
+            self.assertIn('Server', live_wb.sheetnames)
+            self.assertIn('Server', sold_wb.sheetnames)
             live_wb.close()
             sold_wb.close()
 
@@ -124,7 +124,225 @@ class DailyExportTests(TestCase):
                              output_dir=tmpdir, verbosity=0)
                 self.assertEqual(len(mail.outbox), 1)
                 message = mail.outbox[0]
-                self.assertEqual(message.to, ['abhiraj@zacocomputer.com'])
+                self.assertEqual(set(message.to), {'abhiraj@zacocomputer.com', 'nazim@zacocomputer.com'})
                 names = sorted(attachment[0] for attachment in message.attachments)
                 self.assertEqual(len(names), 2)
                 self.assertTrue(all(n.endswith('.xlsx') for n in names))
+
+
+# ── Daily report recipients, import-friendly export, failure e-mails ─────────
+import tempfile
+from io import BytesIO
+from unittest import mock
+
+from django.core import mail
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
+from openpyxl import Workbook
+
+from apps.core.importers import REQUIRED_HEADERS, process_import_chunk, start_import_job
+from apps.core.models import ReportRecipient
+from apps.core.notifications import get_recipients
+from apps.core.reporting import export_daily_inventory_snapshots, send_daily_inventory_email
+from apps.servers.models import Server
+
+LOCMEM = 'django.core.mail.backends.locmem.EmailBackend'
+
+
+def _xlsx_upload(headers, rows, sheet='Sheet1', extra_sheet_first=False):
+    wb = Workbook()
+    ws = wb.active
+    if extra_sheet_first:
+        ws.title = 'Other'
+        ws = wb.create_sheet(sheet)
+    else:
+        ws.title = sheet
+    ws.append(headers)
+    for r in rows:
+        ws.append(r)
+    buf = BytesIO()
+    wb.save(buf)
+    return SimpleUploadedFile('data.xlsx', buf.getvalue())
+
+
+def _row(headers, **values):
+    return [values.get(h, '') for h in headers]
+
+
+def _run_import(key, upload):
+    job = start_import_job(key, upload, None)
+    while job.status != 'DONE':
+        job = process_import_chunk(job, chunk_size=100)
+    return job
+
+
+class ReportRecipientTests(TestCase):
+    def test_default_recipients_seeded(self):
+        self.assertEqual(
+            set(get_recipients('DAILY_REPORT')),
+            {'abhiraj@zacocomputer.com', 'nazim@zacocomputer.com'},
+        )
+        self.assertEqual(get_recipients('FAILURE_ALERT'), ['abhiraj@zacocomputer.com'])
+
+    def test_recipients_are_configurable_and_inactive_ones_skipped(self):
+        ReportRecipient.objects.filter(email='nazim@zacocomputer.com').update(is_active=False)
+        ReportRecipient.objects.create(email='new@zacocomputer.com', kind='DAILY_REPORT')
+        self.assertEqual(
+            set(get_recipients('DAILY_REPORT')),
+            {'abhiraj@zacocomputer.com', 'new@zacocomputer.com'},
+        )
+
+    @override_settings(EMAIL_BACKEND=LOCMEM)
+    def test_daily_email_goes_to_every_configured_recipient(self):
+        with TemporaryDirectory() as tmp:
+            result = send_daily_inventory_email(output_dir=tmp)
+        self.assertTrue(result['sent'])
+        self.assertEqual(
+            set(mail.outbox[0].to),
+            {'abhiraj@zacocomputer.com', 'nazim@zacocomputer.com'},
+        )
+        self.assertEqual(len(mail.outbox[0].attachments), 2)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')
+    def test_console_backend_is_reported_as_not_sent(self):
+        with TemporaryDirectory() as tmp:
+            result = send_daily_inventory_email(output_dir=tmp)
+        self.assertFalse(result['sent'])
+        self.assertIn('SMTP is not configured', result['reason'])
+
+
+@override_settings(EMAIL_BACKEND=LOCMEM)
+class ExportImportRoundTripTests(TestCase):
+    """The nightly workbooks must be re-importable as-is."""
+
+    def setUp(self):
+        override = override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+        override.enable()
+        self.addCleanup(override.disable)
+
+    def _seed(self):
+        mem_headers = list(HEADER_MAPS['memory'])
+        _run_import('memory', _xlsx_upload(mem_headers, [
+            _row(mem_headers, Brand='SAMSUNG', Model='M393', Size='16GB', **{
+                'Serial No': 'MEM-LIVE-1', 'QTY': 1, 'Barcode': 'BC-1', 'Location': 'Rack 1'}),
+            _row(mem_headers, Brand='SAMSUNG', Model='M393', Size='16GB', **{
+                'Serial No': 'MEM-BAD-1', 'QTY': 1, 'Barcode': 'BC-2', 'Stock In Status': 'FAULTY'}),
+        ]))
+
+        so_headers = list(HEADER_MAPS['memory_stock_out'])
+        _run_import('memory_stock_out', _xlsx_upload(so_headers, [
+            _row(so_headers, Brand='HYNIX', Model='HMA', Size='8GB', **{
+                'Serial No': 'MEM-SOLD-1', 'QTY': 1, 'Barcode': 'BC-3', 'Client Name': 'Acme',
+                'Invoice No': 'INV-1', 'OLF / DC No': 'DC-1', 'Stock Status': 'SALE',
+                'Stock Out Date': '2026-06-26'}),
+        ]))
+
+        srv_headers = list(HEADER_MAPS['server'])
+
+        def srv(spare, serial, part='', parent=''):
+            return _row(srv_headers, **{
+                'Testing Date': '2026-06-01', 'Tested by/FE name': 'SAMIR',
+                'Machine Type': 'RACK SERVER', 'Machine no': 'M-1',
+                'System Service Tag No': 'TAG123', 'Model': 'R630', 'Spares Type': spare,
+                'Part No': part, 'Serial No': serial, 'QTY': 1,
+                'Working/Not working': 'WORKING', 'Location': 'Rack 2',
+                'Parent-child Location': parent})
+        _run_import('server', _xlsx_upload(srv_headers, [
+            srv('CABINET', 'TAG123'),
+            srv('MOTHER BOARD', 'MB-1', 'PN-MB', 'TAG123'),
+            srv('MEMORY', 'SRV-MEM-1', 'PN-MEM', 'TAG123'),
+        ]))
+
+    def test_export_headers_match_import_templates(self):
+        self._seed()
+        with TemporaryDirectory() as tmp:
+            outputs = export_daily_inventory_snapshots(output_dir=tmp)
+            live = load_workbook(outputs['live'], read_only=True)
+            sold = load_workbook(outputs['stocked_out'], read_only=True)
+
+            def headers_of(wb, key):
+                return [c.value for c in next(wb[IMPORT_LABELS[key]].iter_rows(max_row=1))]
+
+            for key in ('battery', 'card', 'cpu', 'harddisk', 'memory',
+                        'networking_spare', 'railkit', 'sfp'):
+                self.assertEqual(headers_of(live, key), list(HEADER_MAPS[key]))
+                self.assertEqual(headers_of(sold, key), list(HEADER_MAPS[f'{key}_stock_out']))
+            for wb, suffix in ((live, ''), (sold, '_stock_out')):
+                for key in ('controller', 'server'):
+                    missing = REQUIRED_HEADERS[key + suffix] - set(headers_of(wb, key))
+                    self.assertFalse(missing, f'{key}{suffix} missing {missing}')
+            live.close()
+            sold.close()
+
+    def test_exported_files_reimport_cleanly_after_data_is_wiped(self):
+        self._seed()
+        with TemporaryDirectory() as tmp:
+            outputs = export_daily_inventory_snapshots(output_dir=tmp)
+            live_bytes = Path(outputs['live']).read_bytes()
+            sold_bytes = Path(outputs['stocked_out']).read_bytes()
+
+        InventoryTransaction.objects.all().delete()
+        Server.objects.all().delete()
+        Product.objects.all().delete()
+        self.assertEqual(Product.objects.count(), 0)
+
+        # The SAME file is uploaded for every category; the matching sheet is read.
+        for key, data in (('memory', live_bytes), ('server', live_bytes),
+                          ('memory_stock_out', sold_bytes)):
+            job = _run_import(key, SimpleUploadedFile('same.xlsx', data))
+            self.assertEqual(job.error_count, 0, f'{key}: {job.errors}')
+            self.assertGreater(job.success_count, 0, key)
+        self.assertEqual(len(mail.outbox), 0)  # no failure mail on a clean import
+
+        sold = InventoryTransaction.objects.filter(
+            product__serial_no='MEM-SOLD-1').order_by('-created_at').first()
+        self.assertEqual((sold.transaction_type, sold.client_name), ('OUT', 'Acme'))
+        bad = InventoryTransaction.objects.filter(
+            product__serial_no='MEM-BAD-1').order_by('-created_at').first()
+        self.assertEqual(bad.stock_status, 'FAULTY')
+        self.assertTrue(Product.objects.filter(serial_no='MEM-LIVE-1').exists())
+        self.assertEqual(Server.objects.get(service_tag='TAG123').components.count(), 3)
+
+    def test_multi_sheet_workbook_reads_sheet_matching_category(self):
+        headers = list(HEADER_MAPS['memory'])
+        up = _xlsx_upload(headers, [_row(headers, Brand='SAMSUNG')],
+                          sheet='Memory', extra_sheet_first=True)
+        self.assertEqual(start_import_job('memory', up, None).total_rows, 1)
+
+
+@override_settings(EMAIL_BACKEND=LOCMEM)
+class FailureEmailTests(TestCase):
+    def setUp(self):
+        override = override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+        override.enable()
+        self.addCleanup(override.disable)
+
+    def test_missing_columns_mails_reason(self):
+        with self.assertRaises(ValueError):
+            start_import_job('memory', _xlsx_upload(['Wrong'], [['x']]), None)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['abhiraj@zacocomputer.com'])
+        self.assertIn('Missing columns', mail.outbox[0].body)
+
+    def test_row_errors_mail_row_numbers_and_reason(self):
+        headers = list(HEADER_MAPS['server'])
+        job = _run_import('server', _xlsx_upload(headers, [_row(headers, Model='R630')]))
+        self.assertEqual(job.error_count, 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['abhiraj@zacocomputer.com'])
+        self.assertIn('Row 2', mail.outbox[0].body)
+        self.assertIn('Service Tag', mail.outbox[0].body)
+
+    def test_clean_import_sends_no_mail(self):
+        headers = list(HEADER_MAPS['memory'])
+        _run_import('memory', _xlsx_upload(headers, [_row(headers, Brand='SAMSUNG')]))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_nightly_command_failure_mails_alert_and_reraises(self):
+        with mock.patch('apps.core.management.commands.export_daily_inventory.send_daily_inventory_email',
+                        side_effect=RuntimeError('SMTP down')):
+            with self.assertRaises(RuntimeError):
+                call_command('export_daily_inventory', '--email', verbosity=0)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('SMTP down', mail.outbox[0].body)
+        self.assertEqual(mail.outbox[0].to, ['abhiraj@zacocomputer.com'])

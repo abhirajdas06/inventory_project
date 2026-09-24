@@ -235,6 +235,22 @@ crontab -e
 Files are also written to
 `/home/ubuntu/inventory_project/media/exports/YYYY-MM-DD/` as a backup.
 
+**Who gets the mail:** log in to the Admin Panel -> *Report recipients*. Add one
+row per address and pick the type — *Daily inventory report* (gets the two Excel
+files) or *Failure alerts* (gets "why it failed" mails). Untick *Is active* to
+pause an address. Default: abhiraj@ and nazim@zacocomputer.com get the report;
+abhiraj@ gets failure alerts. No restart needed.
+
+**Re-importing the files:** every sheet uses the exact import-template columns.
+Import page -> pick the category -> upload the same workbook (the sheet named
+after the category is read). Use the normal import for `inventory-live` and the
+"<category> — Stock Out" import for `inventory-stocked_out`.
+
+**Failures:** if the nightly job crashes, or an import has failed rows / a bad
+file, the failure-alert recipients receive an e-mail with the row numbers and
+reasons. If `EMAIL_HOST_USER` is blank the job reports "SMTP is not configured"
+instead of pretending to send.
+
 ## 10. Useful commands
 
 ```bash

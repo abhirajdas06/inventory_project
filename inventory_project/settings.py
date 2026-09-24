@@ -164,9 +164,14 @@ EMAIL_BACKEND = os.getenv(
     'django.core.mail.backends.console.EmailBackend',
 )
 
-# Recipients of the automated midnight inventory report (comma-separated in env)
+# Fallback recipients, used ONLY when no active ReportRecipient rows exist.
+# Normal way to change who gets mail: Admin Panel -> Report recipients.
 DAILY_REPORT_RECIPIENTS = env_list(
-    'DAILY_REPORT_RECIPIENTS', ['abhiraj@zacocomputer.com']
+    'DAILY_REPORT_RECIPIENTS',
+    ['abhiraj@zacocomputer.com', 'nazim@zacocomputer.com'],
+)
+FAILURE_ALERT_RECIPIENTS = env_list(
+    'FAILURE_ALERT_RECIPIENTS', ['abhiraj@zacocomputer.com']
 )
 
 LOGGING = {

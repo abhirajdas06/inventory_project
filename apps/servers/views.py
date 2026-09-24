@@ -346,6 +346,8 @@ def export_servers(request, state='live'):
         ])
         # In-stock component rows, grouped under the cabinet
         for c in _in_stock_components(server):
+            if c.product_id == server.product_id or (c.spare_type or '').upper() == 'CABINET':
+                continue  # the cabinet itself is already written as the first row
             ws.append([
                 group,
                 server.testing_date or '',

@@ -308,15 +308,36 @@ def normalize_qty(value):
         return 1
 
 
-def read_headers(path):
+def _base_key(model_key):
+    return model_key[:-len('_stock_out')] if model_key.endswith('_stock_out') else model_key
+
+
+def select_sheet(wb, model_key=None):
+    """Pick the worksheet to import.
+
+    The nightly export is ONE workbook with a sheet per category, named after
+    the import label (Memory, Rail Kit, Server ...). So when the workbook has
+    several sheets we import the one matching the selected import type; a
+    single-sheet (or unmatched) workbook falls back to the active sheet, which
+    keeps every existing hand-made template working.
+    """
+    if model_key and len(wb.sheetnames) > 1:
+        label = IMPORT_LABELS.get(_base_key(model_key), '').strip().lower()
+        for name in wb.sheetnames:
+            if name.strip().lower() == label:
+                return wb[name]
+    return wb.active
+
+
+def read_headers(path, model_key=None):
     wb = load_workbook(path, read_only=True, data_only=True)
-    ws = wb.active
+    ws = select_sheet(wb, model_key)
     return [clean_value(c.value) for c in next(ws.iter_rows(min_row=1, max_row=1))]
 
 
-def count_rows(path):
+def count_rows(path, model_key=None):
     wb = load_workbook(path, read_only=True, data_only=True)
-    ws = wb.active
+    ws = select_sheet(wb, model_key)
     total = 0
     for row in ws.iter_rows(min_row=2, values_only=True):
         if any(clean_value(v) for v in row):
@@ -336,7 +357,14 @@ def start_import_job(model_key, upload, user, store_location=None):
         store_location=(store_location or DEFAULT_STORE).strip().upper(),
     )
 
-    headers = read_headers(job.upload.path)
+    try:
+        headers = read_headers(job.upload.path, model_key)
+    except Exception as exc:
+        job.status = 'FAILED'
+        job.errors = [{'row': 1, 'error': f'Could not read the Excel file: {exc}'}]
+        job.save(update_fields=['status', 'errors'])
+        _notify_import_failure(job, job.errors[0]['error'])
+        raise ValueError(job.errors[0]['error'])
     expected = REQUIRED_HEADERS.get(model_key, set(HEADER_MAPS[model_key]))
     if model_key == 'stock_out':
         expected = {'Serial No', 'Barcode No'}
@@ -345,9 +373,10 @@ def start_import_job(model_key, upload, user, store_location=None):
         job.status = 'FAILED'
         job.errors = [{'row': 1, 'error': f"Missing columns: {', '.join(missing)}"}]
         job.save(update_fields=['status', 'errors'])
+        _notify_import_failure(job, job.errors[0]['error'])
         raise ValueError(job.errors[0]['error'])
 
-    job.total_rows = count_rows(job.upload.path)
+    job.total_rows = count_rows(job.upload.path, model_key)
     job.save(update_fields=['total_rows'])
     return job
 
@@ -360,7 +389,7 @@ def process_import_chunk(job, chunk_size=100, user=None):
     job.save(update_fields=['status'])
 
     wb = load_workbook(job.upload.path, read_only=True, data_only=True)
-    ws = wb.active
+    ws = select_sheet(wb, job.model_key)
     headers = [clean_value(c.value) for c in next(ws.iter_rows(min_row=1, max_row=1))]
     field_map = HEADER_MAPS[job.model_key]
     processed_this_call = 0
@@ -419,13 +448,26 @@ def process_import_chunk(job, chunk_size=100, user=None):
         job.processed_rows += 1
         processed_this_call += 1
 
-    if job.processed_rows >= job.total_rows:
+    just_finished = job.processed_rows >= job.total_rows
+    if just_finished:
         job.status = 'DONE'
 
     job.save(update_fields=[
         'processed_rows', 'success_count', 'error_count', 'errors', 'status', 'updated_at'
     ])
+    if just_finished and job.error_count:
+        _notify_import_failure(job)
     return job
+
+
+def _notify_import_failure(job, reason=None):
+    """Mail the failure reason to the alert recipients; never raises."""
+    try:
+        from apps.core.notifications import send_import_failure_email
+        send_import_failure_email(job, reason)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception('Import failure email failed for job %s', job.pk)
 
 
 def mark_latest_stock_user(product, user):

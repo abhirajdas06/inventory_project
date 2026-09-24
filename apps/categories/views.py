@@ -1668,16 +1668,12 @@ CONTROLLER_EXPORT_HEADERS = [
 ]
 
 
-@login_required
-def export_controllers(request, state='live'):
-    """Grouped XLSX export: each parent controller followed by its in-stock
-    components, in the exact Controller import-template layout."""
-    from io import BytesIO
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
+def controller_export_rows(sold=False):
+    """Yield (row_values, product) for every controller and its components in
+    the exact Controller import-template layout (row_values matches
+    CONTROLLER_EXPORT_HEADERS). Shared by the download view and the nightly job."""
     from apps.categories.models import Controller
 
-    sold = state == 'sold'
     latest_txn = InventoryTransaction.objects.filter(
         product=OuterRef('product')
     ).order_by('-created_at')
@@ -1703,6 +1699,40 @@ def export_controllers(request, state='live'):
             Q(freeze_status__isnull=True) | ~Q(freeze_status='FROZEN')
         )
 
+    group = 0
+    for ctrl in controllers:
+        group += 1
+        parent_serial = ctrl.product.serial_no if ctrl.product else ''
+        yield [
+            group, 'CONTROLLER', ctrl.product.name if ctrl.product else 'CONTROLLER',
+            ctrl.brand.name if ctrl.brand else '',
+            ctrl.model or '', ctrl.part_no or '', ctrl.alt_part_no or '',
+            parent_serial, ctrl.alt_serial_no or '', ctrl.specs or '',
+            ctrl.qty or 1, ctrl.barcode or '', ctrl.location or '',
+            ctrl.reference_location or '', '', ctrl.remark or '',
+        ], ctrl.product
+        for c in in_stock_components(ctrl):
+            product_type = c.product.category.name if c.product and c.product.category else 'SPARE'
+            yield [
+                group, product_type, c.product.name if c.product else product_type,
+                c.brand.name if c.brand else '',
+                c.model or '', c.part_no or '', c.alt_part_no or '',
+                c.product.serial_no if c.product else '', c.alt_serial_no or '',
+                c.specs or '', c.qty or 1, c.barcode or '',
+                c.location or ctrl.location or '', c.reference_location or '',
+                parent_serial, c.remark or '',
+            ], c.product
+
+
+@login_required
+def export_controllers(request, state='live'):
+    """Grouped XLSX export: each parent controller followed by its in-stock
+    components, in the exact Controller import-template layout."""
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    sold = state == 'sold'
     wb = Workbook()
     ws = wb.active
     ws.title = 'Controllers'
@@ -1712,29 +1742,8 @@ def export_controllers(request, state='live'):
         cell.font = Font(bold=True)
         cell.fill = header_fill
 
-    group = 0
-    for ctrl in controllers:
-        group += 1
-        parent_serial = ctrl.product.serial_no if ctrl.product else ''
-        ws.append([
-            group, 'CONTROLLER', ctrl.product.name if ctrl.product else 'CONTROLLER',
-            ctrl.brand.name if ctrl.brand else '',
-            ctrl.model or '', ctrl.part_no or '', ctrl.alt_part_no or '',
-            parent_serial, ctrl.alt_serial_no or '', ctrl.specs or '',
-            ctrl.qty or 1, ctrl.barcode or '', ctrl.location or '',
-            ctrl.reference_location or '', '', ctrl.remark or '',
-        ])
-        for c in in_stock_components(ctrl):
-            product_type = c.product.category.name if c.product and c.product.category else 'SPARE'
-            ws.append([
-                group, product_type, c.product.name if c.product else product_type,
-                c.brand.name if c.brand else '',
-                c.model or '', c.part_no or '', c.alt_part_no or '',
-                c.product.serial_no if c.product else '', c.alt_serial_no or '',
-                c.specs or '', c.qty or 1, c.barcode or '',
-                c.location or ctrl.location or '', c.reference_location or '',
-                parent_serial, c.remark or '',
-            ])
+    for values, _product in controller_export_rows(sold):
+        ws.append(values)
 
     stream = BytesIO()
     wb.save(stream)
@@ -1865,6 +1874,12 @@ def process_import(request, job_id):
             'percent': round((job.processed_rows / job.total_rows) * 100, 2) if job.total_rows else 100,
         })
     except Exception as exc:
+        from apps.core.importers import _notify_import_failure
+        failed_job = ImportJob.objects.filter(pk=job_id).first()
+        if failed_job:
+            failed_job.status = 'FAILED'
+            failed_job.save(update_fields=['status'])
+            _notify_import_failure(failed_job, f'Import stopped unexpectedly: {exc}')
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
 
