@@ -61,7 +61,7 @@
 <tbody>
 
 {% for c in cards %}
-<tr data-id="{{ c.product.id }}" data-card-id="{{ c.id }}">
+<tr data-id="{{ c.product.id }}" data-card-id="{{ c.id }}" data-status="{{ c.latest_status }}">
 
 <td>{{ c.product.name }}</td>
 <td>{{ c.brand }}</td>
@@ -84,7 +84,16 @@
 <td class="editable-cell" data-field="remark">{{ c.remark }}</td>
 
 <td>{{ c.latest_location|default:"-" }}</td>
-<td>{{ c.latest_status|default:"-" }}</td>
+<td>
+    <span class="badge
+        {% if c.latest_status == 'LIVE' %}bg-success
+        {% elif c.latest_status == 'FAULTY' %}bg-danger
+        {% elif c.latest_status == 'DAMAGED' %}badge-damaged
+        {% elif c.latest_status == 'TESTING' %}bg-warning text-dark
+        {% else %}bg-secondary{% endif %}">
+        {{ c.latest_status|default:"-" }}
+    </span>
+</td>
 
 <td>
     <button class="btn btn-sm btn-info audit-history-btn">

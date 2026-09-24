@@ -1966,13 +1966,22 @@ def universal_search(request):
     # the component (above, from its category) with a "part of" label instead of
     # duplicating the parent server here.
     from apps.servers.models import Server
+    from apps.servers.views import _server_queryset
     server_q = (
         Q(machine_no__icontains=query) | Q(service_tag__icontains=query) |
         Q(model__icontains=query) | Q(part_no__icontains=query) |
         Q(barcode__icontains=query) | Q(location__icontains=query) |
         Q(alt_serial_no__icontains=query) | Q(alt_part_no__icontains=query)
     )
-    for server in Server.objects.filter(server_q).select_related('product').order_by('-id')[:4]:
+    matched_ids = list(Server.objects.filter(server_q).order_by('-id').values_list('id', flat=True)[:4])
+    servers_by_id = {
+        s.id: s for s in
+        _server_queryset().filter(id__in=matched_ids).select_related('product')
+    }
+    for server_id in matched_ids:
+        server = servers_by_id.get(server_id)
+        if not server:
+            continue
         results.append({
             'type': 'Server',
             'title': server.model or 'Server',
@@ -1985,6 +1994,7 @@ def universal_search(request):
             'url': request.build_absolute_uri('/servers/list/'),
             'in_server': False, 'server_label': '',
             'in_controller': False, 'controller_label': '',
+            'is_empty_server': not server.has_motherboard,
         })
 
     return JsonResponse({'results': results[:50]})

@@ -16,9 +16,19 @@
     <div class="server-list-toolbar">
         <div>
             <h5 class="server-list-title">Servers</h5>
-            <div class="server-list-subtitle">{{ servers|length }} active server{{ servers|length|pluralize }}</div>
+            <div class="server-list-subtitle">
+                {{ total_count }} {{ active_tab }} server{{ total_count|pluralize }}
+                <span class="text-muted">&middot;</span>
+                <span class="text-success fw-semibold">{{ live_count }} Live</span>
+                <span class="text-muted">&middot;</span>
+                <span class="text-secondary fw-semibold">{{ empty_count }} Empty</span>
+                {% if q %}<span class="text-muted">(matching &ldquo;{{ q }}&rdquo;)</span>{% endif %}
+            </div>
         </div>
         <div class="server-list-actions">
+            <a href="{% url 'server_faulty_list' %}" class="btn btn-outline-warning btn-sm">
+                <i class="bi bi-exclamation-triangle me-1"></i>Faulty Servers
+            </a>
             <a href="{% url 'server_out_list' %}" class="btn btn-outline-danger btn-sm">
                 <i class="bi bi-box-arrow-up-right me-1"></i>Sold Servers
             </a>
@@ -27,6 +37,23 @@
             </a>
         </div>
     </div>
+
+    <ul class="nav nav-tabs server-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link {% if active_tab == 'live' %}active{% endif %}"
+               href="{% url 'server_list' %}{% if q %}?q={{ q|urlencode }}{% endif %}">
+                <i class="bi bi-check-circle me-1"></i>Live Servers
+                <span class="badge bg-success ms-1">{{ live_count }}</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if active_tab == 'empty' %}active{% endif %}"
+               href="{% url 'server_empty_list' %}{% if q %}?q={{ q|urlencode }}{% endif %}">
+                <i class="bi bi-exclamation-octagon me-1"></i>Empty Servers
+                <span class="badge bg-secondary ms-1">{{ empty_count }}</span>
+            </a>
+        </li>
+    </ul>
 
     {% include "partials/list_search.html" %}
     <div class="server-table-wrap">
@@ -59,7 +86,8 @@
 
             <tbody>
                 {% for s in servers %}
-                <tr data-id="{{ s.product.id }}" data-server-id="{{ s.id }}">
+                <tr data-id="{{ s.product.id }}" data-server-id="{{ s.id }}"
+                    data-status="{% if not s.has_motherboard %}EMPTY{% else %}{{ s.latest_status }}{% endif %}">
                     <td class="serial-col text-muted">{{ forloop.counter }}</td>
                     <td>
                         <span class="badge
@@ -98,12 +126,20 @@
                     <!-- From inventory transaction -->
                     <td>{{ s.latest_location|default:"-" }}</td>
                     <td>
+                        {% if not s.has_motherboard %}
+                        <span class="badge bg-secondary" title="No motherboard currently mapped and in stock">
+                            <i class="bi bi-exclamation-octagon me-1"></i>EMPTY
+                        </span>
+                        {% else %}
                         <span class="badge
                             {% if s.latest_status == 'LIVE' %}bg-success
                             {% elif s.latest_status == 'FAULTY' %}bg-danger
+                            {% elif s.latest_status == 'DAMAGED' %}badge-damaged
                             {% elif s.latest_status == 'TESTING' %}bg-warning text-dark
                             {% else %}bg-secondary{% endif %}">
                             {{ s.latest_status|default:"-" }}
+                        </span>
+                        {% endif %}
                         </span>
                     </td>
 

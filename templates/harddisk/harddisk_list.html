@@ -66,7 +66,7 @@
 
                 <tbody>
                     {% for hd in harddisks %}
-                    <tr data-id="{{ hd.product.id }}" data-hd-id="{{ hd.id }}">
+                    <tr data-id="{{ hd.product.id }}" data-hd-id="{{ hd.id }}" data-status="{{ hd.latest_status }}">
 
                         <td class="truncate" title="{{ hd.product.name }}">
                             {{ hd.product.name }}
@@ -134,6 +134,7 @@
                             <span class="badge
                                 {% if hd.latest_status == 'LIVE' %}bg-success
                                 {% elif hd.latest_status == 'FAULTY' %}bg-danger
+                                {% elif hd.latest_status == 'DAMAGED' %}badge-damaged
                                 {% elif hd.latest_status == 'TESTING' %}bg-warning text-dark
                                 {% else %}bg-secondary{% endif %}">
                                 {{ hd.latest_status|default:"-" }}

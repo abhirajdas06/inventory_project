@@ -24,6 +24,7 @@ from apps.servers.models import Server
 
 DEFAULT_STORE = 'WH1'
 DEFAULT_STATUS = 'LIVE'
+VALID_STOCK_STATUSES = {value for value, _ in InventoryTransaction.STOCK_STATUS}
 
 
 IMPORT_LABELS = {
@@ -225,6 +226,13 @@ HEADER_MAPS = {
 }
 
 
+# Snapshot which Excel columns are REQUIRED per model, BEFORE we merge in the
+# optional "Stock In Status" column below. That column must never become a
+# required header — otherwise every existing stock-in template (which
+# doesn't have it) would suddenly fail with "Missing columns: ...".
+REQUIRED_HEADERS = {key: set(headers) for key, headers in HEADER_MAPS.items()}
+
+
 CREATE_BY_KEY = {
     'battery': create_product_and_spare,
     'card': create_product_and_card,
@@ -263,8 +271,19 @@ STOCK_OUT_BASE_KEYS = [
     'railkit', 'sfp', 'networking_spare', 'controller', 'server',
 ]
 
+# Optional "Stock In Status" column, added to every Stock-In template (and
+# inherited by the combined Stock-In + Stock-Out templates below). It is NOT
+# required — if the column or a cell is missing/blank the row defaults to
+# LIVE as before. If it holds a recognized status (e.g. FAULTY, DAMAGED) the
+# row is stocked in with that status instead, and it still counts as "in
+# stock" — only a Stock Out transaction removes an item from the active list.
+STOCK_IN_STATUS_COLUMN = {'Stock In Status': 'stock_status'}
+for _base_key in STOCK_OUT_BASE_KEYS:
+    HEADER_MAPS[_base_key] = {**HEADER_MAPS[_base_key], **STOCK_IN_STATUS_COLUMN}
+
 for _base_key in STOCK_OUT_BASE_KEYS:
     _combined_key = f'{_base_key}_stock_out'
+    REQUIRED_HEADERS[_combined_key] = REQUIRED_HEADERS[_base_key] | set(STOCK_OUT_APPEND_COLUMNS)
     HEADER_MAPS[_combined_key] = {
         **HEADER_MAPS[_base_key],
         **STOCK_OUT_APPEND_COLUMNS,
@@ -318,7 +337,7 @@ def start_import_job(model_key, upload, user, store_location=None):
     )
 
     headers = read_headers(job.upload.path)
-    expected = set(HEADER_MAPS[model_key])
+    expected = REQUIRED_HEADERS.get(model_key, set(HEADER_MAPS[model_key]))
     if model_key == 'stock_out':
         expected = {'Serial No', 'Barcode No'}
     missing = sorted(expected - set(headers))
@@ -361,7 +380,15 @@ def process_import_chunk(job, chunk_size=100, user=None):
             row['stock_status'] = row.get('stock_status') or 'SALE'
             row['stock_out_date'] = row.get('stock_out_date') or date.today().isoformat()
         else:
-            row['stock_status'] = DEFAULT_STATUS
+            # Optional "Stock In Status" column: if present and a recognized
+            # status (e.g. FAULTY, DAMAGED), stock the row in with that
+            # status instead of the default LIVE. It still counts as "in
+            # stock" — only a Stock Out transaction removes it from the
+            # active list. Combined Stock-In + Stock-Out imports also read
+            # this for the stock-in leg (the appended "Stock Status" column
+            # is separate and only drives the stock-out leg).
+            provided_status = (row.get('stock_status') or '').strip().upper()
+            row['stock_status'] = provided_status if provided_status in VALID_STOCK_STATUSES else DEFAULT_STATUS
 
         if job.model_key == 'controller':
             spare_type = (row.get('spare_type') or '').strip().upper()
@@ -813,10 +840,18 @@ def import_controller_row(row, user=None):
 
     from apps.core.services import _create_stock_in_transaction
     fallback_store = (row.get('store_location') or DEFAULT_STORE).strip().upper()
+    # A component's status normally inherits from its parent controller's
+    # current status, but an explicit "Stock In Status" column on the
+    # component row (e.g. FAULTY, DAMAGED) overrides that.
+    provided_component_status = (row.get('stock_status') or '').strip().upper()
+    if provided_component_status in VALID_STOCK_STATUSES:
+        component_status = provided_component_status
+    else:
+        component_status = last_controller_txn.stock_status if last_controller_txn else DEFAULT_STATUS
     _create_stock_in_transaction(
         product=product,
         store_location=last_controller_txn.store_location if last_controller_txn else fallback_store,
-        stock_status=last_controller_txn.stock_status if last_controller_txn else DEFAULT_STATUS,
+        stock_status=component_status,
         user=user,
         remarks='Controller component import stock-in',
     )
@@ -830,6 +865,8 @@ def import_server_row(row, user=None):
         raise ValueError('System Service Tag No is required')
 
     store_location = (row.get('store_location') or DEFAULT_STORE).strip().upper()
+    provided_status = (row.get('stock_status') or '').strip().upper()
+    stock_status = provided_status if provided_status in VALID_STOCK_STATUSES else DEFAULT_STATUS
 
     server_data = {
         'testing_date': row.get('testing_date'),
@@ -851,7 +888,7 @@ def import_server_row(row, user=None):
         'parent_child_location': row.get('parent_child_location'),
         'remark': row.get('remark'),
         'store_location': store_location,
-        'stock_status': DEFAULT_STATUS,
+        'stock_status': stock_status,
     }
     component = {
         'spare_type': row.get('spare_type'),
@@ -876,6 +913,6 @@ def import_server_row(row, user=None):
         server = create_server_with_components(server_data, [component])
         mark_latest_stock_user(server.product, user)
     else:
-        product = add_server_component(server, component, store_location, DEFAULT_STATUS).product
+        product = add_server_component(server, component, store_location, stock_status).product
         mark_latest_stock_user(product, user)
     return server.product

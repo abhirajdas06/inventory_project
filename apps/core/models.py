@@ -128,6 +128,7 @@ class AssetTimelineEvent(models.Model):
         ('UNFREEZE', 'Unfreeze'),
         ('TRANSFER', 'Transfer'),
         ('RETURN', 'Sales Return'),
+        ('STATUS', 'Status Update'),
     )
 
     product = models.ForeignKey(

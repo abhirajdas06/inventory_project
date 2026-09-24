@@ -194,7 +194,9 @@ class StockOutTests(TestCase):
         self.assertEqual(latest.client_name, 'Regular Client')
 
     def test_stocked_out_server_moves_from_active_list_to_sold_list(self):
-        active_response = self.client.get(reverse('server_list'))
+        # The shared fixture server only has Memory components (no
+        # motherboard), so it lives on the Empty tab, not the Live tab.
+        active_response = self.client.get(reverse('server_empty_list'))
         self.assertContains(active_response, 'ST-001')
 
         self.client.post(reverse('stock_out'), {
@@ -205,7 +207,7 @@ class StockOutTests(TestCase):
             'stock_out_date': '2026-05-27',
         })
 
-        active_response = self.client.get(reverse('server_list'))
+        active_response = self.client.get(reverse('server_empty_list'))
         sold_response = self.client.get(reverse('server_out_list'))
 
         self.assertNotContains(active_response, 'ST-001')
@@ -423,7 +425,9 @@ class StockOutTests(TestCase):
             frozen_by=self.user,
         )
 
-        response = self.client.get(reverse('server_list'))
+        # Shared fixture server has no motherboard, so it normally lives on
+        # the Empty tab — freezing must hide it from there too.
+        response = self.client.get(reverse('server_empty_list'))
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'ST-001')
@@ -630,3 +634,71 @@ class StockOutTests(TestCase):
         self.assertContains(response, 'LIST-PN-1')
         self.assertContains(response, 'LIST-BC-1')
         self.assertContains(response, 'Approve one')
+
+    def test_update_inventory_status_keeps_item_in_stock_with_remark(self):
+        category = SpareCategory.objects.create(name='STATUS-SPARE')
+        product = Product.objects.create(category=category, serial_no='STATUS-001', name='Status Test Spare')
+        Spare.objects.create(product=product, barcode='STATUS-BC-1', location='Rack 1')
+        InventoryTransaction.objects.create(
+            product=product, transaction_type='IN', store_location='WH1', stock_status='LIVE',
+        )
+
+        response = self.client.post(reverse('update_inventory_status'), {
+            'product_id': product.id,
+            'stock_status': 'FAULTY',
+            'remarks': 'Dropped during handling',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertEqual(response.json()['status'], 'FAULTY')
+
+        latest = InventoryTransaction.objects.filter(product=product).latest('created_at')
+        self.assertEqual(latest.transaction_type, 'IN')  # still in stock
+        self.assertEqual(latest.stock_status, 'FAULTY')
+        self.assertIn('Dropped during handling', latest.audit_remark)
+
+        self.assertTrue(ActivityLog.objects.filter(action='STATUS_UPDATE', entity_id=str(product.id)).exists())
+        self.assertTrue(AssetTimelineEvent.objects.filter(product=product, event_type='STATUS').exists())
+
+        # Item must still appear in the active (in-stock) list, not disappear
+        # into a "stocked out" view.
+        list_response = self.client.get(reverse('spare_list'))
+        self.assertContains(list_response, 'STATUS-001')
+
+    def test_update_inventory_status_requires_remarks(self):
+        category = SpareCategory.objects.create(name='STATUS-SPARE-2')
+        product = Product.objects.create(category=category, serial_no='STATUS-002', name='Status Test Spare 2')
+        Spare.objects.create(product=product, barcode='STATUS-BC-2')
+        InventoryTransaction.objects.create(
+            product=product, transaction_type='IN', store_location='WH1', stock_status='LIVE',
+        )
+
+        response = self.client.post(reverse('update_inventory_status'), {
+            'product_id': product.id,
+            'stock_status': 'DAMAGED',
+            'remarks': '',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['success'])
+        self.assertIn('Remarks', response.json()['error'])
+
+    def test_update_inventory_status_blocked_when_frozen(self):
+        category = SpareCategory.objects.create(name='STATUS-SPARE-3')
+        product = Product.objects.create(category=category, serial_no='STATUS-003', name='Status Test Spare 3')
+        Spare.objects.create(product=product, barcode='STATUS-BC-3')
+        InventoryTransaction.objects.create(
+            product=product, transaction_type='IN', store_location='WH1', stock_status='LIVE',
+        )
+        InventoryFreezeRecord.objects.create(product=product, status='FROZEN', reason='Audit hold', frozen_by=self.user)
+
+        response = self.client.post(reverse('update_inventory_status'), {
+            'product_id': product.id,
+            'stock_status': 'FAULTY',
+            'remarks': 'Should not apply',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['success'])
+        self.assertIn('Frozen', response.json()['error'])

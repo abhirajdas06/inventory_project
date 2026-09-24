@@ -57,7 +57,7 @@
  
 <tbody>
 {% for s in spares %}
-<tr data-id="{{ s.product.id }}" data-spare-id="{{ s.id }}"
+<tr data-id="{{ s.product.id }}" data-spare-id="{{ s.id }}" data-status="{{ s.latest_status }}"
     class="{% if s.server_pk %}row-in-server{% elif s.controller %}row-in-controller{% endif %}">
  
     <td class="truncate" title="{{ s.product.name }}">{{ s.product.name }}</td>
@@ -80,6 +80,7 @@
         <span class="badge
             {% if s.latest_status == 'LIVE' %}bg-success
             {% elif s.latest_status == 'FAULTY' %}bg-danger
+            {% elif s.latest_status == 'DAMAGED' %}badge-damaged
             {% elif s.latest_status == 'TESTING' %}bg-warning text-dark
             {% else %}bg-secondary{% endif %}">
             {{ s.latest_status|default:"-" }}

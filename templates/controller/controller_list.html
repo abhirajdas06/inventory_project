@@ -54,7 +54,7 @@
  
                 <tbody>
                     {% for ctrl in controllers %}
-                    <tr data-id="{{ ctrl.product.id }}" data-ctrl-id="{{ ctrl.id }}">
+                    <tr data-id="{{ ctrl.product.id }}" data-ctrl-id="{{ ctrl.id }}" data-status="{{ ctrl.latest_status }}">
  
                         <td class="truncate" title="{{ ctrl.product.name }}">
                             {{ ctrl.product.name }}
@@ -84,6 +84,7 @@
                             <span class="badge
                                 {% if ctrl.latest_status == 'LIVE' %}bg-success
                                 {% elif ctrl.latest_status == 'FAULTY' %}bg-danger
+                                {% elif ctrl.latest_status == 'DAMAGED' %}badge-damaged
                                 {% elif ctrl.latest_status == 'TESTING' %}bg-warning text-dark
                                 {% else %}bg-secondary{% endif %}">
                                 {{ ctrl.latest_status|default:"-" }}

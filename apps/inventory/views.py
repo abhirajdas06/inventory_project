@@ -517,6 +517,75 @@ def scrap_faulty_stock(request):
     return JsonResponse({'success': True, 'status': 'SCRAP', 'components_scrapped': components_scrapped})
 
 
+@require_permission('status_update')
+def update_inventory_status(request):
+    """Update a product's stock status (e.g. mark Faulty / Damaged / Live)
+    while keeping it in stock. Creates a fresh Stock In transaction with the
+    chosen status and a mandatory remark — available from every list view,
+    for every product model."""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid method'})
+
+    product = get_object_or_404(Product, id=request.POST.get('product_id'))
+    new_status = (request.POST.get('stock_status') or '').strip().upper()
+    remarks = request.POST.get('remarks', '').strip()
+
+    valid_statuses = {value for value, _ in InventoryTransaction.STOCK_STATUS}
+    if new_status not in valid_statuses:
+        return JsonResponse({'success': False, 'error': 'Please select a valid status'})
+    if not remarks:
+        return JsonResponse({'success': False, 'error': 'Remarks are required'})
+    if _is_frozen(product):
+        return JsonResponse({'success': False, 'error': 'Frozen stock cannot have its status changed'})
+    if _has_pending_transfer(product):
+        return JsonResponse({'success': False, 'error': 'Product is pending receipt in a transfer request'})
+
+    latest = product.transactions.order_by('-created_at', '-id').first()
+    if latest and latest.transaction_type == 'OUT':
+        return JsonResponse({
+            'success': False,
+            'error': 'This product is stocked out; only in-stock items can have their status updated',
+        })
+
+    store_location = _latest_store_location(product)
+    today = date.today()
+    formatted_remarks = format_dated_remark(remarks, today)
+
+    with transaction.atomic():
+        InventoryTransaction.objects.create(
+            product=product,
+            transaction_type='IN',
+            store_location=store_location,
+            stock_status=new_status,
+            stock_in_date=today,
+            performed_by=request.user if request.user.is_authenticated else None,
+            audit_remark=formatted_remarks,
+        )
+
+    log_activity(
+        action='STATUS_UPDATE',
+        module='INVENTORY',
+        entity=product.name,
+        entity_id=product.id,
+        user=request.user,
+        warehouse=store_location,
+        location=_latest_location(product),
+        old_values={'stock_status': latest.stock_status if latest else ''},
+        new_values={'stock_status': new_status},
+        remarks=formatted_remarks,
+    )
+    log_timeline(
+        product=product,
+        event_type='STATUS',
+        user=request.user,
+        warehouse=store_location,
+        location=_latest_location(product),
+        remarks=formatted_remarks,
+        details={'old_status': latest.stock_status if latest else '', 'new_status': new_status},
+    )
+    return JsonResponse({'success': True, 'status': new_status})
+
+
 @require_permission('sales_return')
 def sales_return_history(request):
     records = SalesReturn.objects.select_related('product', 'returned_by').all()

@@ -60,7 +60,7 @@
 
                 <tbody>
                     {% for m in memories %}
-                    <tr data-id="{{ m.product.id }}" data-mem-id="{{ m.id }}">
+                    <tr data-id="{{ m.product.id }}" data-mem-id="{{ m.id }}" data-status="{{ m.latest_status }}">
 
                         <td class="truncate" title="{{ m.product.name }}">
                             {{ m.product.name }}
@@ -103,6 +103,7 @@
                             <span class="badge
                                 {% if m.latest_status == 'LIVE' %}bg-success
                                 {% elif m.latest_status == 'FAULTY' %}bg-danger
+                                {% elif m.latest_status == 'DAMAGED' %}badge-damaged
                                 {% elif m.latest_status == 'TESTING' %}bg-warning text-dark
                                 {% else %}bg-secondary{% endif %}">
                                 {{ m.latest_status|default:"-" }}

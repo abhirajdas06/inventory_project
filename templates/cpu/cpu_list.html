@@ -57,7 +57,7 @@
 
                 <tbody>
                     {% for c in cpus %}
-                    <tr data-id="{{ c.product.id }}" data-spare-id="{{ c.id }}">
+                    <tr data-id="{{ c.product.id }}" data-spare-id="{{ c.id }}" data-status="{{ c.latest_status }}">
 
                         <td class="truncate" title="{{ c.product.name }}">{{ c.product.name }}</td>
                         <td>{{ c.brand }}</td>
@@ -78,7 +78,16 @@
 
                         <!-- FROM LATEST TRANSACTION -->
                         <td>{{ c.latest_location|default:"-" }}</td>
-                        <td class="status-cell">{{ c.latest_status|default:"-" }}</td>
+                        <td class="status-cell">
+                            <span class="badge
+                                {% if c.latest_status == 'LIVE' %}bg-success
+                                {% elif c.latest_status == 'FAULTY' %}bg-danger
+                                {% elif c.latest_status == 'DAMAGED' %}badge-damaged
+                                {% elif c.latest_status == 'TESTING' %}bg-warning text-dark
+                                {% else %}bg-secondary{% endif %}">
+                                {{ c.latest_status|default:"-" }}
+                            </span>
+                        </td>
 
                         <!-- LAST AUDIT -->
                         <td>

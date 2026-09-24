@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.http import HttpResponse
 from django.shortcuts import render, redirect
-from django.db.models import OuterRef, Q, Subquery, Value, CharField
+from django.db.models import Exists, OuterRef, Q, Subquery, Value, CharField
 from django.db.models.functions import Coalesce, Concat
 from django.contrib.postgres.aggregates import StringAgg
  
@@ -112,10 +112,29 @@ def add_server(request):
     })
  
  
+# Category names used for a server's motherboard component. A server is
+# considered "Empty" (no motherboard) whenever none of its ServerComponent
+# rows with one of these spare_types has an in-stock (non-OUT) product —
+# this is fully derived from live data, so mapping/unmapping/stocking a
+# motherboard in or out automatically moves the server between the Live and
+# Empty tabs with no extra bookkeeping required.
+MOTHERBOARD_SPARE_TYPES = ['MOTHER BOARD', 'MOTHERBOARD', 'MAIN BOARD', 'SYSTEM BOARD']
+
+
 def _server_queryset(include_component_search=False):
     latest_txn = InventoryTransaction.objects.filter(
         product=OuterRef('product')
     ).order_by('-created_at')
+
+    motherboard_in_stock = ServerComponent.objects.filter(
+        server=OuterRef('pk'),
+        spare_type__in=MOTHERBOARD_SPARE_TYPES,
+    ).annotate(
+        comp_latest_type=Subquery(
+            InventoryTransaction.objects.filter(product=OuterRef('product'))
+            .order_by('-created_at').values('transaction_type')[:1]
+        ),
+    ).exclude(comp_latest_type='OUT')
 
     queryset = Server.objects.select_related(
         'product', 'brand'
@@ -127,6 +146,7 @@ def _server_queryset(include_component_search=False):
         latest_invoice  = Subquery(latest_txn.values('invoice_no')[:1]),
         latest_olf_dc   = Subquery(latest_txn.values('olf_dc_number')[:1]),
         latest_out_date = Subquery(latest_txn.values('stock_out_date')[:1]),
+        has_motherboard = Exists(motherboard_in_stock),
     )
     if include_component_search:
         queryset = queryset.annotate(component_search=StringAgg(
@@ -151,8 +171,10 @@ def _server_queryset(include_component_search=False):
 
 
 # ── List ──────────────────────────────────────────────────
-def server_list(request):
-    q = (request.GET.get('q') or '').strip()
+def _search_in_stock_servers(q):
+    """In-stock (not sold/frozen) servers, optionally filtered by the same
+    search term used by both the Live and Empty tabs, so a search for e.g.
+    "r630" can be split into how many are Live vs Empty."""
     servers = _server_queryset(include_component_search=bool(q))
     if q:
         server_filter = (
@@ -162,12 +184,50 @@ def server_list(request):
             Q(component_search__icontains=q)
         )
         servers = servers.filter(server_filter)
-    servers = _exclude_out_or_frozen(servers)
- 
+    return _exclude_out_or_frozen(servers)
+
+
+def _live_empty_counts(q):
+    """(live_count, empty_count) for the current search term, independent of
+    pagination — shown together as "N Live · M Empty" on both tabs."""
+    base = _search_in_stock_servers(q)
+    return base.filter(has_motherboard=True).count(), base.filter(has_motherboard=False).count()
+
+
+def server_list(request):
+    """Live Servers tab — in-stock servers that currently have a motherboard."""
+    q = (request.GET.get('q') or '').strip()
+    servers = _search_in_stock_servers(q).filter(has_motherboard=True)
+    live_count, empty_count = _live_empty_counts(q)
+
     return render(request, 'servers/server_list.html', paginated_list_context(
         request, servers, 'servers',
         spare_categories=SpareCategory.objects.all(),
         brands=Brand.objects.all(),
+        active_tab='live',
+        live_count=live_count,
+        empty_count=empty_count,
+        q=q,
+    ))
+
+
+def server_empty_list(request):
+    """Empty Servers tab — in-stock servers with no motherboard currently
+    mapped and in stock (never had one, it was unmapped, or it was stocked
+    out). Fully derived from live data: mapping a motherboard back in moves
+    the server straight back to the Live tab, no manual flag to update."""
+    q = (request.GET.get('q') or '').strip()
+    servers = _search_in_stock_servers(q).filter(has_motherboard=False)
+    live_count, empty_count = _live_empty_counts(q)
+
+    return render(request, 'servers/server_list.html', paginated_list_context(
+        request, servers, 'servers',
+        spare_categories=SpareCategory.objects.all(),
+        brands=Brand.objects.all(),
+        active_tab='empty',
+        live_count=live_count,
+        empty_count=empty_count,
+        q=q,
     ))
 
 

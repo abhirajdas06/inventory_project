@@ -55,7 +55,7 @@
  
                 <tbody>
                     {% for rk in railkits %}
-                    <tr data-id="{{ rk.product.id }}" data-rk-id="{{ rk.id }}">
+                    <tr data-id="{{ rk.product.id }}" data-rk-id="{{ rk.id }}" data-status="{{ rk.latest_status }}">
  
                         <td class="truncate" title="{{ rk.product.name }}">
                             {{ rk.product.name }}
@@ -96,6 +96,7 @@
                             <span class="badge
                                 {% if rk.latest_status == 'LIVE' %}bg-success
                                 {% elif rk.latest_status == 'FAULTY' %}bg-danger
+                                {% elif rk.latest_status == 'DAMAGED' %}badge-damaged
                                 {% elif rk.latest_status == 'TESTING' %}bg-warning text-dark
                                 {% else %}bg-secondary{% endif %}">
                                 {{ rk.latest_status|default:"-" }}

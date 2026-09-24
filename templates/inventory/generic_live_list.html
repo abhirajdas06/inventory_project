@@ -45,10 +45,19 @@
             </thead>
             <tbody>
                 {% for row in rows %}
-                <tr data-id="{{ row.item.product.id }}">
+                <tr data-id="{{ row.item.product.id }}" data-status="{{ row.item.latest_status }}">
                     {% for value in row.values %}<td>{{ value|default_if_none:"" }}</td>{% endfor %}
                     <td>{{ row.item.latest_location|default:"" }}</td>
-                    <td>{{ row.item.latest_status|default:"" }}</td>
+                    <td>
+                        <span class="badge
+                            {% if row.item.latest_status == 'LIVE' %}bg-success
+                            {% elif row.item.latest_status == 'FAULTY' %}bg-danger
+                            {% elif row.item.latest_status == 'DAMAGED' %}badge-damaged
+                            {% elif row.item.latest_status == 'TESTING' %}bg-warning text-dark
+                            {% else %}bg-secondary{% endif %}">
+                            {{ row.item.latest_status|default:"-" }}
+                        </span>
+                    </td>
                     <td>{{ row.item.last_audit_date|default:"" }}</td>
                     <td>{{ row.item.created_at|date:"Y-m-d H:i" }}</td>
                     {% if user.is_authenticated %}

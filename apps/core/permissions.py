@@ -11,16 +11,17 @@ ROLE_PERMISSIONS = {
         'transfer_request', 'transfer_receive', 'audit', 'audit_view',
         'product_history', 'sales_return', 'sold_view', 'rent_return',
         'reconciliation', 'mapping', 'freeze', 'reports', 'audit_findings',
-        'attend_audit_finding', 'stock_return',
+        'attend_audit_finding', 'stock_return', 'status_update',
     },
     'STOCK_IN': {
         'stock_in', 'sales_return', 'rent_return', 'transfer_receive',
         'audit_view', 'product_history', 'sold_view', 'mapping',
         'audit_findings', 'attend_audit_finding', 'stock_return', 'reports',
+        'status_update',
     },
     'STOCK_OUT': {
         'stock_out', 'stock_out_import', 'transfer_request', 'freeze', 'mapping',
-        'sold_view', 'reports',
+        'sold_view', 'reports', 'status_update',
     },
     'AUDIT': {
         'audit', 'audit_findings',
@@ -47,6 +48,7 @@ PERMISSION_LABELS = {
     'mapping': 'Map products and update list remarks',
     'freeze': 'Freeze and unfreeze stock',
     'reports': 'View and export reports',
+    'status_update': 'Update stock status (Faulty, Damaged, etc.) with a remark',
 }
 
 
