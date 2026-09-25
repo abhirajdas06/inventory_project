@@ -44,7 +44,7 @@ def dashboard(request):
     ).order_by('-created_at').values('transaction_type')[:1]
 
     category_models = [
-        ('Battery', Spare),
+        ('Spares', Spare),
         ('Card', Card),
         ('CPU', CPU),
         ('Controller', Controller),

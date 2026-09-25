@@ -18,9 +18,11 @@
                 <div class="inventory-list-subtitle">{{ harddisks|length }} active hard disk{{ harddisks|length|pluralize }}</div>
             </div>
             <div class="inventory-list-actions">
+                {% if can.stock_in %}
                 <a href="{% url 'add_harddisk' %}" class="btn btn-primary btn-sm">
                     <i class="bi bi-plus-lg me-1"></i>Add Hard Disk
                 </a>
+                {% endif %}
             </div>
         </div>
 

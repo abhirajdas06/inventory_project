@@ -28,7 +28,7 @@ VALID_STOCK_STATUSES = {value for value, _ in InventoryTransaction.STOCK_STATUS}
 
 
 IMPORT_LABELS = {
-    'battery': 'Battery',
+    'battery': 'Spares',
     'card': 'Card',
     'controller': 'Controller',
     'cpu': 'CPU',

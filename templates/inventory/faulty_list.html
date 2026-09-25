@@ -11,7 +11,9 @@
         <div class="inventory-list-subtitle">Items returned or stocked in as faulty.</div>
       </div>
       <div class="inventory-list-actions">
+        {% if can.sold_view or can.reports %}
         <a class="btn btn-sm btn-outline-secondary" href="{% url 'inventory_sold' kind %}">Sold list</a>
+        {% endif %}
       </div>
     </div>
 

@@ -23,9 +23,11 @@
             </div>
         </div>
         <div class="inventory-list-actions">
+            {% if can.sold_view or can.reports %}
             <a href="{% url 'inventory_export' kind 'sold' %}{% if selected_status %}?status={{ selected_status }}{% endif %}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-download"></i> Export
             </a>
+            {% endif %}
         </div>
     </div>
 
@@ -54,7 +56,9 @@
         </div>
         <div class="col-sm-3 d-flex gap-1">
             <button class="btn btn-primary btn-sm">Filter</button>
+            {% if can.sold_view or can.reports %}
             <a href="{% url 'inventory_sold' kind %}" class="btn btn-outline-secondary btn-sm">Reset</a>
+            {% endif %}
         </div>
     </form>
 

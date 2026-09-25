@@ -62,28 +62,26 @@ def user_role(user):
 
 
 def permissions_for(user):
-    """Return the set of permission keys the user currently holds."""
+    """The permission keys the user currently holds — the single source of truth.
+
+    Comes from what was saved in Role Settings for the user's role; if that role
+    was never customised, the ROLE_PERMISSIONS defaults apply. Superusers are
+    treated as ADMIN role, so the ADMIN row of Role Settings is honoured too —
+    except 'user_management', which ADMIN always keeps so nobody can lock
+    themselves out of the settings page.
+    """
     if not getattr(user, 'is_authenticated', False):
         return set()
-    if getattr(user, 'is_superuser', False):
-        return set(PERMISSION_LABELS.keys())
     role = user_role(user)
     override = RolePermission.objects.filter(role=role).only('permissions').first()
-    if override is not None:
-        return set(override.permissions or [])
-    return set(ROLE_PERMISSIONS.get(role, set()))
+    granted = set(override.permissions or []) if override is not None else set(ROLE_PERMISSIONS.get(role, set()))
+    if role == 'ADMIN':
+        granted.add('user_management')
+    return granted
 
 
 def has_permission(user, permission):
-    if not getattr(user, 'is_authenticated', False):
-        return False
-    if getattr(user, 'is_superuser', False):
-        return True
-    role = user_role(user)
-    override = RolePermission.objects.filter(role=role).only('permissions').first()
-    if override is not None:
-        return permission in (override.permissions or [])
-    return permission in ROLE_PERMISSIONS.get(role, set())
+    return permission in permissions_for(user)
 
 
 def require_permission(permission):

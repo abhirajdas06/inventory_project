@@ -20,9 +20,11 @@
         <div class="inventory-list-subtitle">{{ spares|length }} active spare{{ spares|length|pluralize }}</div>
     </div>
     <div class="inventory-list-actions">
+        {% if can.stock_in %}
         <a href="{% url 'add_spare' %}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Add Spare
         </a>
+        {% endif %}
     </div>
 </div>
  

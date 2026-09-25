@@ -16,9 +16,11 @@
                 <div class="inventory-list-subtitle">{{ memories|length }} active memory record{{ memories|length|pluralize }}</div>
             </div>
             <div class="inventory-list-actions">
+                {% if can.stock_in %}
                 <a href="{% url 'add_memory' %}" class="btn btn-primary btn-sm">
                     <i class="bi bi-plus-lg me-1"></i>Add Memory
                 </a>
+                {% endif %}
             </div>
         </div>
 

@@ -646,6 +646,19 @@
         .dataTables_scrollBody .inventory-list-table tr[data-status="DAMAGED"] td.sticky-col {
             background-color: #ffe0b0 !important;
         }
+        /* "Scrap" — purple. */
+        .inventory-list-table tbody tr[data-status="SCRAP"] td,
+        table.dataTable tbody tr[data-status="SCRAP"] td {
+            background-color: #e3d4f2 !important;
+        }
+        .inventory-list-table tbody tr[data-status="SCRAP"]:hover td,
+        table.dataTable tbody tr[data-status="SCRAP"]:hover td {
+            background-color: #d3bce9 !important;
+        }
+        .inventory-list-table tbody tr[data-status="SCRAP"] td.sticky-col,
+        .dataTables_scrollBody .inventory-list-table tr[data-status="SCRAP"] td.sticky-col {
+            background-color: #e3d4f2 !important;
+        }
         /* "Empty" (server with no motherboard mapped/in-stock) — gray. */
         .inventory-list-table tbody tr[data-status="EMPTY"] td,
         table.dataTable tbody tr[data-status="EMPTY"] td {
@@ -670,6 +683,9 @@
         #serverTable tbody tr[data-status="FAULTY"]:hover td { background-color: #f6b8b8 !important; }
         #serverTable tbody tr[data-status="DAMAGED"] td { background-color: #ffe0b0 !important; }
         #serverTable tbody tr[data-status="DAMAGED"]:hover td { background-color: #ffcc85 !important; }
+        #serverTable tbody tr[data-status="SCRAP"] td { background-color: #e3d4f2 !important; }
+        #serverTable tbody tr[data-status="SCRAP"]:hover td { background-color: #d3bce9 !important; }
+        #serverTable tbody tr[data-status="SCRAP"] td.sticky-col { background-color: #e3d4f2 !important; }
         #serverTable tbody tr[data-status="EMPTY"] td { background-color: #e2e5ea !important; }
         #serverTable tbody tr[data-status="EMPTY"]:hover td { background-color: #d3d7de !important; }
         #serverTable tbody tr[data-status="FAULTY"] td.sticky-col,
@@ -702,6 +718,7 @@
         .row-status-flag.flag-faulty { background: #dc3545; color: #fff; }
         .row-status-flag.flag-damaged { background: #fd7e14; color: #fff; }
         .row-status-flag.flag-empty { background: #6c757d; color: #fff; }
+        .row-status-flag.flag-scrap { background: #7b3fb0; color: #fff; }
         .badge-damaged {
             background: #fd7e14;
             color: #fff;
@@ -748,10 +765,12 @@
             <i class="bi bi-speedometer2"></i>
             <span class="nav-label">Dashboard</span>
         </a>
+        {% if can.stock_in or can.stock_out_import %}
         <a href="{% url 'inventory_import' %}" class="nav-item-link {% block nav_import %}{% endblock %}{% nav_active 'inventory_import' %}" data-sb-tip="Import">
             <i class="bi bi-upload"></i>
             <span class="nav-label">Import</span>
         </a>
+        {% endif %}
         {% endif %}
     </div>
 
@@ -765,12 +784,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_spare' 'spare_list' 'spare_out_report' 'inventory_faulty:spare' %}" id="nav-spare">
-            {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_spare' %}"        class="nav-subitem-link {% block nav_spare_add %}{% endblock %}{% nav_active 'add_spare' %}">Add Spare</a>
             {% endif %}
             <a href="{% url 'spare_list' %}"       class="nav-subitem-link {% block nav_spare_list %}{% endblock %}{% nav_active 'spare_list' %}">Spare List</a>
             {% if user.is_authenticated %}
-              {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' or user.profile.role == 'STOCK_OUT' %}
+              {% if can.sold_view or can.reports %}
               <a href="{% url 'spare_out_report' %}" class="nav-subitem-link {% block nav_spare_out %}{% endblock %}{% nav_active 'spare_out_report' %}">Stock Out Report</a>
               <a href="{% url 'inventory_faulty' 'spare' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:spare' %}">Faulty Spares</a>
               {% endif %}
@@ -783,12 +802,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_memory' 'memory_list' 'inventory_sold:memory' 'inventory_faulty:memory' %}" id="nav-memory">
-            {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_memory' %}"  class="nav-subitem-link {% block nav_memory_add %}{% endblock %}{% nav_active 'add_memory' %}">Add Memory</a>
             {% endif %}
             <a href="{% url 'memory_list' %}" class="nav-subitem-link {% block nav_memory_list %}{% endblock %}{% nav_active 'memory_list' %}">Memory List</a>
-            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'memory' %}" class="nav-subitem-link {% nav_active 'inventory_sold:memory' %}">Sold Memory</a>{% endif %}
-            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'memory' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:memory' %}">Faulty Memory</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'memory' %}" class="nav-subitem-link {% nav_active 'inventory_sold:memory' %}">Sold Memory</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'memory' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:memory' %}">Faulty Memory</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle {% nav_active 'add_card' 'card_list' 'inventory_sold:card' 'inventory_faulty:card' %}" data-bs-toggle="collapse" data-bs-target="#nav-card" aria-expanded="false" data-sb-tip="Card">
@@ -797,12 +816,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_card' 'card_list' 'inventory_sold:card' 'inventory_faulty:card' %}" id="nav-card">
-            {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_card' %}"  class="nav-subitem-link {% block nav_card_add %}{% endblock %}{% nav_active 'add_card' %}">Add Card</a>
             {% endif %}
             <a href="{% url 'card_list' %}" class="nav-subitem-link {% block nav_card_list %}{% endblock %}{% nav_active 'card_list' %}">Card List</a>
-            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'card' %}" class="nav-subitem-link {% nav_active 'inventory_sold:card' %}">Sold Cards</a>{% endif %}
-            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'card' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:card' %}">Faulty Cards</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'card' %}" class="nav-subitem-link {% nav_active 'inventory_sold:card' %}">Sold Cards</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'card' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:card' %}">Faulty Cards</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle {% nav_active 'add_cpu' 'cpu_list' 'inventory_sold:cpu' 'inventory_faulty:cpu' %}" data-bs-toggle="collapse" data-bs-target="#nav-cpu" aria-expanded="false" data-sb-tip="CPU">
@@ -811,12 +830,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_cpu' 'cpu_list' 'inventory_sold:cpu' 'inventory_faulty:cpu' %}" id="nav-cpu">
-            {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_cpu' %}"  class="nav-subitem-link {% block nav_cpu_add %}{% endblock %}{% nav_active 'add_cpu' %}">Add CPU</a>
             {% endif %}
             <a href="{% url 'cpu_list' %}" class="nav-subitem-link {% block nav_cpu_list %}{% endblock %}{% nav_active 'cpu_list' %}">CPU List</a>
-            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'cpu' %}" class="nav-subitem-link {% nav_active 'inventory_sold:cpu' %}">Sold CPUs</a>{% endif %}
-            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'cpu' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:cpu' %}">Faulty CPUs</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'cpu' %}" class="nav-subitem-link {% nav_active 'inventory_sold:cpu' %}">Sold CPUs</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'cpu' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:cpu' %}">Faulty CPUs</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle {% nav_active 'add_sfp' 'sfp_list' 'inventory_sold:sfp' 'inventory_faulty:sfp' %}" data-bs-toggle="collapse" data-bs-target="#nav-sfp" aria-expanded="false" data-sb-tip="SFP">
@@ -825,12 +844,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_sfp' 'sfp_list' 'inventory_sold:sfp' 'inventory_faulty:sfp' %}" id="nav-sfp">
-            {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_sfp' %}"  class="nav-subitem-link {% block nav_sfp_add %}{% endblock %}{% nav_active 'add_sfp' %}">Add SFP</a>
             {% endif %}
             <a href="{% url 'sfp_list' %}" class="nav-subitem-link {% block nav_sfp_list %}{% endblock %}{% nav_active 'sfp_list' %}">SFP List</a>
-            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'sfp' %}" class="nav-subitem-link {% nav_active 'inventory_sold:sfp' %}">Sold SFP</a>{% endif %}
-            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'sfp' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:sfp' %}">Faulty SFP</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'sfp' %}" class="nav-subitem-link {% nav_active 'inventory_sold:sfp' %}">Sold SFP</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'sfp' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:sfp' %}">Faulty SFP</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle {% nav_active 'add_railkit' 'railkit_list' 'inventory_sold:railkit' 'inventory_faulty:railkit' %}" data-bs-toggle="collapse" data-bs-target="#nav-railkit" aria-expanded="false" data-sb-tip="Rail Kit">
@@ -839,12 +858,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_railkit' 'railkit_list' 'inventory_sold:railkit' 'inventory_faulty:railkit' %}" id="nav-railkit">
-            {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_railkit' %}"  class="nav-subitem-link {% block nav_railkit_add %}{% endblock %}{% nav_active 'add_railkit' %}">Add Rail Kit</a>
             {% endif %}
             <a href="{% url 'railkit_list' %}" class="nav-subitem-link {% block nav_railkit_list %}{% endblock %}{% nav_active 'railkit_list' %}">Rail Kit List</a>
-            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'railkit' %}" class="nav-subitem-link {% nav_active 'inventory_sold:railkit' %}">Sold Rail Kits</a>{% endif %}
-            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'railkit' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:railkit' %}">Faulty Rail Kits</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'railkit' %}" class="nav-subitem-link {% nav_active 'inventory_sold:railkit' %}">Sold Rail Kits</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'railkit' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:railkit' %}">Faulty Rail Kits</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle {% nav_active 'add_harddisk' 'harddisk_list' 'inventory_sold:harddisk' 'inventory_faulty:harddisk' %}" data-bs-toggle="collapse" data-bs-target="#nav-harddisk" aria-expanded="false" data-sb-tip="Hard Disk">
@@ -853,12 +872,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_harddisk' 'harddisk_list' 'inventory_sold:harddisk' 'inventory_faulty:harddisk' %}" id="nav-harddisk">
-            {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_harddisk' %}"  class="nav-subitem-link {% block nav_hdd_add %}{% endblock %}{% nav_active 'add_harddisk' %}">Add Hard Disk</a>
             {% endif %}
             <a href="{% url 'harddisk_list' %}" class="nav-subitem-link {% block nav_hdd_list %}{% endblock %}{% nav_active 'harddisk_list' %}">Hard Disk List</a>
-            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'harddisk' %}" class="nav-subitem-link {% nav_active 'inventory_sold:harddisk' %}">Sold Hard Disks</a>{% endif %}
-            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'harddisk' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:harddisk' %}">Faulty Hard Disks</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'harddisk' %}" class="nav-subitem-link {% nav_active 'inventory_sold:harddisk' %}">Sold Hard Disks</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'harddisk' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:harddisk' %}">Faulty Hard Disks</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle {% nav_active 'add_networking_spare' 'networking_spare_list' 'inventory_sold:networking_spare' 'inventory_faulty:networking_spare' %}" data-bs-toggle="collapse" data-bs-target="#nav-networking" aria-expanded="false" data-sb-tip="Networking Spare">
@@ -867,12 +886,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_networking_spare' 'networking_spare_list' 'inventory_sold:networking_spare' 'inventory_faulty:networking_spare' %}" id="nav-networking">
-            {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_networking_spare' %}" class="nav-subitem-link {% nav_active 'add_networking_spare' %}">Add Networking Spare</a>
             {% endif %}
             <a href="{% url 'networking_spare_list' %}" class="nav-subitem-link {% nav_active 'networking_spare_list' %}">Networking List</a>
-            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'networking_spare' %}" class="nav-subitem-link {% nav_active 'inventory_sold:networking_spare' %}">Sold Networking</a>{% endif %}
-            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'networking_spare' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:networking_spare' %}">Faulty Networking</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'networking_spare' %}" class="nav-subitem-link {% nav_active 'inventory_sold:networking_spare' %}">Sold Networking</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'networking_spare' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:networking_spare' %}">Faulty Networking</a>{% endif %}
         </div>
     </div>
 
@@ -886,11 +905,11 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_server' 'server_list' 'server_out_list' 'server_faulty_list' %}" id="nav-server">
-            {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_server' %}"       class="nav-subitem-link {% block nav_server_add %}{% endblock %}{% nav_active 'add_server' %}">Add Server</a>
             {% endif %}
             <a href="{% url 'server_list' %}"      class="nav-subitem-link {% block nav_server_list %}{% endblock %}{% nav_active 'server_list' %}">Server List</a>
-            {% if user.is_authenticated %}
+            {% if can.sold_view or can.reports %}
             <a href="{% url 'server_out_list' %}"  class="nav-subitem-link {% block nav_server_out %}{% endblock %}{% nav_active 'server_out_list' %}">Sold Servers</a>
             <a href="{% url 'server_faulty_list' %}" class="nav-subitem-link {% nav_active 'server_faulty_list' %}">Faulty Servers</a>
             {% endif %}
@@ -907,12 +926,12 @@
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_controller' 'controller_list' 'inventory_sold:controller' 'inventory_faulty:controller' %}" id="nav-controller">
-            {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_controller' %}"  class="nav-subitem-link {% block nav_ctrl_add %}{% endblock %}{% nav_active 'add_controller' %}">Add Controller</a>
             {% endif %}
             <a href="{% url 'controller_list' %}" class="nav-subitem-link {% block nav_ctrl_list %}{% endblock %}{% nav_active 'controller_list' %}">Controller List</a>
-            {% if user.is_authenticated %}<a href="{% url 'inventory_sold' 'controller' %}" class="nav-subitem-link {% nav_active 'inventory_sold:controller' %}">Sold Controllers</a>{% endif %}
-            {% if user.is_authenticated %}<a href="{% url 'inventory_faulty' 'controller' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:controller' %}">Faulty Controllers</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'controller' %}" class="nav-subitem-link {% nav_active 'inventory_sold:controller' %}">Sold Controllers</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'controller' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:controller' %}">Faulty Controllers</a>{% endif %}
         </div>
     </div>
 
@@ -920,11 +939,13 @@
     <div class="nav-section">
         <span class="nav-section-label">Reports</span>
         {% if user.is_authenticated %}
+        {% if can.audit_view %}
         <a href="{% url 'audit_report' %}" class="nav-item-link {% block nav_audit_report %}{% endblock %}{% nav_active 'audit_report' %}" data-sb-tip="Audit Report">
             <i class="bi bi-clipboard2-check"></i>
             <span class="nav-label">Audit Report</span>
         </a>
-        {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'AUDIT' or user.profile.role == 'STOCK_IN' %}
+        {% endif %}
+        {% if can.audit_findings %}
         <a href="{% url 'audit_finding_list' %}" class="nav-item-link {% nav_active 'audit_finding_list' %}" data-sb-tip="Audit Findings">
             <i class="bi bi-exclamation-diamond"></i>
             <span class="nav-label">Audit Findings</span>
@@ -934,15 +955,19 @@
             <span class="nav-label">General Findings</span>
         </a>
         {% endif %}
-        {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' or user.profile.role == 'STOCK_OUT' %}
+        {% if can.product_history %}
         <a href="{% url 'transfer_history' %}" class="nav-item-link {% nav_active 'transfer_history' %}" data-sb-tip="Transfers">
             <i class="bi bi-arrow-left-right"></i>
             <span class="nav-label">Transfers</span>
         </a>
+        {% endif %}
+        {% if can.transfer_request or can.transfer_receive %}
         <a href="{% url 'transfer_request_page' %}" class="nav-item-link {% nav_active 'transfer_request_page' %}" data-sb-tip="Transfer Requests">
             <i class="bi bi-truck"></i>
             <span class="nav-label">Transfer Requests</span>
         </a>
+        {% endif %}
+        {% if can.sold_view or can.reports %}
         <div class="nav-group-toggle {% nav_active 'stock_out_status_list' %}" data-bs-toggle="collapse" data-bs-target="#nav-stock-status" aria-expanded="false" data-sb-tip="Stock Status">
             <i class="bi bi-tags nav-icon"></i>
             <span class="nav-label">Stock Status</span>
@@ -958,30 +983,38 @@
             <a href="{% url 'stock_out_status_list' 'REFILL' %}" class="nav-subitem-link {% nav_active 'stock_out_status_list:REFILL' %}">Refill</a>
             <a href="{% url 'stock_out_status_list' 'SCRAP' %}" class="nav-subitem-link {% nav_active 'stock_out_status_list:SCRAP' %}">Scrap</a>
         </div>
+        {% endif %}
+        {% if can.freeze %}
         <a href="{% url 'frozen_inventory_list' %}" class="nav-item-link {% nav_active 'frozen_inventory_list' %}" data-sb-tip="Frozen Stock">
             <i class="bi bi-snow2"></i>
             <span class="nav-label">Frozen Stock</span>
         </a>
         {% endif %}
-        {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' %}
+        {% if can.sales_return %}
         <a href="{% url 'sales_return_history' %}" class="nav-item-link {% nav_active 'sales_return_history' %}" data-sb-tip="Sales Returns">
             <i class="bi bi-box-arrow-in-down"></i>
             <span class="nav-label">Sales Returns</span>
         </a>
+        {% endif %}
+        {% if can.rent_return %}
         <a href="{% url 'rental_list' %}" class="nav-item-link {% nav_active 'rental_list' %}" data-sb-tip="Rentals">
             <i class="bi bi-arrow-repeat"></i>
             <span class="nav-label">Rentals</span>
         </a>
+        {% endif %}
+        {% if can.reconciliation %}
         <a href="{% url 'audit_reconciliation' %}" class="nav-item-link {% nav_active 'audit_reconciliation' %}" data-sb-tip="Reconciliation">
             <i class="bi bi-arrow-repeat"></i>
             <span class="nav-label">Reconciliation</span>
         </a>
         {% endif %}
-        {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' or user.profile.role == 'STOCK_OUT' %}
+        {% if can.mapping %}
         <a href="{% url 'mapping_history' %}" class="nav-item-link {% nav_active 'mapping_history' %}" data-sb-tip="Mapping History">
             <i class="bi bi-diagram-3"></i>
             <span class="nav-label">Mapping History</span>
         </a>
+        {% endif %}
+        {% if can.reports %}
         <a href="{% url 'activity_trail' %}" class="nav-item-link {% nav_active 'activity_trail' %}" data-sb-tip="Activity Trail">
             <i class="bi bi-clock-history"></i>
             <span class="nav-label">Activity Trail</span>
@@ -991,7 +1024,7 @@
     </div>
 
     {% if user.is_authenticated %}
-    {% if user.is_superuser or user.profile.role == 'ADMIN' %}
+    {% if can.user_management %}
     <!-- ADMINISTRATION -->
     <div class="nav-section">
         <span class="nav-section-label">Administration</span>
@@ -1046,7 +1079,7 @@
         </div>
 
         <!-- Quick Add -->
-        {% if user.is_authenticated %}
+        {% if can.stock_in %}
         <div class="dropdown">
             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                     data-bs-toggle="dropdown" style="font-size:13px;">
@@ -1303,10 +1336,6 @@
           <option value="ON_APPROVAL">On Approval</option>
           <option value="EMPTY">Empty</option>
           <option value="REFILL">Refill</option>
-          <option value="SALE">Sale</option>
-          <option value="RENT">Rent</option>
-          <option value="REPLACEMENT">Replacement</option>
-          <option value="ADV_REPLACEMENT">Adv Replacement</option>
           <option value="SCRAP">Scrap</option>
         </select>
       </div>
@@ -1644,13 +1673,13 @@
         return Array.from(row.querySelectorAll('td')).slice(0, 5).map(td => td.textContent.trim()).filter(Boolean).join(' | ');
     }
 
-    const canStockOut = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_OUT' %}true{% else %}false{% endif %};
-    const canAudit = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'AUDIT' %}true{% else %}false{% endif %};
-    const canTransferRequest = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_OUT' %}true{% else %}false{% endif %};
-    const canProductHistory = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' %}true{% else %}false{% endif %};
-    const canFreeze = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_OUT' %}true{% else %}false{% endif %};
-    const canMap = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' or user.profile.role == 'STOCK_OUT' %}true{% else %}false{% endif %};
-    const canStatusUpdate = {% if user.is_superuser or user.profile.role == 'ADMIN' or user.profile.role == 'STOCK_IN' or user.profile.role == 'STOCK_OUT' %}true{% else %}false{% endif %};
+    const canStockOut = {% if can.stock_out %}true{% else %}false{% endif %};
+    const canAudit = {% if can.audit %}true{% else %}false{% endif %};
+    const canTransferRequest = {% if can.transfer_request %}true{% else %}false{% endif %};
+    const canProductHistory = {% if can.product_history %}true{% else %}false{% endif %};
+    const canFreeze = {% if can.freeze %}true{% else %}false{% endif %};
+    const canMap = {% if can.mapping %}true{% else %}false{% endif %};
+    const canStatusUpdate = {% if can.status_update %}true{% else %}false{% endif %};
 
     // A small, always-visible "!" badge in the sticky Actions column (the one
     // cell guaranteed to stay on screen without horizontal scrolling) so a
@@ -1662,15 +1691,16 @@
         if (!cell) return;
         const status = row.dataset.status || '';
         let flag = cell.querySelector('.row-status-flag');
-        if (status === 'FAULTY' || status === 'DAMAGED' || status === 'EMPTY') {
+        if (status === 'FAULTY' || status === 'DAMAGED' || status === 'SCRAP' || status === 'EMPTY') {
             if (!flag) {
                 flag = document.createElement('span');
                 cell.insertBefore(flag, cell.firstChild);
             }
-            const flagClass = status === 'FAULTY' ? 'flag-faulty' : status === 'DAMAGED' ? 'flag-damaged' : 'flag-empty';
+            const flagClass = status === 'FAULTY' ? 'flag-faulty' : status === 'DAMAGED' ? 'flag-damaged' : status === 'SCRAP' ? 'flag-scrap' : 'flag-empty';
             flag.className = 'row-status-flag ' + flagClass;
             flag.title = status === 'FAULTY' ? 'FAULTY — needs attention'
                 : status === 'DAMAGED' ? 'DAMAGED — needs attention'
+                : status === 'SCRAP' ? 'SCRAP — marked for scrap'
                 : 'EMPTY — no motherboard mapped';
             flag.textContent = status === 'EMPTY' ? '∅' : '!';
         } else if (flag) {
@@ -1991,7 +2021,7 @@
     });
 
     function addExportButton() {
-        if (body.classList.contains('anon-user')) return;
+        if (body.classList.contains('anon-user') || !{% if can.reports %}true{% else %}false{% endif %}) return;
         const path = window.location.pathname;
         const map = [
             ['/spare/spares/', '/spare/export/spare/live/'],
@@ -2004,6 +2034,7 @@
             ['/spare/harddisk-list/', '/spare/export/harddisk/live/'],
             ['/spare/networking-spare/list/', '/spare/export/networking_spare/live/'],
             ['/servers/list/', '/servers/export/live/'],
+            ['/servers/empty/', '/servers/export/live/'],
             ['/servers/sold/', '/servers/export/sold/']
         ];
         const match = map.find(function (item) { return path === item[0]; });

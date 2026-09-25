@@ -26,15 +26,21 @@
             </div>
         </div>
         <div class="server-list-actions">
+            {% if can.sold_view or can.reports %}
             <a href="{% url 'server_faulty_list' %}" class="btn btn-outline-warning btn-sm">
                 <i class="bi bi-exclamation-triangle me-1"></i>Faulty Servers
             </a>
+            {% endif %}
+            {% if can.sold_view or can.reports %}
             <a href="{% url 'server_out_list' %}" class="btn btn-outline-danger btn-sm">
                 <i class="bi bi-box-arrow-up-right me-1"></i>Sold Servers
             </a>
+            {% endif %}
+            {% if can.stock_in %}
             <a href="{% url 'add_server' %}" class="btn btn-primary btn-sm">
                 <i class="bi bi-plus-lg me-1"></i>Add Server
             </a>
+            {% endif %}
         </div>
     </div>
 

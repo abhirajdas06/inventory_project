@@ -530,7 +530,11 @@ def update_inventory_status(request):
     new_status = (request.POST.get('stock_status') or '').strip().upper()
     remarks = request.POST.get('remarks', '').strip()
 
-    valid_statuses = {value for value, _ in InventoryTransaction.STOCK_STATUS}
+    # Sale / Rent / Replacement / Adv Replacement are stock-OUT outcomes, not
+    # in-stock statuses, so they cannot be set from the Update Status dialog.
+    valid_statuses = {value for value, _ in InventoryTransaction.STOCK_STATUS} - {
+        'SALE', 'RENT', 'REPLACEMENT', 'ADV_REPLACEMENT',
+    }
     if new_status not in valid_statuses:
         return JsonResponse({'success': False, 'error': 'Please select a valid status'})
     if not remarks:

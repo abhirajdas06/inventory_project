@@ -17,9 +17,11 @@
         <div class="inventory-list-subtitle">{{ cards|length }} active card{{ cards|length|pluralize }}</div>
     </div>
     <div class="inventory-list-actions">
+        {% if can.stock_in %}
         <a href="{% url 'add_card' %}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Add Card
         </a>
+        {% endif %}
     </div>
 </div>
 

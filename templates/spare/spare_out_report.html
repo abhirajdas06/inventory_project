@@ -22,9 +22,11 @@
         </div>
     </div>
     <div class="inventory-list-actions">
+        {% if can.sold_view or can.reports %}
         <a href="{% url 'inventory_export' 'spare' 'sold' %}{% if selected_status %}?status={{ selected_status }}{% endif %}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-download"></i> Export
         </a>
+        {% endif %}
     </div>
 </div>
 

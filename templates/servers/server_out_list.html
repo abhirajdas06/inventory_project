@@ -25,9 +25,11 @@
                 <option value="{{ status }}" {% if status == selected_status %}selected{% endif %}>{{ status }}</option>
                 {% endfor %}
             </select>
+            {% if can.reports %}
             <a href="{% url 'server_export' 'sold' %}{% if selected_status %}?status={{ selected_status }}{% endif %}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-download me-1"></i>Export CSV
             </a>
+            {% endif %}
             <a href="{% url 'server_list' %}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1"></i>Active Servers
             </a>

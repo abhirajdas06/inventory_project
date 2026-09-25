@@ -346,3 +346,40 @@ class FailureEmailTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('SMTP down', mail.outbox[0].body)
         self.assertEqual(mail.outbox[0].to, ['abhiraj@zacocomputer.com'])
+
+
+class RolePermissionUiTests(TestCase):
+    """Buttons / menu items must follow the saved Role Settings, not role names."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='ui-stock-in', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='STOCK_IN')
+        self.client.force_login(self.user)
+
+    def _page(self):
+        return self.client.get(reverse('server_list')).content.decode()
+
+    def test_granting_stock_out_to_stock_in_role_shows_stock_out_button_flag(self):
+        self.assertIn('const canStockOut = false;', self._page())
+        RolePermission.objects.create(role='STOCK_IN', permissions=['stock_in', 'stock_out'])
+        self.assertIn('const canStockOut = true;', self._page())
+
+    def test_revoking_permission_hides_flag_and_menu_items(self):
+        page = self._page()
+        self.assertIn('const canMap = true;', page)
+        self.assertIn(reverse('add_server'), page)
+        self.assertIn(reverse('sales_return_history'), page)
+        RolePermission.objects.create(role='STOCK_IN', permissions=['audit_view'])
+        page = self._page()
+        self.assertIn('const canMap = false;', page)
+        self.assertNotIn(reverse('add_server'), page)
+        self.assertNotIn(reverse('sales_return_history'), page)
+        self.assertIn(reverse('audit_report'), page)
+
+    def test_admin_role_customisation_is_honoured_but_keeps_user_management(self):
+        admin = User.objects.create_user(username='ui-admin', password='pass12345', is_superuser=True)
+        UserProfile.objects.create(user=admin, role='ADMIN')
+        RolePermission.objects.create(role='ADMIN', permissions=['stock_in'])
+        self.assertTrue(has_permission(admin, 'stock_in'))
+        self.assertTrue(has_permission(admin, 'user_management'))
+        self.assertFalse(has_permission(admin, 'stock_out'))

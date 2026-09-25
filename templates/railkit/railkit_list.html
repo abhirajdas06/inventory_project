@@ -17,9 +17,11 @@
                 <div class="inventory-list-subtitle">{{ railkits|length }} active rail kit{{ railkits|length|pluralize }}</div>
             </div>
             <div class="inventory-list-actions">
+                {% if can.stock_in %}
                 <a href="{% url 'add_railkit' %}" class="btn btn-primary btn-sm">
                     <i class="bi bi-plus-lg me-1"></i>Add Rail Kit
                 </a>
+                {% endif %}
             </div>
         </div>
 

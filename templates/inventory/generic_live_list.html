@@ -18,15 +18,21 @@
         </div>
         <div class="inventory-list-actions">
             {% if user.is_authenticated %}
+            {% if can.stock_in %}
             <a href="{% url 'add_networking_spare' %}" class="btn btn-primary btn-sm">
                 <i class="bi bi-plus-lg"></i> Add
             </a>
+            {% endif %}
+            {% if can.sold_view or can.reports %}
             <a href="{% url 'inventory_sold' kind %}" class="btn btn-outline-danger btn-sm">
                 <i class="bi bi-bag-check"></i> Sold
             </a>
+            {% endif %}
+            {% if can.sold_view or can.reports %}
             <a href="{% url 'inventory_export' kind 'live' %}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-download"></i> Export
             </a>
+            {% endif %}
             {% endif %}
         </div>
     </div>

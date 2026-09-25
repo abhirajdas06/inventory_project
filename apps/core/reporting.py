@@ -235,7 +235,7 @@ def send_daily_inventory_email(recipients=None, output_dir=None, export_date=Non
         f'Attached are the automated inventory snapshots for {export_date.isoformat()}:\n\n'
         '  • inventory-live — everything currently in stock\n'
         '  • inventory-stocked_out — everything stocked out / sold\n\n'
-        'Each workbook has one sheet per category (Battery, Card, CPU, Hard Disk, Memory, '
+        'Each workbook has one sheet per category (Spares, Card, CPU, Hard Disk, Memory, '
         'Networking Spare, Rail Kit, SFP, Controller, Server).\n\n'
         'To re-import: Import page -> choose the category -> upload the SAME file '
         '(the sheet with that category name is read). Use the normal import for the live '

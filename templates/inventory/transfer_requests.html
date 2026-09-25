@@ -14,7 +14,7 @@
     </div>
 
     <div class="row g-3 mb-3">
-      {% if user.profile.role == 'STOCK_OUT' or user.profile.role == 'ADMIN' or user.is_superuser %}
+      {% if can.transfer_request %}
       <div class="col-lg-6">
         <form id="requestTransferForm" class="border rounded p-3 bg-white" enctype="multipart/form-data">
           {% csrf_token %}
@@ -47,7 +47,7 @@
       </div>
       {% endif %}
 
-      {% if user.profile.role == 'STOCK_IN' or user.profile.role == 'ADMIN' or user.is_superuser %}
+      {% if can.transfer_receive %}
       <div class="col-lg-6">
         <div class="border rounded p-3 bg-white h-100">
           <h6 class="mb-2">Receive transfer</h6>
