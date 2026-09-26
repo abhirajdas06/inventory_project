@@ -368,6 +368,9 @@ class HardDisk(models.Model):
     oem            = models.CharField(max_length=100, null=True, blank=True)
     brand_model_no = models.CharField(max_length=100, null=True, blank=True)
     oem_model_no   = models.CharField(max_length=100, null=True, blank=True)
+    # Model of the server / storage system this disk belongs to (from the import
+    # sheet's Model column), so a disk can be traced back to its machine.
+    model          = models.CharField(max_length=100, null=True, blank=True)
  
     capacity  = models.CharField(max_length=20,  null=True, blank=True)   # e.g. 1TB
     rpm       = models.CharField(max_length=20,  null=True, blank=True)   # e.g. 7.2K

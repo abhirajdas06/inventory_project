@@ -731,6 +731,43 @@
             background-color: #e2e5ea !important;
         }
 
+        /* "Installed in" — items that are part of a server / controller. */
+        tr.row-installed > td:first-child { box-shadow: inset 4px 0 0 #2563eb; }
+        tr.row-installed-out > td:first-child { box-shadow: inset 4px 0 0 #94a3b8; }
+        .installed-in-badge {
+            display: block;
+            max-width: 100%;
+            margin-top: 3px;
+            padding: 1px 8px;
+            border-radius: 999px;
+            border: 1px solid #bcd3ff;
+            background: #e0edff;
+            color: #1d4ed8;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.5;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        tr.row-installed-out .installed-in-badge { background: #f1f5f9; border-color: #cbd5e1; color: #64748b; }
+        .row-installed-flag {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            font-size: 12px;
+            margin-right: 4px;
+            flex-shrink: 0;
+            background: #2563eb;
+            color: #fff;
+            cursor: help;
+        }
+        tr.row-installed-out .row-installed-flag { background: #94a3b8; }
+        .installed-in-notice { border-left: 4px solid #2563eb; background: #eff6ff; color: #1e3a8a; }
+
         /* Small always-visible marker injected into the sticky Actions cell
            (see addWorkflowButtons in the script below) so a faulty/damaged/
            empty item is obvious without scrolling to the Status column. */
@@ -1114,6 +1151,9 @@
         {% legend_chip 'EMPTY' as chip %}
         <a class="legend-item{% if chip.active %} active{% endif %}{% if not chip.url %} disabled{% endif %}"{% if chip.url %} href="{{ chip.url }}"{% endif %}
            title="{% if chip.url %}{% if chip.active %}Showing Empty only — click to clear{% else %}Show only Empty rows{% endif %}{% else %}Empty rows — open a list that supports this filter{% endif %}"><i class="legend-swatch" style="background:#e2e5ea;border-color:#6c757d"></i>Empty</a>
+        {% legend_chip 'INSTALLED' as chip %}
+        <a class="legend-item{% if chip.active %} active{% endif %}{% if not chip.url %} disabled{% endif %}"{% if chip.url %} href="{{ chip.url }}"{% endif %}
+           title="{% if chip.url %}{% if chip.active %}Showing installed items only — click to clear{% else %}Show only items installed in a server / controller{% endif %}{% else %}Installed in a server / controller — open a list that supports this filter{% endif %}"><i class="legend-swatch" style="background:#e0edff;border-color:#2563eb"></i>Installed</a>
     </div>
 
     <div class="ms-auto d-flex align-items-center gap-2">
@@ -1838,6 +1878,96 @@
             }
         });
     }
+
+    // ── "Installed in": show which server / controller an item is part of ──
+    // One bulk request per page (products on screen), cached; the same info is
+    // then shown on the row, in the sticky Actions column, and inside every
+    // action dialog (stock out, transfer, freeze, status, map, return ...).
+    const installedCache = {};
+    function installedText(info) {
+        const kind = info.type === 'controller' ? 'Controller' : 'Server';
+        return (info.out ? 'Was installed in ' : 'Installed in ') + kind + ': ' + info.label;
+    }
+    function paintInstalledRow(row) {
+        const info = installedCache[row.dataset.id];
+        row.querySelectorAll('.installed-in-badge, .row-installed-flag').forEach(function (el) { el.remove(); });
+        row.classList.remove('row-installed', 'row-installed-out');
+        if (!info) return;
+        row.classList.add('row-installed');
+        if (info.out) row.classList.add('row-installed-out');
+        const text = installedText(info);
+        const target = row.querySelector('td:not(.serial-col):not(.sticky-col):not(.action-cell)');
+        if (target && !row.querySelector('.membership-badge')) {
+            const badge = document.createElement('div');
+            badge.className = 'installed-in-badge';
+            badge.title = text;
+            const icon = document.createElement('i');
+            icon.className = 'bi ' + (info.type === 'controller' ? 'bi-hdd-rack' : 'bi-hdd-network') + ' me-1';
+            badge.appendChild(icon);
+            badge.appendChild(document.createTextNode(text));
+            target.appendChild(badge);
+        }
+        const cell = row.querySelector('td.sticky-col, td.action-cell');
+        if (cell) {
+            const flag = document.createElement('span');
+            flag.className = 'row-installed-flag';
+            flag.title = text;
+            flag.innerHTML = '<i class="bi ' + (info.type === 'controller' ? 'bi-hdd-rack' : 'bi-hdd-network') + '"></i>';
+            cell.insertBefore(flag, cell.firstChild);
+        }
+    }
+    function loadInstalledIn() {
+        const rows = Array.from(document.querySelectorAll('table tbody tr[data-id]'));
+        const need = Array.from(new Set(rows.map(function (r) { return r.dataset.id; })
+            .filter(function (id) { return id && !(id in installedCache); })));
+        const paint = function () { rows.forEach(paintInstalledRow); };
+        if (!need.length) { paint(); return; }
+        fetch('/inventory/installed-in/?ids=' + need.join(','))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                need.forEach(function (id) { installedCache[id] = data[id] || null; });
+                paint();
+            })
+            .catch(function () {});
+    }
+    document.addEventListener('DOMContentLoaded', loadInstalledIn);
+    if (window.jQuery) { window.jQuery(document).on('draw.dt', loadInstalledIn); }
+
+    // Action dialogs: remember which product the clicked button belongs to and
+    // add an "Installed in ..." notice to whichever modal opens.
+    let actionProductId = '';
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.stockout-btn, .transfer-btn, .freeze-btn, .map-btn, .status-update-btn, .audit-btn, .sales-return-btn, .scrap-faulty-btn, .frozen-stockout-btn, .unfreeze-btn');
+        if (btn) actionProductId = btn.dataset.productId || btn.dataset.id || (btn.closest('tr') && btn.closest('tr').dataset.id) || '';
+    }, true);
+    function showInstalledNotice(modal) {
+        modal.querySelectorAll('.installed-in-notice').forEach(function (el) { el.remove(); });
+        const id = actionProductId;
+        if (!id) return;
+        const render = function (info) {
+            if (!info || actionProductId !== id) return;
+            const host = modal.querySelector('.modal-body') || modal.querySelector('.modal-content');
+            if (!host) return;
+            const note = document.createElement('div');
+            note.className = 'alert installed-in-notice py-2 px-3 small mb-3';
+            const strong = document.createElement('strong');
+            strong.innerHTML = '<i class="bi bi-hdd-network me-1"></i>';
+            strong.appendChild(document.createTextNode(installedText(info)));
+            note.appendChild(strong);
+            note.appendChild(document.createElement('br'));
+            note.appendChild(document.createTextNode(info.out
+                ? 'This item was part of that ' + info.type + ' before it was stocked out.'
+                : 'This item is part of that ' + info.type + ' — any action here affects that ' + info.type + '.'));
+            host.insertBefore(note, host.firstChild);
+        };
+        if (id in installedCache) { render(installedCache[id]); return; }
+        fetch('/inventory/installed-in/?ids=' + encodeURIComponent(id))
+            .then(function (r) { return r.json(); })
+            .then(function (data) { installedCache[id] = data[id] || null; render(installedCache[id]); })
+            .catch(function () {});
+    }
+    document.addEventListener('shown.bs.modal', function (e) { showInstalledNotice(e.target); });
+    document.addEventListener('hidden.bs.modal', function () { actionProductId = ''; });
 
     document.addEventListener('DOMContentLoaded', addWorkflowButtons);
     if (window.jQuery) {

@@ -38,6 +38,7 @@
                         <th>OEM</th>
                         <th>Brand Model</th>
                         <th>OEM Model</th>
+                        <th>Model</th>
                         <th>Capacity</th>
                         <th>RPM</th>
                         <th>Interface</th>
@@ -77,6 +78,7 @@
                         <td>{{ hd.oem }}</td>
                         <td>{{ hd.brand_model_no }}</td>
                         <td>{{ hd.oem_model_no }}</td>
+                        <td>{{ hd.model|default:"" }}</td>
                         <td><strong>{{ hd.capacity }}</strong></td>
                         <td>{{ hd.rpm }}</td>
 
@@ -171,7 +173,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="26" class="text-center text-muted py-4">
+                        <td colspan="28" class="text-center text-muted py-4">
                             No hard disk records found.
                         </td>
                     </tr>

@@ -842,6 +842,55 @@ def check_product_membership(request):
     return JsonResponse(result)
 
 
+def installed_in(request):
+    """Bulk "Installed in" lookup for the products shown on a list page.
+
+    GET ?ids=1,2,3  ->  {"1": {"type": "server", "label": "...", "out": false}, ...}
+    Only products that are part of a server or a controller are returned.
+    ``out`` is true when the product has since been stocked out (so the list
+    can say it was installed there rather than is).
+    """
+    from apps.servers.models import ServerComponent
+    from apps.categories.models import Spare
+
+    ids = []
+    for part in (request.GET.get('ids') or '').split(',')[:500]:
+        part = part.strip()
+        if part.isdigit():
+            ids.append(int(part))
+    if not ids:
+        return JsonResponse({})
+
+    result = {}
+    for sc in ServerComponent.objects.filter(product_id__in=ids).select_related('server'):
+        if not sc.server:
+            continue
+        s = sc.server
+        result[str(sc.product_id)] = {
+            'type': 'server',
+            'label': f"{s.machine_no or s.model or 'Server'} [{s.service_tag}]",
+            'model': s.model or '',
+            'url': f'/servers/components/{s.id}/',
+        }
+    for spare in Spare.objects.filter(product_id__in=ids, controller__isnull=False).select_related('controller__product'):
+        c = spare.controller
+        result.setdefault(str(spare.product_id), {
+            'type': 'controller',
+            'label': f"{c.model or 'Controller'} [{getattr(c.product, 'serial_no', '') or '—'}]",
+            'model': c.model or '',
+            'url': '',
+        })
+
+    if result:
+        latest = {}
+        for txn in (InventoryTransaction.objects.filter(product_id__in=[int(k) for k in result])
+                    .order_by('product_id', '-created_at', '-id').values('product_id', 'transaction_type')):
+            latest.setdefault(txn['product_id'], txn['transaction_type'])
+        for key, info in result.items():
+            info['out'] = latest.get(int(key)) == 'OUT'
+    return JsonResponse(result)
+
+
 @require_permission('transfer_request')
 def transfer_inventory(request):
     if request.method == 'POST':

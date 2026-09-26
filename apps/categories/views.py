@@ -1480,7 +1480,7 @@ LIST_MODELS = {
         'model': HardDisk,
         'add_url': 'add_harddisk',
         'list_url': 'harddisk_list',
-        'fields': [('Product', 'product.name'), ('Brand', 'brand.name'), ('OEM', 'oem'), ('Brand Model', 'brand_model_no'), ('OEM Model', 'oem_model_no'), ('Capacity', 'capacity'), ('RPM', 'rpm'), ('Interface', 'interface'), ('Size', 'size'), ('Part No', 'part_no'), ('Serial', 'product.serial_no'), ('Barcode', 'barcode'), ('Tray Barcode', 'tray_barcode'), ('Location', 'location'), ('Remark', 'remark')],
+        'fields': [('Product', 'product.name'), ('Brand', 'brand.name'), ('OEM', 'oem'), ('Brand Model', 'brand_model_no'), ('OEM Model', 'oem_model_no'), ('Model', 'model'), ('Capacity', 'capacity'), ('RPM', 'rpm'), ('Interface', 'interface'), ('Size', 'size'), ('Part No', 'part_no'), ('Serial', 'product.serial_no'), ('Barcode', 'barcode'), ('Tray Barcode', 'tray_barcode'), ('Location', 'location'), ('Remark', 'remark')],
     },
     'networking_spare': {
         'label': 'Networking Spare',

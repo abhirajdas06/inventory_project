@@ -6,6 +6,7 @@ One implementation so all lists behave identically:
     status     latest stock status            (?status=FAULTY)
     store      latest warehouse               (?store=WH2)
     brand      brand of the item              (?brand=<Brand id>)
+    installed  yes / no — part of a server or controller  (?installed=yes)
     date_from  }  Out date on sold lists, otherwise the date the item was
     date_to    }  added                        (?date_from=2026-01-01)
 
@@ -17,7 +18,7 @@ are ignored instead of raising.
 """
 from django.utils.dateparse import parse_date
 
-FILTER_PARAMS = ('status', 'store', 'brand', 'date_from', 'date_to')
+FILTER_PARAMS = ('status', 'store', 'brand', 'installed', 'date_from', 'date_to')
 
 # Statuses an item can carry while still IN stock vs. every status (sold lists).
 IN_STOCK_STATUSES = ('LIVE', 'FAULTY', 'DAMAGED', 'TESTING', 'ON_APPROVAL', 'EMPTY', 'REFILL', 'SCRAP')
@@ -102,13 +103,29 @@ def apply_list_filters(request, qs, *, hide=(), status_options=None, sold=None):
     else:
         brand = ''
 
+    installed = _clean(request, 'installed').lower()
+    product_ref = None
+    if 'installed' not in hide:
+        if _model_field(qs, 'product') is not None and qs.model.__name__ != 'Server':
+            product_ref = 'product_id'
+        elif qs.model.__name__ == 'Product':
+            product_ref = 'pk'
+    if product_ref and installed in ('yes', 'no'):
+        from django.db.models import Exists, OuterRef
+        from apps.categories.models import Spare
+        from apps.servers.models import ServerComponent
+        is_installed = Exists(ServerComponent.objects.filter(product_id=OuterRef(product_ref))) |             Exists(Spare.objects.filter(product_id=OuterRef(product_ref), controller__isnull=False))
+        qs = qs.annotate(_is_installed=is_installed).filter(_is_installed=(installed == 'yes'))
+    else:
+        installed = ''
+
     if date_lookup and date_from:
         qs = qs.filter(**{f'{date_lookup}__gte': date_from})
     if date_lookup and date_to:
         qs = qs.filter(**{f'{date_lookup}__lte': date_to})
 
     values = {
-        'status': status, 'store': store, 'brand': brand,
+        'status': status, 'store': store, 'brand': brand, 'installed': installed,
         'date_from': date_from.isoformat() if date_from else '',
         'date_to': date_to.isoformat() if date_to else '',
     }
@@ -118,6 +135,7 @@ def apply_list_filters(request, qs, *, hide=(), status_options=None, sold=None):
         'show_status': status_field is not None,
         'show_store': store_field is not None,
         'show_brand': brand_field is not None,
+        'show_installed': product_ref is not None,
         'show_date': date_lookup is not None,
         'date_label': 'Out date' if is_sold else 'Added on',
         'status_options': list(status_options),

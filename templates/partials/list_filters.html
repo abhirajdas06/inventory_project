@@ -38,6 +38,16 @@
             </select>
         </div>
         {% endif %}
+        {% if f.show_installed %}
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label small mb-0 text-muted">Installed in</label>
+            <select name="installed" class="form-select form-select-sm">
+                <option value="">Any</option>
+                <option value="yes" {% if f.values.installed == 'yes' %}selected{% endif %}>Installed in server / controller</option>
+                <option value="no" {% if f.values.installed == 'no' %}selected{% endif %}>Not installed (loose)</option>
+            </select>
+        </div>
+        {% endif %}
         {% if f.show_date %}
         <div class="col-6 col-md-3 col-xl-2">
             <label class="form-label small mb-0 text-muted">{{ f.date_label }} from</label>

@@ -518,3 +518,82 @@ class LegendFilterTests(ListFilterTests):
     def test_chip_filter_actually_filters(self):
         res = self.client.get(reverse('card_list'), {'status': 'SCRAP'})
         self.assertEqual(self.serials(reverse('card_list'), status='SCRAP'), {'C-SCRAP-HP-WH2'})
+
+
+@override_settings(EMAIL_BACKEND=LOCMEM)
+class ServerHardDiskImportTests(TestCase):
+    def test_hard_disk_row_keeps_machine_model(self):
+        from apps.categories.models import HardDisk
+        with override_settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            headers = list(HEADER_MAPS['server'])
+
+            def row(spare, serial, parent=''):
+                return _row(headers, **{
+                    'Machine Type': 'STORAGE', 'System Service Tag No': 'ST1', 'Model': 'IBM V7000',
+                    'Spares Type': spare, 'Serial No': serial, 'QTY': 1, 'Parent-child Location': parent})
+            job = _run_import('server', _xlsx_upload(headers, [row('CABINET', 'ST1'), row('HARD DISK', 'HDD-1', 'ST1')]))
+        self.assertEqual(job.error_count, 0, job.errors)
+        self.assertEqual(HardDisk.objects.get(product__serial_no='HDD-1').model, 'IBM V7000')
+
+
+class InstalledInTests(TestCase):
+    def setUp(self):
+        from apps.categories.models import Card
+        from apps.core.models import SpareCategory
+        from apps.servers.models import Server, ServerComponent
+        self.user = User.objects.create_superuser(username='inst', password='pass12345', email='i@example.com')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+        cat = SpareCategory.objects.create(name='CARD')
+        cab = SpareCategory.objects.create(name='CABINET')
+
+        def card(serial):
+            p = Product.objects.create(category=cat, serial_no=serial, name=serial)
+            Card.objects.create(product=p, brand_serial_no_1=serial)
+            InventoryTransaction.objects.create(product=p, transaction_type='IN', store_location='WH1', stock_status='LIVE')
+            return p
+        self.loose = card('LOOSE-1')
+        self.inside = card('INSIDE-1')
+        self.sold_inside = card('SOLD-INSIDE-1')
+        cabinet = Product.objects.create(category=cab, serial_no='SRV-CAB', name='cab')
+        self.server = Server.objects.create(service_tag='TAG9', model='R630', machine_no='M-9', product=cabinet)
+        ServerComponent.objects.create(server=self.server, product=self.inside, spare_type='CARD', serial_no='INSIDE-1')
+        ServerComponent.objects.create(server=self.server, product=self.sold_inside, spare_type='CARD', serial_no='SOLD-INSIDE-1')
+        InventoryTransaction.objects.create(product=self.sold_inside, transaction_type='OUT', store_location='WH1', stock_status='SALE')
+
+    def test_bulk_lookup_returns_only_installed_products(self):
+        ids = f'{self.loose.id},{self.inside.id},{self.sold_inside.id},abc,'
+        data = self.client.get(reverse('installed_in'), {'ids': ids}).json()
+        self.assertNotIn(str(self.loose.id), data)
+        info = data[str(self.inside.id)]
+        self.assertEqual((info['type'], info['out']), ('server', False))
+        self.assertIn('TAG9', info['label'])
+        self.assertTrue(data[str(self.sold_inside.id)]['out'])
+        self.assertEqual(self.client.get(reverse('installed_in')).json(), {})
+
+    def test_controller_membership(self):
+        from apps.categories.models import Controller, Spare
+        from apps.core.models import SpareCategory
+        cp = Product.objects.create(category=SpareCategory.objects.get(name='CARD'), serial_no='CTRL-1', name='ctrl')
+        ctrl = Controller.objects.create(product=cp, model='P440')
+        sp = Product.objects.create(category=SpareCategory.objects.get(name='CARD'), serial_no='BAT-1', name='bat')
+        Spare.objects.create(product=sp, controller=ctrl)
+        data = self.client.get(reverse('installed_in'), {'ids': str(sp.id)}).json()
+        self.assertEqual(data[str(sp.id)]['type'], 'controller')
+        self.assertIn('P440', data[str(sp.id)]['label'])
+
+    def test_installed_filter_on_lists(self):
+        url = reverse('card_list')
+        def found(**p):
+            html = self.client.get(url, p).content.decode()
+            return {s for s in ('LOOSE-1', 'INSIDE-1') if s in html}
+        self.assertEqual(found(), {'LOOSE-1', 'INSIDE-1'})
+        self.assertEqual(found(installed='yes'), {'INSIDE-1'})
+        self.assertEqual(found(installed='no'), {'LOOSE-1'})
+        self.assertEqual(found(installed='garbage'), {'LOOSE-1', 'INSIDE-1'})
+
+    def test_pages_ship_the_installed_in_hooks(self):
+        html = self.client.get(reverse('card_list')).content.decode()
+        self.assertIn('/inventory/installed-in/', html)
+        self.assertIn('installed-in-notice', html)
+        self.assertIn('Installed</a>', html)

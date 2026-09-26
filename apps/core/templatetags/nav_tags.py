@@ -72,6 +72,12 @@ def legend_chip(context, status):
         return {'url': target + ('?' + params.urlencode() if params else ''), 'active': active}
 
     f = context.get('list_filter')
+    if status == 'INSTALLED':
+        if not f or not f.get('show_installed'):
+            return {'url': '', 'active': False}
+        active = f['values'].get('installed') == 'yes'
+        params['installed'] = '' if active else 'yes'
+        return {'url': request.path + '?' + params.urlencode(), 'active': active}
     if not f or not f.get('show_status') or status not in dict(f.get('status_options', [])):
         return {'url': '', 'active': False}
     active = f['values'].get('status') == status
