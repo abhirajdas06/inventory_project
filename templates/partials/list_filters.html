@@ -1,0 +1,58 @@
+{# Search + shared filters for every list. Submits as GET so the URL is shareable and pagination keeps it. #}
+{% with f=list_filter %}
+<form method="get" class="inventory-list-query list-filter-bar mb-3">
+    <div class="row g-2 align-items-end">
+        {% if not hide_search %}
+        <div class="col-12 col-md-6 col-xl-3">
+            <label class="form-label small mb-0 text-muted">Search</label>
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="search" class="form-control" name="q" value="{{ q }}" placeholder="{{ search_placeholder|default:'Product, serial, part number, barcode, or location' }}">
+            </div>
+        </div>
+        {% else %}{% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}{% endif %}
+        {% if f.show_status %}
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label small mb-0 text-muted">Status</label>
+            <select name="status" class="form-select form-select-sm">
+                <option value="">All statuses</option>
+                {% for value, label in f.status_options %}<option value="{{ value }}" {% if f.values.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        {% if f.show_store %}
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label small mb-0 text-muted">Store</label>
+            <select name="store" class="form-select form-select-sm">
+                <option value="">All stores</option>
+                {% for value, label in f.store_options %}<option value="{{ value }}" {% if f.values.store == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        {% if f.show_brand %}
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label small mb-0 text-muted">Brand</label>
+            <select name="brand" class="form-select form-select-sm">
+                <option value="">All brands</option>
+                {% for value, label in f.brand_options %}<option value="{{ value }}" {% if f.values.brand == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        {% if f.show_date %}
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label small mb-0 text-muted">{{ f.date_label }} from</label>
+            <input type="date" name="date_from" value="{{ f.values.date_from }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label small mb-0 text-muted">{{ f.date_label }} to</label>
+            <input type="date" name="date_to" value="{{ f.values.date_to }}" class="form-control form-control-sm">
+        </div>
+        {% endif %}
+        <div class="col-auto d-flex align-items-center gap-2">
+            <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-funnel me-1"></i>Apply</button>
+            {% if q or f.active_count %}<a class="btn btn-outline-secondary btn-sm" href="{{ request.path }}">Clear{% if f.active_count %} ({{ f.active_count }}){% endif %}</a>{% endif %}
+            {% if total_count is not None %}<span class="text-muted small">{{ total_count }} record{{ total_count|pluralize }}</span>{% endif %}
+        </div>
+    </div>
+</form>
+{% endwith %}

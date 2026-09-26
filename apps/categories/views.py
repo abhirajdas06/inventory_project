@@ -239,16 +239,13 @@ def update_spare_field(request):
 
 @require_any_permission('sold_view', 'reports')
 def spare_out_report(request):
-    selected_status = request.GET.get('status', '').strip()
     q = request.GET.get('q', '').strip()
-    date_from = request.GET.get('date_from', '').strip()
-    date_to = request.GET.get('date_to', '').strip()
 
     latest_txn = InventoryTransaction.objects.filter(
         product=OuterRef('product')
     ).order_by('-created_at')
 
-    all_out_spares = Spare.objects.select_related('product').annotate(
+    all_out_spares = Spare.objects.select_related('product', 'brand').annotate(
         latest_type=Subquery(latest_txn.values('transaction_type')[:1]),
         latest_location=Subquery(latest_txn.values('store_location')[:1]),
         latest_status=Subquery(latest_txn.values('stock_status')[:1]),
@@ -257,22 +254,10 @@ def spare_out_report(request):
         latest_olf_dc=Subquery(latest_txn.values('olf_dc_number')[:1]),
         latest_out_date=Subquery(latest_txn.values('stock_out_date')[:1]),
     ).filter(
-        latest_type='OUT'   # 🔥 ONLY STOCKED OUT
+        latest_type='OUT'   # ONLY STOCKED OUT
     )
 
-    available_statuses = sorted([
-        s for s in all_out_spares.values_list('latest_status', flat=True).distinct() if s
-    ])
-
-    total_count = all_out_spares.count()
-
     spares = all_out_spares
-    if selected_status:
-        spares = spares.filter(latest_status=selected_status)
-    if date_from:
-        spares = spares.filter(latest_out_date__gte=date_from)
-    if date_to:
-        spares = spares.filter(latest_out_date__lte=date_to)
     if q:
         spares = spares.filter(
             Q(product__name__icontains=q) |
@@ -284,16 +269,14 @@ def spare_out_report(request):
             Q(latest_olf_dc__icontains=q)
         )
 
-    spares = list(spares)
-    return render(request, 'spare/spare_out_report.html', {
-        'spares': spares,
-        'available_statuses': available_statuses,
-        'selected_status': selected_status,
-        'total_count': total_count,
-        'result_count': len(spares),
-        'filters': {'q': q, 'date_from': date_from, 'date_to': date_to},
+    # Status / store / brand / out-date filters are applied by the shared helper.
+    context = paginated_list_context(request, spares.order_by('-latest_out_date', '-id'), 'spares')
+    context.update({
+        'total_sold': all_out_spares.count(),
+        'available_statuses': sorted(s for s in all_out_spares.values_list('latest_status', flat=True).distinct() if s),
         'can_stock_return': has_permission(request.user, 'stock_return'),
     })
+    return render(request, 'spare/spare_out_report.html', context)
 
 
 def add_card(request):
@@ -350,11 +333,9 @@ def card_list(request):
         latest_status=Subquery(latest_txn.values('stock_status')[:1]),
         last_audit_date=Subquery(latest_audit.values('audited_on')[:1]),
     )
-    cards = _exclude_out_or_frozen(cards)
+    cards = _list_search(_exclude_out_or_frozen(cards), (request.GET.get('q') or '').strip(), Card)
 
-    return render(request, 'card/list.html', {
-        'cards': cards
-    })
+    return render(request, 'card/list.html', paginated_list_context(request, cards.order_by('-id'), 'cards'))
 
 
 def add_cpu(request):
@@ -430,11 +411,9 @@ def cpu_list(request):
         latest_status=Subquery(latest_txn.values('stock_status')[:1]),
         last_audit_date=Subquery(latest_audit.values('audited_on')[:1]),
     )
-    cpus = _exclude_out_or_frozen(cpus)
- 
-    return render(request, 'cpu/cpu_list.html', {
-        'cpus': cpus
-    })
+    cpus = _list_search(_exclude_out_or_frozen(cpus), (request.GET.get('q') or '').strip(), CPU)
+
+    return render(request, 'cpu/cpu_list.html', paginated_list_context(request, cpus.order_by('-id'), 'cpus'))
  
  
 def update_cpu_field(request):
@@ -844,9 +823,9 @@ def memory_list(request):
         latest_status    = Subquery(latest_txn.values('stock_status')[:1]),
         last_audit_date  = Subquery(latest_audit.values('audited_on')[:1]),
     )
-    memories = _exclude_out_or_frozen(memories)
- 
-    return render(request, 'memory/memory_list.html', {'memories': memories})
+    memories = _list_search(_exclude_out_or_frozen(memories), (request.GET.get('q') or '').strip(), Memory)
+
+    return render(request, 'memory/memory_list.html', paginated_list_context(request, memories.order_by('-id'), 'memories'))
  
  
 def update_memory_field(request):
@@ -946,9 +925,9 @@ def sfp_list(request):
         latest_status   = Subquery(latest_txn.values('stock_status')[:1]),
         last_audit_date = Subquery(latest_audit.values('audited_on')[:1]),
     )
-    sfps = _exclude_out_or_frozen(sfps)
- 
-    return render(request, 'sfp/sfp_list.html', {'sfps': sfps})
+    sfps = _list_search(_exclude_out_or_frozen(sfps), (request.GET.get('q') or '').strip(), SFP)
+
+    return render(request, 'sfp/sfp_list.html', paginated_list_context(request, sfps.order_by('-id'), 'sfps'))
  
  
 def update_sfp_field(request):
@@ -1048,9 +1027,9 @@ def railkit_list(request):
         latest_status   = Subquery(latest_txn.values('stock_status')[:1]),
         last_audit_date = Subquery(latest_audit.values('audited_on')[:1]),
     )
-    railkits = _exclude_out_or_frozen(railkits)
- 
-    return render(request, 'railkit/railkit_list.html', {'railkits': railkits})
+    railkits = _list_search(_exclude_out_or_frozen(railkits), (request.GET.get('q') or '').strip(), RailKit)
+
+    return render(request, 'railkit/railkit_list.html', paginated_list_context(request, railkits.order_by('-id'), 'railkits'))
  
  
 def update_railkit_field(request):
@@ -1165,9 +1144,9 @@ def harddisk_list(request):
         latest_status   = Subquery(latest_txn.values('stock_status')[:1]),
         last_audit_date = Subquery(latest_audit.values('audited_on')[:1]),
     )
-    harddisks = _exclude_out_or_frozen(harddisks)
- 
-    return render(request, 'harddisk/harddisk_list.html', {'harddisks': harddisks})
+    harddisks = _list_search(_exclude_out_or_frozen(harddisks), (request.GET.get('q') or '').strip(), HardDisk)
+
+    return render(request, 'harddisk/harddisk_list.html', paginated_list_context(request, harddisks.order_by('-id'), 'harddisks'))
  
  
 def update_harddisk_field(request):
@@ -1572,6 +1551,7 @@ def _generic_list_context(kind, sold=False, status=None, filters=None, request=N
         'result_count': len(rows),
         'filters': {'q': q, 'date_from': date_from, 'date_to': date_to},
         'page_obj': page_context['page_obj'] if page_context else None,
+        'list_filter': page_context['list_filter'] if page_context else None,
         'q': q,
     }
 
@@ -1580,7 +1560,10 @@ def _generic_list_context(kind, sold=False, status=None, filters=None, request=N
 def inventory_sold_list(request, kind):
     if kind not in LIST_MODELS:
         return JsonResponse({'error': 'Unknown list'}, status=404)
-    selected_status = request.GET.get('status', '').strip() or 'SALE'
+    # Sold lists open on SALE. Choosing "All statuses" sends status= (empty),
+    # which really does mean all; only a missing parameter falls back to SALE.
+    defaulted = 'status' not in request.GET
+    selected_status = 'SALE' if defaulted else request.GET.get('status', '').strip()
     config = LIST_MODELS[kind]
     all_sold_qs = _annotated_category_queryset(config['model'], sold=True)
     available_statuses = sorted(list(set(
@@ -1594,6 +1577,9 @@ def inventory_sold_list(request, kind):
         'date_to': request.GET.get('date_to', ''),
     }
     context = _generic_list_context(kind, sold=True, status=selected_status, filters=filters, request=request)
+    if defaulted and context.get('list_filter'):
+        context['list_filter']['values']['status'] = 'SALE'
+        context['list_filter']['active_count'] += 1
     context['available_statuses'] = available_statuses
     context['selected_status'] = selected_status
     context['can_stock_return'] = has_permission(request.user, 'stock_return')
@@ -1610,8 +1596,10 @@ def inventory_faulty_list(request, kind):
     q = request.GET.get('q', '').strip()
     if q:
         items = items.filter(Q(product__name__icontains=q) | Q(product__serial_no__icontains=q) | Q(barcode__icontains=q))
-    rows = [{'item': item, 'values': [_resolve_attr(item, path) for _, path in config['fields']]} for item in items]
-    page_context = paginated_list_context(request, items.order_by('-id'), 'items')
+    page_context = paginated_list_context(
+        request, items.order_by('-id'), 'items',
+        status_options=[('FAULTY', 'Faulty'), ('DAMAGED', 'Damaged')], sold=False,
+    )
     rows = [{'item': item, 'values': [_resolve_attr(item, path) for _, path in config['fields']]} for item in page_context['items']]
     return render(request, 'inventory/faulty_list.html', {
         'kind': kind,
@@ -1621,6 +1609,7 @@ def inventory_faulty_list(request, kind):
         'q': q,
         'page_obj': page_context['page_obj'],
         'total_count': page_context['total_count'],
+        'list_filter': page_context['list_filter'],
         'can_stock_return': has_permission(request.user, 'stock_return'),
         'can_stock_out': has_permission(request.user, 'stock_out'),
     })

@@ -417,6 +417,36 @@
 
         #sbMobileBtn i { font-size: 16px; display: block; }
 
+        .color-legend {
+            align-items: center;
+            gap: 12px;
+            margin-left: 14px;
+            padding: 4px 12px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: #f8fafc;
+            font-size: 12px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .color-legend .legend-item {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 2px 8px; margin: 0 -4px; border-radius: 999px;
+            color: inherit; text-decoration: none; cursor: pointer;
+            transition: background .12s, box-shadow .12s;
+        }
+        .color-legend a.legend-item:hover { background: #e8eef7; color: var(--text-main); }
+        .color-legend .legend-item.active { background: #fff; color: var(--text-main); font-weight: 600; box-shadow: 0 0 0 2px var(--accent); }
+        .color-legend .legend-item.disabled { cursor: default; opacity: .55; }
+        .color-legend .legend-swatch {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 4px;
+            border: 1.5px solid;
+        }
+        @media (max-width: 1250px) { .color-legend .legend-item { font-size: 0; gap: 0; } .color-legend .legend-swatch { width: 16px; } .color-legend { gap: 6px; } }
+
         .topbar-search {
             min-width: 230px;
             max-width: 320px;
@@ -1069,6 +1099,23 @@
         <div class="topbar-breadcrumb">{% block breadcrumb %}{% endblock %}</div>
     </div>
 
+    <!-- Row colour legend: what each highlighted list row means -->
+    <!-- Row colour legend: what each highlighted row means; click a colour to filter the current list by it -->
+    <div class="color-legend d-none d-lg-flex" aria-label="Row colour legend">
+        {% legend_chip 'FAULTY' as chip %}
+        <a class="legend-item{% if chip.active %} active{% endif %}{% if not chip.url %} disabled{% endif %}"{% if chip.url %} href="{{ chip.url }}"{% endif %}
+           title="{% if chip.url %}{% if chip.active %}Showing Faulty only — click to clear{% else %}Show only Faulty rows{% endif %}{% else %}Faulty rows — open a list that supports this filter{% endif %}"><i class="legend-swatch" style="background:#fbd3d3;border-color:#dc3545"></i>Faulty</a>
+        {% legend_chip 'DAMAGED' as chip %}
+        <a class="legend-item{% if chip.active %} active{% endif %}{% if not chip.url %} disabled{% endif %}"{% if chip.url %} href="{{ chip.url }}"{% endif %}
+           title="{% if chip.url %}{% if chip.active %}Showing Damaged only — click to clear{% else %}Show only Damaged rows{% endif %}{% else %}Damaged rows — open a list that supports this filter{% endif %}"><i class="legend-swatch" style="background:#ffe0b0;border-color:#fd7e14"></i>Damaged</a>
+        {% legend_chip 'SCRAP' as chip %}
+        <a class="legend-item{% if chip.active %} active{% endif %}{% if not chip.url %} disabled{% endif %}"{% if chip.url %} href="{{ chip.url }}"{% endif %}
+           title="{% if chip.url %}{% if chip.active %}Showing Scrap only — click to clear{% else %}Show only Scrap rows{% endif %}{% else %}Scrap rows — open a list that supports this filter{% endif %}"><i class="legend-swatch" style="background:#e3d4f2;border-color:#7b3fb0"></i>Scrap</a>
+        {% legend_chip 'EMPTY' as chip %}
+        <a class="legend-item{% if chip.active %} active{% endif %}{% if not chip.url %} disabled{% endif %}"{% if chip.url %} href="{{ chip.url }}"{% endif %}
+           title="{% if chip.url %}{% if chip.active %}Showing Empty only — click to clear{% else %}Show only Empty rows{% endif %}{% else %}Empty rows — open a list that supports this filter{% endif %}"><i class="legend-swatch" style="background:#e2e5ea;border-color:#6c757d"></i>Empty</a>
+    </div>
+
     <div class="ms-auto d-flex align-items-center gap-2">
 
         <div class="topbar-search">
@@ -1351,6 +1398,33 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script>
+/* Keep every list's horizontal scrollbar on screen.
+   With a long list the table used to grow as tall as its rows, pushing the
+   horizontal scrollbar far below the fold. Give the table body a viewport-based
+   height instead: rows scroll vertically inside it (header stays put) and the
+   horizontal scrollbar sits right at the bottom of the visible table, with the
+   pagination directly under it. */
+(function () {
+    function tableAreaHeight() {
+        var t = document.querySelector('table.inventory-list-table, #serverTable, #cardTable, #cpuTable, #memoryTable, #sfpTable, #railkitTable, #harddiskTable, #controllerTable, #spareTable');
+        var top = t ? t.getBoundingClientRect().top + window.scrollY : 260;
+        // ~ header row (40) + horizontal scrollbar (17) + pagination bar (60) + breathing room
+        return Math.max(240, Math.round(window.innerHeight - top - 130));
+    }
+    $.extend($.fn.dataTable.defaults, {sScrollY: tableAreaHeight() + 'px', bScrollCollapse: true});
+    var resizeTimer;
+    $(window).on('resize', function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function () {
+            $('.dataTables_scrollBody').css('max-height', tableAreaHeight() + 'px');
+            $('table.dataTable').each(function () {
+                if ($.fn.DataTable.isDataTable(this)) { $(this).DataTable().columns.adjust(); }
+            });
+        }, 150);
+    });
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{% static 'js/barcode_check.js' %}"></script>
 

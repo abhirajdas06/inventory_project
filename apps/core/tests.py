@@ -383,3 +383,138 @@ class RolePermissionUiTests(TestCase):
         self.assertTrue(has_permission(admin, 'stock_in'))
         self.assertTrue(has_permission(admin, 'user_management'))
         self.assertFalse(has_permission(admin, 'stock_out'))
+
+
+class ListFilterTests(TestCase):
+    """Status / store / brand / date filters behave the same on every list."""
+
+    def setUp(self):
+        from apps.categories.models import Card
+        from apps.core.models import Brand, SpareCategory
+        self.user = User.objects.create_superuser(username='flt', password='pass12345', email='f@example.com')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+        cat = SpareCategory.objects.create(name='CARD')
+        self.dell = Brand.objects.create(name='DELL')
+        self.hp = Brand.objects.create(name='HP')
+
+        def card(serial, brand, status, store, out=False, out_status='SALE', out_date=None):
+            p = Product.objects.create(category=cat, serial_no=serial, name=serial)
+            Card.objects.create(product=p, brand=brand, brand_serial_no_1=serial)
+            InventoryTransaction.objects.create(product=p, transaction_type='IN', store_location=store, stock_status=status)
+            if out:
+                InventoryTransaction.objects.create(
+                    product=p, transaction_type='OUT', store_location=store,
+                    stock_status=out_status, stock_out_date=out_date)
+            return p
+        card('C-LIVE-DELL-WH1', self.dell, 'LIVE', 'WH1')
+        card('C-FAULTY-DELL-WH2', self.dell, 'FAULTY', 'WH2')
+        card('C-FAULTY-HP-WH1', self.hp, 'FAULTY', 'WH1')
+        card('C-SCRAP-HP-WH2', self.hp, 'SCRAP', 'WH2')
+        card('C-SOLD-1', self.dell, 'LIVE', 'WH1', out=True, out_status='SALE', out_date='2026-01-10')
+        card('C-SOLD-2', self.dell, 'LIVE', 'WH1', out=True, out_status='RENT', out_date='2026-03-10')
+
+    def serials(self, url, **params):
+        res = self.client.get(url, params)
+        self.assertEqual(res.status_code, 200)
+        html = res.content.decode()
+        return {s for s in ('C-LIVE-DELL-WH1', 'C-FAULTY-DELL-WH2', 'C-FAULTY-HP-WH1', 'C-SCRAP-HP-WH2',
+                            'C-SOLD-1', 'C-SOLD-2') if s in html}
+
+    def test_live_list_filters_and_combinations(self):
+        url = reverse('card_list')
+        self.assertEqual(len(self.serials(url)), 4)  # sold cards never show in the live list
+        self.assertEqual(self.serials(url, status='FAULTY'), {'C-FAULTY-DELL-WH2', 'C-FAULTY-HP-WH1'})
+        self.assertEqual(self.serials(url, store='WH2'), {'C-FAULTY-DELL-WH2', 'C-SCRAP-HP-WH2'})
+        self.assertEqual(self.serials(url, brand=self.hp.pk), {'C-FAULTY-HP-WH1', 'C-SCRAP-HP-WH2'})
+        self.assertEqual(self.serials(url, status='FAULTY', store='WH2'), {'C-FAULTY-DELL-WH2'})
+        self.assertEqual(self.serials(url, status='SCRAP', brand=self.dell.pk), set())
+        self.assertEqual(self.serials(url, q='SCRAP'), {'C-SCRAP-HP-WH2'})
+        self.assertEqual(self.serials(url, q='FAULTY', store='WH1'), {'C-FAULTY-HP-WH1'})
+
+    def test_invalid_filter_values_are_ignored_not_errors(self):
+        url = reverse('card_list')
+        self.assertEqual(len(self.serials(url, status='NOPE', store='XX', brand='abc', date_from='garbage')), 4)
+
+    def test_sold_list_status_and_date_filters(self):
+        url = reverse('inventory_sold', args=['card'])
+        self.assertEqual(self.serials(url), {'C-SOLD-1'})                      # opens on SALE
+        self.assertEqual(self.serials(url, status=''), {'C-SOLD-1', 'C-SOLD-2'})  # "All statuses"
+        self.assertEqual(self.serials(url, status='RENT'), {'C-SOLD-2'})
+        self.assertEqual(self.serials(url, status='', date_from='2026-02-01'), {'C-SOLD-2'})
+        self.assertEqual(self.serials(url, status='', date_to='2026-02-01'), {'C-SOLD-1'})
+        self.assertEqual(self.serials(url, status='', date_from='2026-01-01', date_to='2026-12-31'),
+                         {'C-SOLD-1', 'C-SOLD-2'})
+
+    def test_faulty_list_only_faulty_and_damaged_with_filters(self):
+        url = reverse('inventory_faulty', args=['card'])
+        self.assertEqual(self.serials(url), {'C-FAULTY-DELL-WH2', 'C-FAULTY-HP-WH1'})
+        self.assertEqual(self.serials(url, store='WH1'), {'C-FAULTY-HP-WH1'})
+        self.assertEqual(self.serials(url, status='SCRAP'), {'C-FAULTY-DELL-WH2', 'C-FAULTY-HP-WH1'})  # invalid here -> ignored
+
+    def test_pagination_links_keep_filters(self):
+        from apps.categories.models import Card
+        from apps.core.models import SpareCategory
+        cat = SpareCategory.objects.get(name='CARD')
+        for i in range(60):
+            p = Product.objects.create(category=cat, serial_no=f'BULK-{i}', name=f'BULK-{i}')
+            Card.objects.create(product=p, brand=self.dell, brand_serial_no_1=f'BULK-{i}')
+            InventoryTransaction.objects.create(product=p, transaction_type='IN', store_location='WH3', stock_status='TESTING')
+        html = self.client.get(reverse('card_list'), {'status': 'TESTING', 'store': 'WH3'}).content.decode()
+        self.assertIn('status=TESTING', html)
+        self.assertIn('page=2', html)
+        page2 = self.client.get(reverse('card_list'), {'status': 'TESTING', 'store': 'WH3', 'page': 2})
+        self.assertEqual(page2.context['total_count'], 60)
+        self.assertEqual(len(page2.context['cards']), 10)
+
+    def test_every_list_page_renders_with_filters(self):
+        for name, args in (('spare_list', []), ('cpu_list', []), ('memory_list', []), ('sfp_list', []),
+                           ('railkit_list', []), ('harddisk_list', []), ('controller_list', []),
+                           ('networking_spare_list', []), ('server_list', []), ('server_empty_list', []),
+                           ('server_out_list', []), ('server_faulty_list', []), ('spare_out_report', []),
+                           ('frozen_inventory_list', []), ('inventory_sold', ['memory']),
+                           ('inventory_faulty', ['sfp']), ('stock_out_status_list', ['TESTING'])):
+            for params in ({}, {'status': 'FAULTY', 'store': 'WH1', 'q': 'x', 'date_from': '2026-01-01'}):
+                res = self.client.get(reverse(name, args=args), params)
+                self.assertEqual(res.status_code, 200, f'{name} {params}')
+
+
+class LegendFilterTests(ListFilterTests):
+    """The topbar colour legend chips act as one-click filters."""
+
+    def chip_href(self, html, label):
+        import re
+        m = re.search(r'<a class="legend-item[^"]*"(?: href="([^"]*)")?\s+title="[^"]*"><i class="legend-swatch"[^>]*></i>%s</a>' % label, html)
+        self.assertIsNotNone(m, label)
+        return m.group(1) or ''
+
+    def test_chips_link_to_status_filter_on_supporting_lists(self):
+        html = self.client.get(reverse('card_list')).content.decode()
+        self.assertIn('status=FAULTY', self.chip_href(html, 'Faulty'))
+        self.assertIn('status=SCRAP', self.chip_href(html, 'Scrap'))
+
+    def test_active_chip_clears_and_keeps_other_filters(self):
+        html = self.client.get(reverse('card_list'), {'status': 'FAULTY', 'store': 'WH1'}).content.decode()
+        href = self.chip_href(html, 'Faulty')
+        self.assertIn('status=&', href + '&')
+        self.assertIn('store=WH1', href)
+        self.assertNotIn('status=FAULTY', href)
+        self.assertIn('status=DAMAGED', self.chip_href(html, 'Damaged'))
+        self.assertIn('store=WH1', self.chip_href(html, 'Damaged'))
+
+    def test_chip_disabled_when_page_cannot_filter_it(self):
+        html = self.client.get(reverse('inventory_faulty', args=['card'])).content.decode()
+        self.assertTrue(self.chip_href(html, 'Faulty'))
+        self.assertEqual(self.chip_href(html, 'Scrap'), '')
+
+    def test_empty_chip_switches_server_tabs(self):
+        html = self.client.get(reverse('server_list'), {'q': 'r630'}).content.decode()
+        href = self.chip_href(html, 'Empty')
+        self.assertTrue(href.startswith(reverse('server_empty_list')))
+        self.assertIn('q=r630', href)
+        html = self.client.get(reverse('server_empty_list')).content.decode()
+        self.assertTrue(self.chip_href(html, 'Empty').startswith(reverse('server_list')))
+
+    def test_chip_filter_actually_filters(self):
+        res = self.client.get(reverse('card_list'), {'status': 'SCRAP'})
+        self.assertEqual(self.serials(reverse('card_list'), status='SCRAP'), {'C-SCRAP-HP-WH2'})

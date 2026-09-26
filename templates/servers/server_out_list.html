@@ -16,17 +16,11 @@
     <div class="server-list-toolbar">
         <div>
             <h5 class="server-list-title">{% if is_faulty %}Faulty Servers{% else %}Sold / Stocked Out Servers{% endif %}</h5>
-            <div class="server-list-subtitle">{{ servers|length }} {% if is_faulty %}faulty{% else %}sold{% endif %} server{{ servers|length|pluralize }}</div>
+            <div class="server-list-subtitle">{{ total_count }} {% if is_faulty %}faulty{% else %}sold{% endif %} server{{ total_count|pluralize }}{% if q or list_filter.active_count %} (filtered){% endif %}</div>
         </div>
         <div class="server-list-actions d-flex align-items-center gap-2">
-            <select id="statusFilter" class="form-select form-select-sm" style="width: auto;">
-                <option value="">All Stock Statuses</option>
-                {% for status in available_statuses %}
-                <option value="{{ status }}" {% if status == selected_status %}selected{% endif %}>{{ status }}</option>
-                {% endfor %}
-            </select>
             {% if can.reports %}
-            <a href="{% url 'server_export' 'sold' %}{% if selected_status %}?status={{ selected_status }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+            <a href="{% url 'server_export' 'sold' %}{% if list_filter.values.status %}?status={{ list_filter.values.status }}{% endif %}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-download me-1"></i>Export CSV
             </a>
             {% endif %}
@@ -35,6 +29,8 @@
             </a>
         </div>
     </div>
+
+    {% include "partials/list_filters.html" with search_placeholder="Service tag, machine no, model, client, invoice, OLF/DC" %}
 
     <div class="table-container">
         <table class="table table-sm align-middle" id="serverTable">
@@ -61,7 +57,7 @@
             <tbody>
                 {% for s in servers %}
                 <tr data-id="{{ s.product.id }}" data-server-id="{{ s.id }}">
-                    <td>{{ forloop.counter }}</td>
+                    <td>{{ page_obj.start_index|add:forloop.counter0 }}</td>
                     <td>{{ s.machine_type|default:"-" }}</td>
                     <td>{{ s.machine_no|default:"-" }}</td>
                     <td><code>{{ s.service_tag }}</code></td>
@@ -112,6 +108,7 @@
             </tbody>
         </table>
     </div>
+    {% include "partials/list_pagination.html" %}
 </div>
 {% include "inventory/sales_return_modal.html" %}
 {% include "inventory/scrap_modal.html" %}

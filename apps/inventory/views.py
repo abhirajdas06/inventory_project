@@ -629,7 +629,8 @@ def stock_out_status_list(request, status):
             Q(latest_olf_dc__icontains=q)
         )
 
-    page_context = paginated_list_context(request, products.order_by('-id'), 'products')
+    # The status is fixed by the page itself, so the Status filter is not offered.
+    page_context = paginated_list_context(request, products.order_by('-id'), 'products', filter_hide=('status',))
     rows = []
     for product in page_context['products']:
         detail = _inventory_detail(product)
@@ -649,6 +650,7 @@ def stock_out_status_list(request, status):
         'result_count': page_context['total_count'],
         'total_count': page_context['total_count'],
         'page_obj': page_context['page_obj'],
+        'list_filter': page_context['list_filter'],
         'can_stock_return': has_permission(request.user, 'stock_return'),
         'can_stock_out': has_permission(request.user, 'stock_out'),
     })
@@ -1322,13 +1324,12 @@ def frozen_inventory_list(request):
         freeze_status=Subquery(latest.values('status')[:1]),
     ).filter(freeze_status='FROZEN').count()
 
-    products = list(products)
-    return render(request, 'inventory/frozen_list.html', {
-        'products': products,
-        'q': q,
-        'result_count': len(products),
+    context = paginated_list_context(request, products, 'products')
+    context.update({
+        'result_count': context['total_count'],
         'total_frozen': total_frozen,
     })
+    return render(request, 'inventory/frozen_list.html', context)
 
 
 @require_permission('audit_findings')

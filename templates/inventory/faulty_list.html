@@ -17,9 +17,7 @@
       </div>
     </div>
 
-    <form class="mb-3">
-      <input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Search product, serial, or barcode">
-    </form>
+    {% include "partials/list_filters.html" with search_placeholder="Search product, serial, or barcode" %}
 
     <div class="table-container">
       <table class="table table-sm align-middle inventory-list-table">

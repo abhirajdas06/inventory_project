@@ -231,37 +231,47 @@ def server_empty_list(request):
     ))
 
 
+def _server_sold_search(qs, q):
+    if not q:
+        return qs
+    return qs.filter(
+        Q(service_tag__icontains=q) | Q(machine_no__icontains=q) | Q(model__icontains=q) |
+        Q(machine_type__icontains=q) | Q(product__serial_no__icontains=q) |
+        Q(latest_client__icontains=q) | Q(latest_invoice__icontains=q) | Q(latest_olf_dc__icontains=q)
+    )
+
+
 def server_out_list(request):
-    selected_status = request.GET.get('status', '').strip()
-    all_sold_qs = _server_queryset().filter(latest_type='OUT')
-    available_statuses = sorted(list(set(
-        all_sold_qs.values_list('latest_status', flat=True)
-    )))
-    available_statuses = [s for s in available_statuses if s]
+    q = (request.GET.get('q') or '').strip()
+    servers = _server_sold_search(_server_queryset().filter(latest_type='OUT'), q)
+    # Same behaviour as the other sold lists: open on SALE; an explicit empty
+    # status ("All statuses") shows everything.
+    defaulted = 'status' not in request.GET
+    if defaulted:
+        servers = servers.filter(latest_status='SALE')
 
-    servers = all_sold_qs
-    if selected_status:
-        servers = servers.filter(latest_status=selected_status)
-
-    return render(request, 'servers/server_out_list.html', {
-        'servers': servers,
-        'available_statuses': available_statuses,
-        'selected_status': selected_status,
-        'can_stock_return': has_permission(request.user, 'stock_return'),
-        'can_stock_out': has_permission(request.user, 'stock_out'),
-    })
+    context = paginated_list_context(
+        request, servers.order_by('-latest_out_date', '-id'), 'servers',
+        can_stock_return=has_permission(request.user, 'stock_return'),
+        can_stock_out=has_permission(request.user, 'stock_out'),
+    )
+    if defaulted:
+        context['list_filter']['values']['status'] = 'SALE'
+        context['list_filter']['active_count'] += 1
+    return render(request, 'servers/server_out_list.html', context)
 
 
 def server_faulty_list(request):
-    servers = _server_queryset().filter(latest_status__in=('FAULTY', 'DAMAGED'))
-    return render(request, 'servers/server_out_list.html', {
-        'servers': servers,
-        'available_statuses': [],
-        'selected_status': 'FAULTY',
-        'is_faulty': True,
-        'can_stock_return': has_permission(request.user, 'stock_return'),
-        'can_stock_out': has_permission(request.user, 'stock_out'),
-    })
+    q = (request.GET.get('q') or '').strip()
+    servers = _server_sold_search(_server_queryset().filter(latest_status__in=('FAULTY', 'DAMAGED')), q)
+
+    return render(request, 'servers/server_out_list.html', paginated_list_context(
+        request, servers.order_by('-id'), 'servers',
+        status_options=[('FAULTY', 'Faulty'), ('DAMAGED', 'Damaged')], sold=False,
+        is_faulty=True,
+        can_stock_return=has_permission(request.user, 'stock_return'),
+        can_stock_out=has_permission(request.user, 'stock_out'),
+    ))
 
 
 SERVER_EXPORT_HEADERS = [
