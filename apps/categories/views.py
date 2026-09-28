@@ -1859,7 +1859,7 @@ def process_import(request, job_id):
             'total_rows': job.total_rows,
             'success_count': job.success_count,
             'error_count': job.error_count,
-            'errors': job.errors[-10:],
+            'errors': job.errors[-50:],
             'percent': round((job.processed_rows / job.total_rows) * 100, 2) if job.total_rows else 100,
         })
     except Exception as exc:

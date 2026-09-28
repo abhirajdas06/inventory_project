@@ -215,7 +215,6 @@ HEADER_MAPS = {
         'Remark(describe exact issue)': 'remark',
     },
     'stock_out': {
-        'Serial No': 'serial_no',
         'Barcode No': 'barcode',
         'Client Name': 'client_name',
         'Invoice No': 'invoice_no',
@@ -367,7 +366,7 @@ def start_import_job(model_key, upload, user, store_location=None):
         raise ValueError(job.errors[0]['error'])
     expected = REQUIRED_HEADERS.get(model_key, set(HEADER_MAPS[model_key]))
     if model_key == 'stock_out':
-        expected = {'Serial No', 'Barcode No'}
+        expected = {'Barcode No'}  # the other five columns are optional (blank -> Sale / today)
     missing = sorted(expected - set(headers))
     if missing:
         job.status = 'FAILED'
@@ -443,7 +442,7 @@ def process_import_chunk(job, chunk_size=100, user=None):
             job.error_count += 1
             errors = list(job.errors or [])
             errors.append({'row': seen_data_rows + 1, 'error': str(exc)})
-            job.errors = errors[-100:]
+            job.errors = errors[-1000:]
 
         job.processed_rows += 1
         processed_this_call += 1
@@ -569,7 +568,9 @@ def import_combined_stock_out_row(base_key, row, user=None):
 
 
 def _product_from_stock_out_row(row):
-    from apps.categories.models import Card, CPU, HardDisk, Memory, NetworkingSpare, RailKit, SFP, Spare
+    from apps.categories.models import (
+        Card, Controller, CPU, HardDisk, Memory, NetworkingSpare, RailKit, SFP, Spare,
+    )
     from apps.servers.models import Server, ServerComponent
 
     serial = (row.get('serial_no') or '').strip().upper()
@@ -582,19 +583,65 @@ def _product_from_stock_out_row(row):
 
     if barcode:
         related_models = (
-            Spare, Card, CPU, Memory, SFP, RailKit, HardDisk, NetworkingSpare, Server, ServerComponent,
+            Spare, Card, CPU, Memory, SFP, RailKit, HardDisk, NetworkingSpare,
+            Controller, Server, ServerComponent,
         )
         for model in related_models:
             item = model.objects.filter(barcode__iexact=barcode).select_related('product').first()
             if item:
                 return item.product
+        # Hard disks can also be identified by their tray barcode.
+        item = HardDisk.objects.filter(tray_barcode__iexact=barcode).select_related('product').first()
+        if item:
+            return item.product
 
     raise ValueError('Product not found by Serial No or Barcode No')
 
 
+_STOCK_OUT_DATE_FORMATS = ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%d.%m.%Y', '%d/%m/%y', '%d-%m-%y')
+
+
+def _parse_stock_out_date(value):
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    for fmt in _STOCK_OUT_DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date().isoformat()
+        except ValueError:
+            continue
+    raise ValueError(f'Invalid Stock Out Date "{text}" (use DD/MM/YYYY or YYYY-MM-DD)')
+
+
 def import_stock_out_row(row, user=None):
-    product = _product_from_stock_out_row(row)
-    return _apply_stock_out(product, row, user=user)
+    """Common "Stock Out" import: one row = one barcode.
+
+    Only Barcode No, Client Name, Invoice No, OLF / DC No, Stock Status and
+    Stock Out Date are read. The product is found by barcode in ANY category
+    (spares, cards, CPUs, memory, SFP, rail kits, hard disks, networking,
+    controllers, servers and server components). An unknown barcode raises an
+    error naming that barcode, and the import carries on with the next row."""
+    from apps.inventory.views import _has_pending_transfer, _is_frozen
+
+    barcode = (row.get('barcode') or '').strip()
+    if not barcode:
+        raise ValueError('Barcode No is empty')
+    try:
+        product = _product_from_stock_out_row({'barcode': barcode})
+    except ValueError:
+        raise ValueError(f'Barcode "{barcode}" not found in inventory')
+
+    latest = product.transactions.order_by('-created_at', '-id').first()
+    if latest and latest.transaction_type == 'OUT':
+        raise ValueError(f'Barcode "{barcode}" is already stocked out')
+    if _is_frozen(product):
+        raise ValueError(f'Barcode "{barcode}" is frozen and cannot be stocked out')
+    if _has_pending_transfer(product):
+        raise ValueError(f'Barcode "{barcode}" is pending receipt in a transfer request')
+
+    so_row = dict(row)
+    so_row['stock_out_date'] = _parse_stock_out_date(row.get('stock_out_date'))
+    return _apply_stock_out(product, so_row, user=user)
 
 
 def _apply_stock_out(product, row, user=None):

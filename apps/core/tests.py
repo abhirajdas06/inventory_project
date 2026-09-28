@@ -597,3 +597,81 @@ class InstalledInTests(TestCase):
         self.assertIn('/inventory/installed-in/', html)
         self.assertIn('installed-in-notice', html)
         self.assertIn('Installed</a>', html)
+
+
+@override_settings(EMAIL_BACKEND=LOCMEM)
+class BarcodeStockOutImportTests(TestCase):
+    """The plain "Stock Out" import: 6 columns, barcode only, any category."""
+
+    HEADERS = ['Barcode No', 'Client Name', 'Invoice No', 'OLF / DC No', 'Stock Status', 'Stock Out Date']
+
+    def setUp(self):
+        from apps.categories.models import Card, Controller, HardDisk, Memory
+        from apps.core.models import SpareCategory
+        override = override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+        override.enable()
+        self.addCleanup(override.disable)
+        cat = SpareCategory.objects.create(name='MIXED')
+
+        def prod(serial, store='WH2'):
+            p = Product.objects.create(category=cat, serial_no=serial, name=serial)
+            InventoryTransaction.objects.create(product=p, transaction_type='IN', store_location=store, stock_status='LIVE')
+            return p
+        self.card = prod('S-CARD'); Card.objects.create(product=self.card, barcode='BC-CARD')
+        self.mem = prod('S-MEM'); Memory.objects.create(product=self.mem, barcode='BC-MEM')
+        self.hdd = prod('S-HDD'); HardDisk.objects.create(product=self.hdd, barcode='BC-HDD', tray_barcode='TRAY-1')
+        self.ctrl = prod('S-CTRL'); Controller.objects.create(product=self.ctrl, model='P440', barcode='BC-CTRL')
+
+    def run_rows(self, rows):
+        return _run_import('stock_out', _xlsx_upload(self.HEADERS, rows))
+
+    def latest(self, product):
+        return product.transactions.order_by('-created_at', '-id').first()
+
+    def test_template_has_exactly_the_six_columns(self):
+        self.assertEqual(list(HEADER_MAPS['stock_out']), self.HEADERS)
+
+    def test_stocks_out_by_barcode_in_any_category_and_reports_missing(self):
+        job = self.run_rows([
+            ['BC-CARD', 'Acme', 'INV-1', 'DC-1', 'SALE', '2026-06-26'],
+            ['bc-mem', 'Beta', 'INV-2', 'DC-2', 'RENT', '26/06/2026'],
+            ['NOPE-1', 'X', '', '', 'SALE', ''],
+            ['TRAY-1', 'Gamma', 'INV-3', '', 'SALE', ''],
+            ['BC-CTRL', 'Delta', '', '', '', ''],
+            ['NOPE-2', '', '', '', '', ''],
+        ])
+        self.assertEqual((job.success_count, job.error_count), (4, 2))
+        errors = ' | '.join(e['error'] for e in job.errors)
+        self.assertIn('Barcode "NOPE-1" not found', errors)
+        self.assertIn('Barcode "NOPE-2" not found', errors)
+        self.assertEqual([e['row'] for e in job.errors], [4, 7])
+        card = self.latest(self.card)
+        self.assertEqual((card.transaction_type, card.client_name, card.invoice_no, card.olf_dc_number, card.stock_status),
+                         ('OUT', 'Acme', 'INV-1', 'DC-1', 'SALE'))
+        self.assertEqual(str(card.stock_out_date), '2026-06-26')
+        self.assertEqual(card.store_location, 'WH1')          # the warehouse chosen on the import page
+        mem = self.latest(self.mem)
+        self.assertEqual((mem.stock_status, str(mem.stock_out_date)), ('RENT', '2026-06-26'))
+        self.assertEqual(self.latest(self.hdd).transaction_type, 'OUT')
+        ctrl = self.latest(self.ctrl)
+        self.assertEqual((ctrl.transaction_type, ctrl.stock_status), ('OUT', 'SALE'))   # blank status -> SALE
+        # the failure mail names the barcodes
+        self.assertIn('NOPE-1', mail.outbox[0].body)
+
+    def test_already_stocked_out_and_bad_date_are_row_errors(self):
+        job = self.run_rows([
+            ['BC-CARD', 'Acme', '', '', 'SALE', ''],
+            ['BC-CARD', 'Acme', '', '', 'SALE', ''],
+            ['BC-MEM', 'Acme', '', '', 'SALE', 'not-a-date'],
+        ])
+        self.assertEqual((job.success_count, job.error_count), (1, 2))
+        text = ' | '.join(e['error'] for e in job.errors)
+        self.assertIn('already stocked out', text)
+        self.assertIn('Invalid Stock Out Date', text)
+        self.assertEqual(self.latest(self.mem).transaction_type, 'IN')
+
+    def test_barcode_column_is_required_others_optional(self):
+        with self.assertRaises(ValueError):
+            start_import_job('stock_out', _xlsx_upload(['Client Name'], [['x']]), None)
+        job = _run_import('stock_out', _xlsx_upload(['Barcode No', 'Client Name'], [['BC-CARD', 'x']]))
+        self.assertEqual((job.success_count, job.error_count), (1, 0))

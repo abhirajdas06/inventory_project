@@ -13,7 +13,7 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-MAX_ERRORS_IN_MAIL = 100
+MAX_ERRORS_IN_MAIL = 300
 
 
 def get_recipients(kind):

@@ -62,7 +62,7 @@
         </a>
     </div>
     <p class="text-muted small mt-2 mb-0">
-        Stock Out upload uses the product barcode or serial to find an existing item. Client, invoice, OLF / DC, stock status, and stock-out date are optional when present; otherwise the stock-out defaults to Sale today.
+        The plain "Stock Out" upload needs only 6 columns: Barcode No, Client Name, Invoice No, OLF / DC No, Stock Status and Stock Out Date. It finds the item by barcode in any category and stocks it out; a barcode that does not exist is listed as an error and the remaining rows still process. Blank status defaults to Sale and blank date to today.
     </p>
 
     <div class="mt-4">
