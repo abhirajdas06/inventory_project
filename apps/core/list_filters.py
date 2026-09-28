@@ -111,11 +111,15 @@ def apply_list_filters(request, qs, *, hide=(), status_options=None, sold=None):
         elif qs.model.__name__ == 'Product':
             product_ref = 'pk'
     if product_ref and installed in ('yes', 'no'):
-        from django.db.models import Exists, OuterRef
+        # Plain "IN (subquery)" lookups (not Exists() expressions combined with |):
+        # they work on every Django version we deploy on, including 4.0.
+        from django.db.models import Q
         from apps.categories.models import Spare
         from apps.servers.models import ServerComponent
-        is_installed = Exists(ServerComponent.objects.filter(product_id=OuterRef(product_ref))) |             Exists(Spare.objects.filter(product_id=OuterRef(product_ref), controller__isnull=False))
-        qs = qs.annotate(_is_installed=is_installed).filter(_is_installed=(installed == 'yes'))
+        column = 'pk' if product_ref == 'pk' else 'product_id'
+        in_server = Q(**{f'{column}__in': ServerComponent.objects.values('product_id')})
+        in_controller = Q(**{f'{column}__in': Spare.objects.filter(controller__isnull=False).values('product_id')})
+        qs = qs.filter(in_server | in_controller) if installed == 'yes' else qs.exclude(in_server | in_controller)
     else:
         installed = ''
 
