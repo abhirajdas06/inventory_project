@@ -1785,7 +1785,9 @@ def import_template_download(request, model_key):
     # Special template: ONLY the appended Stock Out columns, to paste at the
     # end of any existing Stock In Excel.
     if model_key == 'stock_out_columns':
-        headers = list(STOCK_OUT_APPEND_COLUMNS.keys())
+        # Barcode No first so the file can be uploaded as the plain "Stock Out"
+        # import as-is; the five stock-out columns follow.
+        headers = ['Barcode No'] + list(STOCK_OUT_APPEND_COLUMNS.keys())
         label = 'Stock Out Columns'
     elif model_key not in HEADER_MAPS:
         return JsonResponse({'error': 'Unknown import template'}, status=404)

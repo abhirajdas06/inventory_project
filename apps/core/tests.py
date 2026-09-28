@@ -675,3 +675,15 @@ class BarcodeStockOutImportTests(TestCase):
             start_import_job('stock_out', _xlsx_upload(['Client Name'], [['x']]), None)
         job = _run_import('stock_out', _xlsx_upload(['Barcode No', 'Client Name'], [['BC-CARD', 'x']]))
         self.assertEqual((job.success_count, job.error_count), (1, 0))
+
+
+class StockOutTemplateDownloadTests(TestCase):
+    def test_stock_out_templates_start_with_barcode_no(self):
+        user = User.objects.create_superuser(username='tpl', password='pass12345', email='t@example.com')
+        UserProfile.objects.create(user=user, role='ADMIN')
+        self.client.force_login(user)
+        expected = ['Barcode No', 'Client Name', 'Invoice No', 'OLF / DC No', 'Stock Status', 'Stock Out Date']
+        for key in ('stock_out_columns', 'stock_out'):
+            res = self.client.get(reverse('inventory_import_template', args=[key]))
+            ws = load_workbook(BytesIO(res.content)).active
+            self.assertEqual([c.value for c in ws[1]], expected, key)
