@@ -7,6 +7,62 @@ paths or touch the production `.env` secrets.
 
 ---
 
+## 0. Move the site to inventory.zacoinfotech.com (one time)
+
+The app now defaults to **inventory.zacoinfotech.com**. Because the server's
+`.env` overrides that default, three things on the server must change.
+
+**a) DNS** (at the zacoinfotech.com DNS provider): add an `A` record
+`inventory` → this server's public IP. Wait until it resolves:
+
+```bash
+dig +short inventory.zacoinfotech.com      # must print the server IP
+```
+
+**b) `.env`** (`/home/abc/inventory_project/.env`) — edit only these lines,
+leave the secrets alone:
+
+```env
+SITE_DOMAIN=inventory.zacoinfotech.com
+ALLOWED_HOSTS=inventory.zacoinfotech.com,inventory.zacocomputer.com,127.0.0.1,localhost
+CSRF_TRUSTED_ORIGINS=https://inventory.zacoinfotech.com,https://inventory.zacocomputer.com
+```
+
+(Keeping the old name in both lines lets the old address keep working while
+people switch; remove it later.)
+
+**c) Nginx + HTTPS** — in `/etc/nginx/sites-available/inventory` change
+`server_name` to `inventory.zacoinfotech.com`, then get a certificate:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d inventory.zacoinfotech.com
+```
+
+Optional — send everyone on the old address to the new one (add as a
+separate `server` block; keep the old certificate so HTTPS still works):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name inventory.zacocomputer.com;
+    ssl_certificate     /etc/letsencrypt/live/inventory.zacocomputer.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/inventory.zacocomputer.com/privkey.pem;
+    return 301 https://inventory.zacoinfotech.com$request_uri;
+}
+server {
+    listen 80;
+    server_name inventory.zacocomputer.com;
+    return 301 https://inventory.zacoinfotech.com$request_uri;
+}
+```
+
+Then `sudo systemctl restart inventory.service` and log in at
+`https://inventory.zacoinfotech.com` (logins on the old address do not carry
+over — everyone signs in once on the new one).
+
+---
+
 ## 1. Deploy this release (required)
 
 This release adds a DB field + **new indexes** (big list-view speedup) and a new
@@ -147,7 +203,7 @@ systemctl is-active inventory.service postgresql nginx
 systemctl list-timers inventory-daily-report.timer
 ```
 
-Open `https://inventory.zacocomputer.com`, load a large category list and confirm
+Open `https://inventory.zacoinfotech.com`, load a large category list and confirm
 it renders quickly; the "matching records" count and DataTables paging should be
 responsive.
 

@@ -40,9 +40,22 @@ if not DEBUG:
     if not os.getenv("SECRET_KEY"):
         raise RuntimeError("SECRET_KEY must be set in production mode.")
 
+# Public address of the site (https://inventory.zacoinfotech.com).
+SITE_DOMAIN = os.getenv("SITE_DOMAIN", "inventory.zacoinfotech.com")
+
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", ["127.0.0.1", "localhost", "testserver"] if DEBUG else ["*"])
 if DEBUG and "*" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append("*")
+
+# Browsers send the page's origin with every form/AJAX POST over HTTPS; Django
+# only accepts it from these origins. Defaults to the site domain plus every
+# named host in ALLOWED_HOSTS.
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", list(dict.fromkeys(
+    [f"https://{SITE_DOMAIN}"] + [
+        f"https://{host}" for host in ALLOWED_HOSTS
+        if host not in ("*", "127.0.0.1", "localhost", "testserver") and not host.startswith(".")
+    ]
+)))
 
 INSTALLED_APPS = [
     'django.contrib.admin',

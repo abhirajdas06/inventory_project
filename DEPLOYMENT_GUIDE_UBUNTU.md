@@ -54,7 +54,9 @@ Create `.env` in the project root (see `.env.example`):
 ```env
 SECRET_KEY=generate-a-strong-random-secret
 DEBUG=False
-ALLOWED_HOSTS=your-domain.com,www.your-domain.com
+SITE_DOMAIN=inventory.zacoinfotech.com
+ALLOWED_HOSTS=inventory.zacoinfotech.com,127.0.0.1,localhost
+CSRF_TRUSTED_ORIGINS=https://inventory.zacoinfotech.com
 
 DB_NAME=inventory_db
 DB_USER=inventory_user
@@ -137,7 +139,7 @@ serve uploaded media. `/etc/nginx/sites-available/inventory`:
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com www.your-domain.com;
+    server_name inventory.zacoinfotech.com;
 
     client_max_body_size 25M;   # allow Excel uploads
 
@@ -167,7 +169,7 @@ sudo systemctl restart nginx
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com -d www.your-domain.com
+sudo certbot --nginx -d inventory.zacoinfotech.com
 ```
 
 ## 9. Midnight Excel export + email
