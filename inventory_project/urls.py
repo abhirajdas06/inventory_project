@@ -23,10 +23,12 @@ from apps.core import views as core_views
 urlpatterns = [
     path('', core_views.home, name='home'),
     path('dashboard/', core_views.dashboard, name='dashboard'),
+    path('dashboard/card/<str:kind>/', core_views.dashboard_card_detail, name='dashboard_card_detail'),
     path('login/', core_views.login_view, name='login'),
     path('logout/', core_views.logout_view, name='logout'),
     path('users/', core_views.user_list, name='user_list'),
     path('users/permissions/', core_views.role_permission_settings, name='role_permission_settings'),
+    path('users/permissions/export/', core_views.role_permission_export, name='role_permission_export'),
     path('users/create/', core_views.user_create, name='user_create'),
     path('users/<int:user_id>/edit/', core_views.user_edit, name='user_edit'),
     path('users/<int:user_id>/toggle-active/', core_views.user_toggle_active, name='user_toggle_active'),

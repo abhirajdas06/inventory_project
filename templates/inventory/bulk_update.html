@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Bulk Update{% endblock %}
+{% block page_title %}Bulk Update (Excel){% endblock %}
+
+{% block extra_css %}
+<style>
+    .bulk-card { border: 1px solid var(--border, #e2e8f0); border-radius: 10px; padding: 18px; height: 100%; background: #fff; }
+    .bulk-card h6 { font-weight: 700; margin-bottom: 4px; }
+    .bulk-steps { font-size: 12.5px; color: #64748b; margin-bottom: 12px; }
+    .bulk-result-table { max-height: 320px; overflow: auto; }
+    .bulk-result-table td, .bulk-result-table th { font-size: 12.5px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar">
+        <div>
+            <h5 class="inventory-list-title mb-1">Bulk Update by Excel</h5>
+            <div class="inventory-list-subtitle">Works for every category. Products are found by their barcode, wherever they are stored.</div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        {% if can_bulk_freeze %}
+        <div class="col-lg-6">
+            <div class="bulk-card" data-bulk-kind="freeze">
+                <h6><i class="bi bi-snow2 me-1 text-info"></i>Bulk Freeze</h6>
+                <div class="bulk-steps">
+                    Excel columns: <strong>Barcode No</strong>, <strong>Remark</strong> (optional).
+                    A row's Remark is used as its freeze reason; rows without one use the reason below.
+                    Only in-stock items can be frozen; parts inside a server or controller are frozen with it.
+                </div>
+                <a href="{% url 'bulk_update_template' 'freeze' %}" class="btn btn-outline-secondary btn-sm mb-3">
+                    <i class="bi bi-download me-1"></i>Download Template
+                </a>
+                <div class="mb-2">
+                    <label class="form-label small mb-1" for="bulkFreezeReason">Freeze reason (for rows without a Remark)</label>
+                    <input type="text" id="bulkFreezeReason" class="form-control form-control-sm bulk-reason" maxlength="500" placeholder="e.g. Hold for customer audit">
+                </div>
+                <div class="mb-2">
+                    <input type="file" class="form-control form-control-sm bulk-file" accept=".xlsx,.xlsm">
+                </div>
+                <button type="button" class="btn btn-primary btn-sm bulk-read"><i class="bi bi-file-earmark-arrow-up me-1"></i>Check File</button>
+                {% include "inventory/partials/bulk_result.html" %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if can_bulk_status %}
+        <div class="col-lg-6">
+            <div class="bulk-card" data-bulk-kind="status">
+                <h6><i class="bi bi-tag me-1 text-warning"></i>Bulk Status Update</h6>
+                <div class="bulk-steps">
+                    Excel columns: <strong>Barcode No</strong>, <strong>Status</strong>, <strong>Remark</strong> (all required).
+                    Allowed status:
+                    {% for key, label in status_options %}<code>{{ key }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}.
+                    Only in-stock, unfrozen items can be updated.
+                </div>
+                <a href="{% url 'bulk_update_template' 'status' %}" class="btn btn-outline-secondary btn-sm mb-3">
+                    <i class="bi bi-download me-1"></i>Download Template
+                </a>
+                <div class="mb-2">
+                    <input type="file" class="form-control form-control-sm bulk-file" accept=".xlsx,.xlsm">
+                </div>
+                <button type="button" class="btn btn-primary btn-sm bulk-read"><i class="bi bi-file-earmark-arrow-up me-1"></i>Check File</button>
+                {% include "inventory/partials/bulk_result.html" %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    function csrf() {
+        return (document.cookie.split('; ').find(r => r.startsWith('csrftoken=')) || '').split('=')[1] || '';
+    }
+    function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
+
+    document.querySelectorAll('[data-bulk-kind]').forEach(function (card) {
+        const kind = card.dataset.bulkKind;
+        const fileInput = card.querySelector('.bulk-file');
+        const readBtn = card.querySelector('.bulk-read');
+        const box = card.querySelector('.bulk-result');
+        const summary = card.querySelector('.bulk-summary');
+        const applyBtn = card.querySelector('.bulk-apply');
+        const progress = card.querySelector('.progress');
+        const bar = card.querySelector('.progress-bar');
+        const tableWrap = card.querySelector('.bulk-result-table');
+        const tbody = card.querySelector('tbody');
+        const downloadBtn = card.querySelector('.bulk-download');
+        const reasonInput = card.querySelector('.bulk-reason');
+        let pending = null;   // {rows, errors, chunk}
+        let failures = [];
+
+        function showFailures() {
+            tbody.innerHTML = failures.map(f => `<tr><td>${esc(f.row)}</td><td>${esc(f.barcode)}</td><td class="text-danger">${esc(f.message)}</td></tr>`).join('');
+            tableWrap.classList.toggle('d-none', failures.length === 0);
+            downloadBtn.classList.toggle('d-none', failures.length === 0);
+        }
+
+        fileInput.addEventListener('change', function () { box.classList.add('d-none'); pending = null; });
+
+        readBtn.addEventListener('click', function () {
+            if (!fileInput.files.length) { alert('Choose an Excel file first.'); return; }
+            const fd = new FormData();
+            fd.append('file', fileInput.files[0]);
+            readBtn.disabled = true;
+            fetch(`/inventory/bulk-update/${kind}/read/`, {method: 'POST', body: fd, headers: {'X-CSRFToken': csrf()}})
+                .then(r => r.json())
+                .then(data => {
+                    box.classList.remove('d-none');
+                    progress.classList.add('d-none');
+                    if (!data.success) {
+                        summary.innerHTML = `<div class="alert alert-danger py-2 mb-2">${esc(data.error)}</div>`;
+                        applyBtn.classList.add('d-none');
+                        failures = []; showFailures();
+                        return;
+                    }
+                    pending = {rows: data.rows, chunk: data.chunk_size || 100};
+                    failures = data.errors.slice();
+                    showFailures();
+                    const verb = kind === 'freeze' ? 'freeze' : 'update';
+                    summary.innerHTML = `<div class="alert alert-info py-2 mb-2"><strong>${data.rows.length}</strong> row(s) ready to ${verb}` +
+                        (failures.length ? `, <strong class="text-danger">${failures.length}</strong> row(s) with problems (listed below, they will be skipped)` : '') + '.</div>';
+                    applyBtn.classList.toggle('d-none', data.rows.length === 0);
+                    applyBtn.disabled = false;
+                })
+                .catch(() => alert('Could not read the file. Please try again.'))
+                .finally(() => { readBtn.disabled = false; });
+        });
+
+        applyBtn.addEventListener('click', async function () {
+            if (!pending || !pending.rows.length) return;
+            const reason = reasonInput ? reasonInput.value.trim() : '';
+            if (kind === 'freeze' && !reason && pending.rows.some(r => !r.remark)) {
+                alert('Some rows have no Remark. Enter a freeze reason to use for them.');
+                reasonInput.focus();
+                return;
+            }
+            const verb = kind === 'freeze' ? 'Freeze' : 'Update the status of';
+            if (!confirm(`${verb} ${pending.rows.length} item(s)?`)) return;
+            applyBtn.disabled = true; readBtn.disabled = true;
+            progress.classList.remove('d-none');
+            let done = 0, ok = 0;
+            const total = pending.rows.length;
+            for (let i = 0; i < total; i += pending.chunk) {
+                const chunk = pending.rows.slice(i, i + pending.chunk);
+                try {
+                    const res = await fetch(`/inventory/bulk-update/${kind}/apply/`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf()},
+                        body: JSON.stringify({rows: chunk, reason: reason}),
+                    });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.error || 'Failed');
+                    data.results.forEach(r => { if (r.ok) ok += 1; else failures.push(r); });
+                } catch (err) {
+                    chunk.forEach(r => failures.push({row: r.row, barcode: r.barcode, message: 'Not processed: ' + err.message}));
+                }
+                done += chunk.length;
+                const pct = Math.round(done * 100 / total);
+                bar.style.width = pct + '%';
+                bar.textContent = `${done} / ${total}`;
+            }
+            failures.sort((a, b) => a.row - b.row);
+            showFailures();
+            const doneWord = kind === 'freeze' ? 'frozen' : 'updated';
+            summary.innerHTML = `<div class="alert ${failures.length ? 'alert-warning' : 'alert-success'} py-2 mb-2">` +
+                `<strong>${ok}</strong> item(s) ${doneWord}` +
+                (failures.length ? `, <strong class="text-danger">${failures.length}</strong> row(s) not ${doneWord} (see below)` : '') + '.</div>';
+            applyBtn.classList.add('d-none');
+            pending = null;
+            readBtn.disabled = false;
+        });
+
+        downloadBtn.addEventListener('click', function () {
+            const lines = [['Row', 'Barcode No', 'Problem']].concat(failures.map(f => [f.row, f.barcode, f.message]));
+            const csv = lines.map(line => line.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob(['﻿' + csv], {type: 'text/csv'}));
+            link.download = `bulk-${kind}-problems.csv`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        });
+    });
+})();
+</script>
+{% endblock %}

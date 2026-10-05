@@ -308,8 +308,14 @@ def stock_out(request):
         invoice_no   = request.POST.get('invoice_no', '')
         olf_dc_number = request.POST.get('olf_dc_number', '')
         stock_status = request.POST.get('stock_status', 'SALE')
-        date_value   = request.POST.get('stock_out_date', '')
+        # Dates are always today — no back-dated or future stock outs. Only a
+        # rental's expected return date may be in the future.
+        stock_out_date = timezone.localdate()
         expected_return = _parse_date(request.POST.get('expected_return_date', ''))
+        if expected_return and expected_return < stock_out_date:
+            return JsonResponse({'success': False, 'error': 'Expected return date cannot be in the past'})
+        if stock_status != 'RENT':
+            expected_return = None
         # Frozen stock can only be disposed when explicitly stocked out from
         # the Frozen Stock page (Freeze module → "Mark Sold / Stock Out").
         allow_frozen = request.POST.get('allow_frozen') in ('1', 'true', 'True', 'on')
@@ -318,6 +324,13 @@ def stock_out(request):
             product = Product.objects.get(id=product_id)
         except Product.DoesNotExist:
             return JsonResponse({'success': False, 'error': 'Product not found'})
+        latest_txn = product.transactions.order_by('-created_at', '-id').first()
+        if latest_txn and latest_txn.transaction_type == 'OUT':
+            # Already out (sold, rented, scrapped ...) — never stock it out twice.
+            return JsonResponse({
+                'success': False,
+                'error': f'This item is already stocked out ({latest_txn.stock_status})',
+            })
         was_frozen = _is_frozen(product)
         if was_frozen and not allow_frozen:
             return JsonResponse({'success': False, 'error': 'Frozen stock cannot be stocked out'})
@@ -325,14 +338,6 @@ def stock_out(request):
             return JsonResponse({'success': False, 'error': 'Product is pending receipt in a transfer request'})
 
         store_location = _latest_store_location(product)
-
-        try:
-            stock_out_date = (
-                datetime.strptime(date_value, '%Y-%m-%d').date()
-                if date_value else date.today()
-            )
-        except ValueError:
-            stock_out_date = date.today()
  
         with transaction.atomic():
             if was_frozen and allow_frozen:
@@ -442,7 +447,7 @@ def sales_return(request):
     return_warehouse = request.POST.get('location', '').strip().upper()
     return_location = request.POST.get('physical_location', '').strip()
     remarks = request.POST.get('remarks', '').strip()
-    returned_on = _parse_date(request.POST.get('returned_on', '')) or date.today()
+    returned_on = timezone.localdate()  # always today — no back/future dating
     if reason not in dict(SalesReturn.REASON_CHOICES):
         return JsonResponse({'success': False, 'error': 'Select a valid return reason'})
     if reason == 'NORMAL':
@@ -479,7 +484,7 @@ def scrap_faulty_stock(request):
     product = get_object_or_404(Product, id=request.POST.get('product_id'))
     remarks = request.POST.get('remarks', '').strip()
     scrap_location = request.POST.get('location', '').strip().upper()
-    scrapped_on = _parse_date(request.POST.get('scrapped_on', '')) or date.today()
+    scrapped_on = timezone.localdate()  # always today — no back/future dating
     latest = product.transactions.order_by('-created_at', '-id').first()
     if not latest or latest.stock_status not in ('FAULTY', 'DAMAGED'):
         return JsonResponse({'success': False, 'error': 'Only faulty or damaged stock can be scrapped'})
@@ -529,30 +534,38 @@ def update_inventory_status(request):
     product = get_object_or_404(Product, id=request.POST.get('product_id'))
     new_status = (request.POST.get('stock_status') or '').strip().upper()
     remarks = request.POST.get('remarks', '').strip()
+    error = _apply_status_update(product, request.user, new_status, remarks)
+    if error:
+        return JsonResponse({'success': False, 'error': error})
+    return JsonResponse({'success': True, 'status': new_status})
 
-    # Sale / Rent / Replacement / Adv Replacement are stock-OUT outcomes, not
-    # in-stock statuses, so they cannot be set from the Update Status dialog.
-    valid_statuses = {value for value, _ in InventoryTransaction.STOCK_STATUS} - {
-        'SALE', 'RENT', 'REPLACEMENT', 'ADV_REPLACEMENT',
-    }
-    if new_status not in valid_statuses:
-        return JsonResponse({'success': False, 'error': 'Please select a valid status'})
+
+# Sale / Rent / Replacement / Adv Replacement are stock-OUT outcomes, not
+# in-stock statuses, so they cannot be set with Update Status.
+UPDATABLE_STATUSES = {value for value, _ in InventoryTransaction.STOCK_STATUS} - {
+    'SALE', 'RENT', 'REPLACEMENT', 'ADV_REPLACEMENT',
+}
+
+
+def _apply_status_update(product, user, new_status, remarks):
+    """Set an in-stock product's status (new Stock In transaction + remark).
+    Returns an error message, or '' on success. Used by the Update Status
+    dialog and the bulk status Excel upload."""
+    if new_status not in UPDATABLE_STATUSES:
+        return 'Please select a valid status'
     if not remarks:
-        return JsonResponse({'success': False, 'error': 'Remarks are required'})
+        return 'Remarks are required'
     if _is_frozen(product):
-        return JsonResponse({'success': False, 'error': 'Frozen stock cannot have its status changed'})
+        return 'Frozen stock cannot have its status changed'
     if _has_pending_transfer(product):
-        return JsonResponse({'success': False, 'error': 'Product is pending receipt in a transfer request'})
+        return 'Product is pending receipt in a transfer request'
 
     latest = product.transactions.order_by('-created_at', '-id').first()
     if latest and latest.transaction_type == 'OUT':
-        return JsonResponse({
-            'success': False,
-            'error': 'This product is stocked out; only in-stock items can have their status updated',
-        })
+        return 'This product is stocked out; only in-stock items can have their status updated'
 
     store_location = _latest_store_location(product)
-    today = date.today()
+    today = timezone.localdate()
     formatted_remarks = format_dated_remark(remarks, today)
 
     with transaction.atomic():
@@ -562,7 +575,7 @@ def update_inventory_status(request):
             store_location=store_location,
             stock_status=new_status,
             stock_in_date=today,
-            performed_by=request.user if request.user.is_authenticated else None,
+            performed_by=user if user.is_authenticated else None,
             audit_remark=formatted_remarks,
         )
 
@@ -571,7 +584,7 @@ def update_inventory_status(request):
         module='INVENTORY',
         entity=product.name,
         entity_id=product.id,
-        user=request.user,
+        user=user,
         warehouse=store_location,
         location=_latest_location(product),
         old_values={'stock_status': latest.stock_status if latest else ''},
@@ -581,13 +594,13 @@ def update_inventory_status(request):
     log_timeline(
         product=product,
         event_type='STATUS',
-        user=request.user,
+        user=user,
         warehouse=store_location,
         location=_latest_location(product),
         remarks=formatted_remarks,
         details={'old_status': latest.stock_status if latest else '', 'new_status': new_status},
     )
-    return JsonResponse({'success': True, 'status': new_status})
+    return ''
 
 
 @require_permission('sales_return')
@@ -663,7 +676,7 @@ def audit_spare(request):
  
         product_id   = request.POST.get('product_id')
         audit_remark = request.POST.get('audit_remark', '')
-        audited_on   = request.POST.get('audited_on', '')
+        audited_on   = timezone.localdate()  # always today — no back/future dating
         audit_result = request.POST.get('audit_result', 'FOUND')
  
         try:
@@ -682,7 +695,7 @@ def audit_spare(request):
             transaction_type = 'AUDIT',
             store_location   = last_txn.store_location if last_txn else 'WH1',
             stock_status     = last_txn.stock_status   if last_txn else 'LIVE',
-            audited_on       = audited_on or now().date(),
+            audited_on       = audited_on,
             audited_by       = request.user if request.user.is_authenticated else None,
             performed_by     = request.user if request.user.is_authenticated else None,
             audit_remark     = audit_remark,
@@ -796,6 +809,7 @@ def audit_report(request):
     
     
 
+@login_required
 def check_product_membership(request):
     """
     Given a product_id, returns whether the product is part of
@@ -842,6 +856,7 @@ def check_product_membership(request):
     return JsonResponse(result)
 
 
+@require_any_permission('view_live', 'sold_view', 'reports')
 def installed_in(request):
     """Bulk "Installed in" lookup for the products shown on a list page.
 
@@ -1251,34 +1266,43 @@ def freeze_inventory(request):
             return JsonResponse({'success': False, 'error': 'Remarks are required'})
         if _is_frozen(product):
             return JsonResponse({'success': False, 'error': 'Asset is already frozen'})
+        affected = _freeze_product(product, request.user, reason)
+        return JsonResponse({'success': True, 'affected_components': affected})
+    return JsonResponse({'success': False, 'error': 'Invalid method'})
+
+
+def _freeze_product(product, user, reason, notify=True):
+    """Freeze a product (and the parts inside it). Returns how many child
+    components were frozen with it."""
+    with transaction.atomic():
         record = InventoryFreezeRecord.objects.create(
             product=product,
             status='FROZEN',
             reason=reason,
-            frozen_by=request.user,
+            frozen_by=user,
         )
-        affected = _freeze_related_children(product, request.user, reason)
-        log_activity(
-            action='FREEZE',
-            module='INVENTORY',
-            entity=product.name,
-            entity_id=product.id,
-            user=request.user,
-            warehouse=_latest_store_location(product),
-            location=_latest_location(product),
-            new_values={'freeze_id': record.id, 'affected_components': affected},
-            remarks=reason,
-        )
-        log_timeline(product=product, event_type='FREEZE', user=request.user, warehouse=_latest_store_location(product), location=_latest_location(product), remarks=reason)
+        affected = _freeze_related_children(product, user, reason)
+    log_activity(
+        action='FREEZE',
+        module='INVENTORY',
+        entity=product.name,
+        entity_id=product.id,
+        user=user,
+        warehouse=_latest_store_location(product),
+        location=_latest_location(product),
+        new_values={'freeze_id': record.id, 'affected_components': affected},
+        remarks=reason,
+    )
+    log_timeline(product=product, event_type='FREEZE', user=user, warehouse=_latest_store_location(product), location=_latest_location(product), remarks=reason)
+    if notify:
         Notification.objects.create(
-            user=request.user,
+            user=user,
             notification_type='FREEZE',
             title='Inventory frozen',
             message=f'{product.serial_no or product.id} frozen',
             metadata={'product_id': product.id, 'freeze_id': record.id},
         )
-        return JsonResponse({'success': True, 'affected_components': affected})
-    return JsonResponse({'success': False, 'error': 'Invalid method'})
+    return affected
 
 
 @require_permission('freeze')
@@ -1412,7 +1436,7 @@ def audit_finding_list(request):
 def create_audit_finding(request):
     if request.method == 'POST':
         finding = AuditFinding.objects.create(
-            audit_date=request.POST.get('audit_date') or now().date(),
+            audit_date=timezone.localdate(),
             remarks=format_dated_remark(request.POST.get('remarks', '').strip()) or request.POST.get('remarks', '').strip(),
             attachment=request.FILES.get('attachment'),
             person_involved=request.POST.get('person_involved', '').strip(),
@@ -1472,7 +1496,7 @@ def general_audit_finding_list(request):
 def create_general_audit_finding(request):
     if request.method == 'POST':
         finding = GeneralAuditFinding.objects.create(
-            audit_date=request.POST.get('audit_date') or now().date(),
+            audit_date=timezone.localdate(),
             title=request.POST.get('title', '').strip(),
             remarks=format_dated_remark(request.POST.get('remarks', '').strip()) or request.POST.get('remarks', '').strip(),
             attachment=request.FILES.get('attachment'),
@@ -1841,7 +1865,7 @@ def return_rental(request):
 
     rental_id = request.POST.get('rental_id')
     remarks = request.POST.get('remarks', '').strip()
-    return_date = _parse_date(request.POST.get('return_date', '')) or date.today()
+    return_date = timezone.localdate()  # always today — no back/future dating
     # Disposition + warehouse/location, mirroring the Sales Return flow.
     disposition = (request.POST.get('disposition') or 'LIVE').strip().upper()
     if disposition not in {'LIVE', 'FAULTY', 'DAMAGED', 'SCRAP'}:
@@ -2181,3 +2205,250 @@ def reconciliation_error_report(request):
     for e in errors:
         writer.writerow([e.get('row', ''), e.get('barcode', ''), e.get('error', '')])
     return response
+
+
+# ── Bulk updates by Excel (universal — any category, matched by barcode) ──
+#
+# Two uploads share one page: Bulk Freeze (Barcode No [+ Remark]) and Bulk
+# Status Update (Barcode No, Status, Remark). The file is read once
+# (/read/), then the browser sends the rows back in small chunks (/apply/)
+# so big files never hit a request timeout and progress can be shown.
+
+BULK_KINDS = {
+    'freeze': {
+        'permission': 'freeze',
+        'label': 'Bulk Freeze',
+        'headers': ['Barcode No', 'Remark'],
+    },
+    'status': {
+        'permission': 'status_update',
+        'label': 'Bulk Status Update',
+        'headers': ['Barcode No', 'Status', 'Remark'],
+    },
+}
+BULK_HEADER_ALIASES = {
+    'barcode': {'barcode', 'barcode no', 'barcode number', 'barcodeno'},
+    'status': {'status', 'stock status', 'new status'},
+    'remark': {'remark', 'remarks', 'reason'},
+}
+BULK_CHUNK_LIMIT = 500
+
+
+def _bulk_header_key(value):
+    text = ' '.join(str(value or '').replace('.', ' ').replace('_', ' ').lower().split())
+    for key, aliases in BULK_HEADER_ALIASES.items():
+        if text in aliases:
+            return key
+    return None
+
+
+def _bulk_status_value(value):
+    """'Faulty', 'adv replacement', 'ON_APPROVAL' ... -> the status key."""
+    text = '_'.join(str(value or '').strip().upper().replace('-', ' ').split())
+    labels = {label.upper().replace(' ', '_'): key for key, label in InventoryTransaction.STOCK_STATUS}
+    return labels.get(text, text)
+
+
+def _bulk_products_by_barcode(barcodes):
+    """{BARCODE (upper-cased): Product} for every barcode found, in one query
+    per category table (same table order as _product_for_barcode)."""
+    from django.db.models.functions import Upper
+    from apps.categories.models import Spare, Card, CPU, Controller, Memory, SFP, RailKit, HardDisk, NetworkingSpare
+    from apps.servers.models import Server, ServerComponent
+    wanted = {str(b).strip().upper() for b in barcodes if str(b or '').strip()}
+    found = {}
+    for model in (Spare, Card, CPU, Controller, Memory, SFP, RailKit, HardDisk, NetworkingSpare, Server, ServerComponent):
+        missing = wanted - found.keys()
+        if not missing:
+            break
+        rows = (model.objects.annotate(barcode_upper=Upper('barcode'))
+                .filter(barcode_upper__in=missing).select_related('product'))
+        for obj in rows:
+            found.setdefault(obj.barcode_upper, obj.product)
+    return found
+
+
+def _bulk_kind_or_403(request, kind):
+    config = BULK_KINDS.get(kind)
+    if config is None:
+        return None, JsonResponse({'success': False, 'error': 'Unknown bulk update'}, status=404)
+    if not has_permission(request.user, config['permission']):
+        return None, JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+    return config, None
+
+
+@require_any_permission('freeze', 'status_update')
+def bulk_update_page(request):
+    return render(request, 'inventory/bulk_update.html', {
+        'can_bulk_freeze': has_permission(request.user, 'freeze'),
+        'can_bulk_status': has_permission(request.user, 'status_update'),
+        'status_options': [(k, l) for k, l in InventoryTransaction.STOCK_STATUS if k in UPDATABLE_STATUSES],
+    })
+
+
+@login_required
+def bulk_update_template(request, kind):
+    config, denied = _bulk_kind_or_403(request, kind)
+    if denied:
+        return denied
+    from io import BytesIO
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = config['label']
+    sheet.append(config['headers'])
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(fill_type='solid', fgColor='DCEBFF')
+    for column in 'ABC':
+        sheet.column_dimensions[column].width = 28
+    if kind == 'status':
+        notes = workbook.create_sheet('Allowed Status')
+        notes.append(['Status', 'Meaning'])
+        for key, label in InventoryTransaction.STOCK_STATUS:
+            if key in UPDATABLE_STATUSES:
+                notes.append([key, label])
+    stream = BytesIO()
+    workbook.save(stream)
+    response = HttpResponse(stream.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="bulk-{kind}-template.xlsx"'
+    return response
+
+
+@login_required
+def bulk_update_read(request, kind):
+    """Read the uploaded Excel and return its rows (nothing is changed yet).
+    Rows that can never work — blank status, repeated barcode — come back as
+    errors straight away."""
+    config, denied = _bulk_kind_or_403(request, kind)
+    if denied:
+        return denied
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid method'}, status=405)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'success': False, 'error': 'Please choose an Excel file.'}, status=400)
+    try:
+        workbook = load_workbook(upload, read_only=True, data_only=True)
+        iterator = workbook.active.iter_rows(values_only=True)
+        header_row = next(iterator, None) or ()
+    except Exception as exc:
+        return JsonResponse({'success': False, 'error': f'Unable to read Excel file: {exc}'}, status=400)
+
+    columns = {}
+    for index, value in enumerate(header_row):
+        key = _bulk_header_key(value)
+        if key and key not in columns:
+            columns[key] = index
+    required = ['barcode'] + (['status'] if kind == 'status' else [])
+    missing = [name for name in required if name not in columns]
+    if missing:
+        return JsonResponse({
+            'success': False,
+            'error': 'Missing column(s): ' + ', '.join({'barcode': 'Barcode No', 'status': 'Status'}[m] for m in missing)
+                     + '. Download the template to see the expected columns.',
+        }, status=400)
+
+    def cell(row, key):
+        index = columns.get(key)
+        if index is None or index >= len(row) or row[index] is None:
+            return ''
+        return str(row[index]).strip()
+
+    rows, errors, first_seen = [], [], {}
+    for row_no, row in enumerate(iterator, start=2):
+        barcode = cell(row, 'barcode')
+        status = _bulk_status_value(cell(row, 'status')) if kind == 'status' else ''
+        remark = cell(row, 'remark')
+        if not barcode:
+            if status or remark:
+                errors.append({'row': row_no, 'barcode': '', 'message': 'Barcode No is blank'})
+            continue
+        upper = barcode.upper()
+        if upper in first_seen:
+            errors.append({'row': row_no, 'barcode': barcode,
+                           'message': f'Barcode repeated in this file (first on row {first_seen[upper]})'})
+            continue
+        first_seen[upper] = row_no
+        if kind == 'status' and status not in UPDATABLE_STATUSES:
+            errors.append({'row': row_no, 'barcode': barcode,
+                           'message': f'"{cell(row, "status") or "(blank)"}" is not a status that can be set here'})
+            continue
+        if kind == 'status' and not remark:
+            errors.append({'row': row_no, 'barcode': barcode, 'message': 'Remark is required'})
+            continue
+        rows.append({'row': row_no, 'barcode': barcode, 'status': status, 'remark': remark})
+
+    if not rows and not errors:
+        return JsonResponse({'success': False, 'error': 'The file has no rows with a Barcode No.'}, status=400)
+    return JsonResponse({'success': True, 'rows': rows, 'errors': errors, 'chunk_size': 100})
+
+
+@login_required
+def bulk_update_apply(request, kind):
+    """Apply one chunk of rows from bulk_update_read; reports each row."""
+    import json
+    config, denied = _bulk_kind_or_403(request, kind)
+    if denied:
+        return denied
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid method'}, status=405)
+    try:
+        payload = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
+    rows = payload.get('rows') or []
+    if not isinstance(rows, list) or len(rows) > BULK_CHUNK_LIMIT:
+        return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
+    default_reason = ' '.join(str(payload.get('reason') or '').split())
+
+    products = _bulk_products_by_barcode(str(r.get('barcode') or '') for r in rows if isinstance(r, dict))
+    results = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        barcode = str(item.get('barcode') or '').strip()
+        result = {'row': item.get('row'), 'barcode': barcode, 'ok': False, 'message': ''}
+        results.append(result)
+        product = products.get(barcode.upper())
+        if product is None:
+            result['message'] = 'Barcode not found'
+            continue
+        remark = str(item.get('remark') or '').strip()
+        try:
+            if kind == 'freeze':
+                reason = remark or default_reason
+                if not reason:
+                    result['message'] = 'Remark is required (fill the Remark column or the reason box)'
+                    continue
+                if _is_frozen(product):
+                    result['message'] = 'Already frozen'
+                    continue
+                latest = product.transactions.order_by('-created_at', '-id').first()
+                if latest and latest.transaction_type == 'OUT':
+                    result['message'] = f'Stocked out ({latest.stock_status}); only in-stock items can be frozen'
+                    continue
+                affected = _freeze_product(product, request.user, reason, notify=False)
+                result['ok'] = True
+                result['message'] = 'Frozen' + (f' (+{affected} parts inside)' if affected else '')
+            else:
+                status = _bulk_status_value(item.get('status'))
+                error = _apply_status_update(product, request.user, status, remark)
+                if error:
+                    result['message'] = error
+                    continue
+                result['ok'] = True
+                result['message'] = f'Status set to {status}'
+        except Exception as exc:  # one bad row must not stop the rest
+            result['message'] = f'Failed: {exc}'
+    done = sum(1 for r in results if r['ok'])
+    if done:
+        log_activity(
+            action='BULK_FREEZE' if kind == 'freeze' else 'BULK_STATUS_UPDATE',
+            module='INVENTORY', entity=config['label'], user=request.user,
+            new_values={'rows': len(results), 'updated': done},
+            remarks=f'{config["label"]} by Excel: {done} of {len(results)} rows updated',
+        )
+    return JsonResponse({'success': True, 'results': results})

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block title %}{% if preset_type %}Add {{ preset_type|title }}{% else %}Add Spare{% endif %}{% endblock %}
 {% load static %}
 
 {% block extra_css %}
@@ -13,8 +14,8 @@
     <div class="spare-form-shell">
         <div class="spare-form-header">
             <div>
-                <h5 class="spare-form-title">Add Spare</h5>
-                <div class="spare-form-subtitle">Add one or multiple spare items in a single save.</div>
+                <h5 class="spare-form-title">Add {% if preset_type %}{{ preset_type|title }}{% else %}Spare{% endif %}</h5>
+                <div class="spare-form-subtitle">Add one or multiple {% if preset_type %}{{ preset_type|lower }}{% else %}spare{% endif %} items in a single save.</div>
             </div>
             <div class="spare-form-tools">
                 <button type="button" class="btn btn-outline-success btn-sm add-row">
@@ -51,7 +52,7 @@
 
                     <tbody>
                         <tr>
-                            <td><input name="category[]" list="categoryList" placeholder="Type or select"></td>
+                            <td><input name="category[]" list="categoryList" placeholder="Type or select" value="{{ preset_type }}"></td>
                             <td><input name="brand[]" list="brandList" placeholder="Type or select"></td>
                             <td><input name="model[]" placeholder="Model"></td>
                             <td><input name="part_no[]" placeholder="Part No"></td>

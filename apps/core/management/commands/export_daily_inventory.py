@@ -58,6 +58,17 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(
                 f"Emailed daily inventory to: {', '.join(result['recipients'])}"
             ))
+            if result.get('partial_failure'):
+                from apps.core.notifications import send_failure_alert
+                send_failure_alert(
+                    'Daily report partially sent',
+                    'Some of today\'s daily inventory report emails could not be sent after retrying:\n\n'
+                    + '\n'.join(f'  {state}: {err}' for state, err in result['partial_failure'].items())
+                    + '\n\nThe other report(s) were emailed successfully.',
+                )
+                self.stdout.write(self.style.WARNING(
+                    f"But these failed after retrying: {result['partial_failure']}"
+                ))
         else:
             self.stdout.write(self.style.WARNING(
                 f"Files exported but not emailed: {result.get('reason')}"

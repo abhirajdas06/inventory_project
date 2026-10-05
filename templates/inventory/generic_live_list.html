@@ -14,12 +14,12 @@
     <div class="inventory-list-toolbar">
         <div>
             <h1>{{ title }}</h1>
-            <p>{{ items|length }} live items</p>
+            <p>{{ total_count }} live item{{ total_count|pluralize }}</p>
         </div>
         <div class="inventory-list-actions">
             {% if user.is_authenticated %}
             {% if can.stock_in %}
-            <a href="{% url 'add_networking_spare' %}" class="btn btn-primary btn-sm">
+            <a href="{{ add_url|default:'/spare/networking-spare/add/' }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-plus-lg"></i> Add
             </a>
             {% endif %}

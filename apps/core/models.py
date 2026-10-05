@@ -37,11 +37,16 @@ class Product(models.Model):
 
 
 class UserProfile(models.Model):
+    # Built-in roles. Admins can add more "user types" in Role Settings; those
+    # live in RolePermission (is_custom=True), so `role` has no fixed choices —
+    # use apps.core.permissions.all_roles() for the full list.
     ROLE_CHOICES = (
         ('ADMIN', 'Admin'),
         ('STOCK_IN', 'Stock In User'),
         ('STOCK_OUT', 'Stock Out User'),
         ('AUDIT', 'Audit User'),
+        ('READONLY_LIVE', 'Read-only: Live Stock'),
+        ('READONLY_OUT', 'Read-only: Out Stock'),
     )
 
     user = models.OneToOneField(
@@ -49,22 +54,29 @@ class UserProfile(models.Model):
         on_delete=models.CASCADE,
         related_name='profile',
     )
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='ADMIN')
+    role = models.CharField(max_length=40, default='ADMIN')
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.user.username} ({self.role})"
 
+    def get_role_display(self):
+        from apps.core.permissions import role_label
+        return role_label(self.role)
+
 
 class RolePermission(models.Model):
     """Optional role-level overrides for the inventory permission defaults."""
-    role = models.CharField(max_length=20, choices=UserProfile.ROLE_CHOICES, unique=True)
+    role = models.CharField(max_length=40, unique=True)
+    # Set for user types added from Role Settings (not one of ROLE_CHOICES).
+    label = models.CharField(max_length=60, blank=True)
+    is_custom = models.BooleanField(default=False)
     permissions = models.JSONField(default=list, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Permissions: {self.get_role_display()}"
+        return f"Permissions: {self.label or dict(UserProfile.ROLE_CHOICES).get(self.role, self.role)}"
 
 
 class ReportRecipient(models.Model):

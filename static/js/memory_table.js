@@ -162,7 +162,7 @@ $(document).ready(function () {
         $('#auditProductId').val(productId);
 
         // pre-fill today
-        $('#auditDate').val(new Date().toISOString().split('T')[0]);
+        $('#auditDate').val(todayLocal());
 
         new bootstrap.Modal(document.getElementById('auditModal')).show();
     });

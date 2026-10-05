@@ -18,6 +18,9 @@
                 {% endif %}
             </div>
         </div>
+        <a href="{% url 'bulk_update' %}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-file-earmark-spreadsheet me-1"></i>Bulk Freeze by Excel
+        </a>
     </div>
 
     {% include "partials/list_filters.html" with search_placeholder="Search serial, part, reason…" %}
@@ -115,7 +118,7 @@
       </div>
       <div class="mb-2">
         <label class="form-label">Date</label>
-        <input type="date" id="frozenStockOutDate" class="form-control">
+        <input type="date" id="frozenStockOutDate" class="today-only form-control">
       </div>
       <button class="btn btn-danger w-100 mt-2" id="frozenSaveStockOut">Confirm Stock Out</button>
       <div id="frozenStockOutMsg" class="mt-2 small"></div>
@@ -178,7 +181,7 @@
         document.getElementById('frozenStockOutClient').value = '';
         document.getElementById('frozenStockOutInvoice').value = '';
         document.getElementById('frozenStockOutOlfDc').value = '';
-        document.getElementById('frozenStockOutDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('frozenStockOutDate').value = todayLocal();
         document.getElementById('frozenStockOutMsg').textContent = '';
         new bootstrap.Modal(document.getElementById('frozenStockOutModal')).show();
     });

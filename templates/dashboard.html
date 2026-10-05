@@ -5,14 +5,57 @@
 {% block breadcrumb %}Overview{% endblock %}
 {% block nav_dashboard %}active{% endblock %}
 
+{% block extra_css %}
+<style>
+    .dash-card { position: relative; padding: 0; overflow: hidden; }
+    .dash-card-btn {
+        width: 100%; text-align: left; background: none; border: 0; padding: 14px;
+        cursor: pointer; color: inherit; display: block;
+    }
+    .dash-card-btn:hover { background: #f8fafc; }
+    .dash-card-btn:focus-visible { outline: 2px solid var(--accent, #4f8ef7); outline-offset: -2px; }
+    .dash-card-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .dash-card-head span { display: flex; align-items: center; gap: 6px; color: #64748b; font-size: 12px; font-weight: 600; }
+    .dash-card-warn {
+        display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700;
+        color: #b91c1c; background: #fee2e2; border-radius: 999px; padding: 1px 7px;
+    }
+    .dash-card-stores { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .dash-card-store-chip {
+        font-size: 11px; background: #eef2ff; color: #3730a3; border-radius: 999px;
+        padding: 1px 8px; white-space: nowrap;
+    }
+    .dash-card-more { font-size: 11px; color: #94a3b8; }
+    #cardDetailModal .modal-stat { text-align: center; }
+    #cardDetailModal .modal-stat strong { display: block; font-size: 24px; line-height: 1.1; }
+    #cardDetailModal .modal-stat span { font-size: 12px; color: #64748b; }
+    #cardDetailModal .store-row td { padding: 4px 8px; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="dashboard-grid">
     <section class="dashboard-summary">
         {% for card in cards %}
         <article class="dash-card">
-            <span>{{ card.label }}</span>
-            <strong>{{ card.live }}</strong>
-            <small>{{ card.sold }} sold / {{ card.total }} total</small>
+            <button type="button" class="dash-card-btn" data-kind="{{ card.kind }}" data-label="{{ card.label }}">
+                <div class="dash-card-head">
+                    <span><i class="bi {{ card.icon }}"></i> {{ card.label }}</span>
+                    {% if card.faulty_damaged_in_stock or card.faulty_damaged_scrap_out %}
+                    <span class="dash-card-warn" title="Faulty/Damaged in stock + Faulty/Damaged/Scrap stocked out">
+                        <i class="bi bi-exclamation-triangle-fill"></i>{{ card.faulty_damaged_in_stock|add:card.faulty_damaged_scrap_out }}
+                    </span>
+                    {% endif %}
+                </div>
+                <strong>{{ card.total }}</strong>
+                <small>{{ card.in_stock }} in stock &middot; {{ card.sold }} sold{% if card.empty_in_stock %} &middot; <span class="text-secondary fw-semibold">{{ card.empty_in_stock }} empty</span>{% endif %}</small>
+                {% if card.top_stores %}
+                <div class="dash-card-stores">
+                    {% for s in card.top_stores %}<span class="dash-card-store-chip">{{ s.store }}: {{ s.count }}</span>{% endfor %}
+                    {% if card.more_stores %}<span class="dash-card-more">+{{ card.more_stores }} more</span>{% endif %}
+                </div>
+                {% endif %}
+            </button>
         </article>
         {% endfor %}
     </section>
@@ -55,6 +98,52 @@
         </div>
     </section>
 </div>
+
+<!-- Card detail modal: filled via AJAX from /dashboard/card/<kind>/ -->
+<div class="modal fade" id="cardDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="cardDetailTitle">&nbsp;</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="cardDetailLoading" class="text-center text-muted py-4">
+                    <div class="spinner-border spinner-border-sm me-2"></div>Loading…
+                </div>
+                <div id="cardDetailBody" class="d-none">
+                    <div class="row g-2 mb-3">
+                        <div class="col-4 modal-stat"><strong id="cdTotal">0</strong><span>Total</span></div>
+                        <div class="col-4 modal-stat"><strong id="cdInStock">0</strong><span>In stock</span></div>
+                        <div class="col-4 modal-stat"><strong id="cdSold">0</strong><span>Sold</span></div>
+                    </div>
+                    <h6 class="small text-muted text-uppercase mt-3 mb-1">In stock by store</h6>
+                    <table class="table table-sm mb-2"><tbody id="cdStoreRows"></tbody></table>
+                    <div id="cdNoStores" class="text-muted small d-none">No in-stock items.</div>
+                    <div class="alert alert-warning py-2 px-3 small d-flex justify-content-between align-items-center mb-2">
+                        <span><i class="bi bi-exclamation-triangle me-1"></i>Faulty / Damaged (in stock)</span>
+                        <strong id="cdFaultyIn">0</strong>
+                    </div>
+                    <div class="alert alert-secondary py-2 px-3 small d-flex justify-content-between align-items-center mb-0">
+                        <span><i class="bi bi-box-arrow-up-right me-1"></i>Faulty / Damaged / Scrap (stocked out)</span>
+                        <strong id="cdFaultyOut">0</strong>
+                    </div>
+                    <div id="cdEmptyRow" class="alert alert-light border py-2 px-3 small d-flex justify-content-between align-items-center mt-2 mb-0 d-none">
+                        <span><i class="bi bi-exclamation-octagon me-1"></i>Empty (in stock, missing key part)</span>
+                        {% if can.view_live %}<a id="cdEmptyLink" href="#"><strong id="cdEmpty">0</strong></a>{% else %}<strong id="cdEmpty">0</strong>{% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                {% if can.view_live %}<a id="cdListLink" href="#" class="btn btn-outline-secondary btn-sm">View list</a>{% endif %}
+                {% if can.sold_view or can.reports %}
+                <a id="cdSoldLink" href="#" class="btn btn-outline-danger btn-sm">Sold</a>
+                <a id="cdFaultyLink" href="#" class="btn btn-outline-warning btn-sm">Faulty list</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -68,7 +157,7 @@
         data: {
             labels: cards.map(c => c.label),
             datasets: [
-                {label: 'Live', data: cards.map(c => c.live), backgroundColor: '#2563eb'},
+                {label: 'In stock', data: cards.map(c => c.in_stock), backgroundColor: '#2563eb'},
                 {label: 'Sold', data: cards.map(c => c.sold), backgroundColor: '#ef4444'}
             ]
         },
@@ -77,6 +166,55 @@
             plugins: {legend: {position: 'bottom'}},
             scales: {x: {ticks: {autoSkip: false, maxRotation: 45, minRotation: 0}}, y: {beginAtZero: true}}
         }
+    });
+
+    const modalEl = document.getElementById('cardDetailModal');
+    const modal = new bootstrap.Modal(modalEl);
+    const loading = document.getElementById('cardDetailLoading');
+    const body = document.getElementById('cardDetailBody');
+
+    document.querySelectorAll('.dash-card-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const kind = btn.dataset.kind;
+            document.getElementById('cardDetailTitle').textContent = btn.dataset.label;
+            loading.classList.remove('d-none');
+            body.classList.add('d-none');
+            modal.show();
+            fetch('/dashboard/card/' + encodeURIComponent(kind) + '/')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    document.getElementById('cdTotal').textContent = data.total;
+                    document.getElementById('cdInStock').textContent = data.in_stock;
+                    document.getElementById('cdSold').textContent = data.sold;
+                    document.getElementById('cdFaultyIn').textContent = data.faulty_damaged_in_stock;
+                    document.getElementById('cdFaultyOut').textContent = data.faulty_damaged_scrap_out;
+                    const emptyRow = document.getElementById('cdEmptyRow');
+                    emptyRow.classList.toggle('d-none', data.empty_in_stock === undefined);
+                    if (data.empty_in_stock !== undefined) {
+                        document.getElementById('cdEmpty').textContent = data.empty_in_stock;
+                        const emptyLink = document.getElementById('cdEmptyLink');
+                        if (emptyLink) emptyLink.href = data.empty_url || '#';
+                    }
+                    const rows = document.getElementById('cdStoreRows');
+                    rows.innerHTML = '';
+                    (data.by_store || []).forEach(function (row) {
+                        const tr = document.createElement('tr');
+                        tr.className = 'store-row';
+                        tr.innerHTML = '<td>' + row.store + '</td><td class="text-end fw-semibold">' + row.count + '</td>';
+                        rows.appendChild(tr);
+                    });
+                    document.getElementById('cdNoStores').classList.toggle('d-none', (data.by_store || []).length > 0);
+                    [['cdListLink', data.list_url], ['cdSoldLink', data.sold_url], ['cdFaultyLink', data.faulty_url]].forEach(function (pair) {
+                        const link = document.getElementById(pair[0]);
+                        if (link) link.href = pair[1] || '#';
+                    });
+                    loading.classList.add('d-none');
+                    body.classList.remove('d-none');
+                })
+                .catch(function () {
+                    loading.textContent = 'Could not load details.';
+                });
+        });
     });
 })();
 </script>

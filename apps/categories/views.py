@@ -5,6 +5,7 @@ from django.db.models import OuterRef, Q, Subquery
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from apps.categories.models import CPU, Spare, Card, Controller, NetworkingSpare, Memory, SFP, RailKit, HardDisk
+from apps.categories.spare_subcategories import SPARE_KIND_KEYS, SPARE_SUBCATEGORIES, spare_kind_key, spare_subcategory_q
 from apps.core.services import create_product_and_railkit, create_controller_with_components, create_product_and_card, create_product_and_cpu, create_product_and_memory, create_product_and_sfp, create_product_and_spare, create_product_and_harddisk
 from apps.core.models import Product, SpareCategory, Brand
 from django.db.models import OuterRef, Subquery, Value, CharField
@@ -99,7 +100,10 @@ def add_spare(request):
 
     return render(request, 'spare/add_spare.html', {
         'categories': SpareCategory.objects.all(),
-        'brands': Brand.objects.all()
+        'brands': Brand.objects.all(),
+        # Set when opened from a spare sub-category page's "Add" button
+        # (?type=CABLE etc.) — pre-fills the Spare Type of every row.
+        'preset_type': (request.GET.get('type') or '').strip(),
     })
 
 def check_serial(request):
@@ -158,8 +162,22 @@ def spare_list(request):
     spares = _exclude_out_or_frozen(spares)
  
     return render(request, 'spare/list.html', paginated_list_context(request, spares.order_by('-id'), 'spares'))
- 
- 
+
+
+def spare_subcategory_list(request, kind):
+    """Live list for one split-out spare sub-category (Cable, Battery, ...).
+    Same page/behaviour as the Networking Spare list — search, filters,
+    pagination, Actions — scoped to that sub-category via LIST_MODELS'
+    'category_q'. Sold/Faulty/Export for these reuse the existing generic
+    kind-based URLs, so nothing extra is needed for those."""
+    if kind not in SPARE_KIND_KEYS:  # only the spare sub-categories use this page
+        return JsonResponse({'error': 'Unknown spare category'}, status=404)
+    context = _generic_list_context(kind, sold=False, request=request)
+    config = LIST_MODELS[kind]
+    context['add_url'] = f"/spare/add-spare/?type={config['preset_type']}"
+    return render(request, 'inventory/generic_live_list.html', context)
+
+
 # # NEW VIEW — components API used by controller list page
 # def controller_components(request, controller_id):
 #     from apps.categories.models import Controller
@@ -316,26 +334,9 @@ def add_card(request):
 
 
 
-def card_list(request):
-
-    latest_txn = InventoryTransaction.objects.filter(
-        product=OuterRef('product')
-    ).order_by('-created_at')
-
-    latest_audit = InventoryTransaction.objects.filter(
-        product=OuterRef('product'),
-        transaction_type='AUDIT'
-    ).order_by('-created_at')
-
-    cards = Card.objects.select_related('product').annotate(
-        latest_type=Subquery(latest_txn.values('transaction_type')[:1]),
-        latest_location=Subquery(latest_txn.values('store_location')[:1]),
-        latest_status=Subquery(latest_txn.values('stock_status')[:1]),
-        last_audit_date=Subquery(latest_audit.values('audited_on')[:1]),
-    )
-    cards = _list_search(_exclude_out_or_frozen(cards), (request.GET.get('q') or '').strip(), Card)
-
-    return render(request, 'card/list.html', paginated_list_context(request, cards.order_by('-id'), 'cards'))
+# NOTE: card_list is defined via _list_view_annotated() further down this
+# file (search "card_list = _list_view_annotated") — that is the one actually
+# routed to in urls.py, since a later module-level assignment always wins.
 
 
 def add_cpu(request):
@@ -392,30 +393,10 @@ def add_cpu(request):
     })
 
 
-def cpu_list(request):
- 
-    latest_txn = InventoryTransaction.objects.filter(
-        product=OuterRef('product')
-    ).order_by('-created_at')
- 
-    latest_audit = InventoryTransaction.objects.filter(
-        product=OuterRef('product'),
-        transaction_type='AUDIT'
-    ).order_by('-created_at')
- 
-    cpus = CPU.objects.select_related(
-        'product', 'product__category', 'brand'
-    ).annotate(
-        latest_type=Subquery(latest_txn.values('transaction_type')[:1]),
-        latest_location=Subquery(latest_txn.values('store_location')[:1]),
-        latest_status=Subquery(latest_txn.values('stock_status')[:1]),
-        last_audit_date=Subquery(latest_audit.values('audited_on')[:1]),
-    )
-    cpus = _list_search(_exclude_out_or_frozen(cpus), (request.GET.get('q') or '').strip(), CPU)
+# NOTE: cpu_list is defined via _list_view_annotated() further down this
+# file — that is the one actually routed to in urls.py.
 
-    return render(request, 'cpu/cpu_list.html', paginated_list_context(request, cpus.order_by('-id'), 'cpus'))
- 
- 
+
 def update_cpu_field(request):
     """Inline edit handler for CPU fields: location, reference_location, remark"""
  
@@ -803,31 +784,10 @@ def add_memory(request):
     })
  
  
-def memory_list(request):
-    from apps.categories.models import Memory
- 
-    latest_txn = InventoryTransaction.objects.filter(
-        product=OuterRef('product')
-    ).order_by('-created_at')
- 
-    latest_audit = InventoryTransaction.objects.filter(
-        product=OuterRef('product'),
-        transaction_type='AUDIT'
-    ).order_by('-created_at')
- 
-    memories = Memory.objects.select_related(
-        'product', 'product__category', 'brand'
-    ).annotate(
-        latest_type      = Subquery(latest_txn.values('transaction_type')[:1]),
-        latest_location  = Subquery(latest_txn.values('store_location')[:1]),
-        latest_status    = Subquery(latest_txn.values('stock_status')[:1]),
-        last_audit_date  = Subquery(latest_audit.values('audited_on')[:1]),
-    )
-    memories = _list_search(_exclude_out_or_frozen(memories), (request.GET.get('q') or '').strip(), Memory)
+# NOTE: memory_list is defined via _list_view_annotated() further down this
+# file — that is the one actually routed to in urls.py.
 
-    return render(request, 'memory/memory_list.html', paginated_list_context(request, memories.order_by('-id'), 'memories'))
- 
- 
+
 def update_memory_field(request):
     from apps.categories.models import Memory
  
@@ -905,31 +865,10 @@ def add_sfp(request):
     })
  
  
-def sfp_list(request):
-    from apps.categories.models import SFP
- 
-    latest_txn = InventoryTransaction.objects.filter(
-        product=OuterRef('product')
-    ).order_by('-created_at')
- 
-    latest_audit = InventoryTransaction.objects.filter(
-        product=OuterRef('product'),
-        transaction_type='AUDIT'
-    ).order_by('-created_at')
- 
-    sfps = SFP.objects.select_related(
-        'product', 'product__category', 'brand'
-    ).annotate(
-        latest_type     = Subquery(latest_txn.values('transaction_type')[:1]),
-        latest_location = Subquery(latest_txn.values('store_location')[:1]),
-        latest_status   = Subquery(latest_txn.values('stock_status')[:1]),
-        last_audit_date = Subquery(latest_audit.values('audited_on')[:1]),
-    )
-    sfps = _list_search(_exclude_out_or_frozen(sfps), (request.GET.get('q') or '').strip(), SFP)
+# NOTE: sfp_list is defined via _list_view_annotated() further down this
+# file — that is the one actually routed to in urls.py.
 
-    return render(request, 'sfp/sfp_list.html', paginated_list_context(request, sfps.order_by('-id'), 'sfps'))
- 
- 
+
 def update_sfp_field(request):
     from apps.categories.models import SFP
  
@@ -1007,31 +946,10 @@ def add_railkit(request):
     })
  
  
-def railkit_list(request):
-    from apps.categories.models import RailKit
- 
-    latest_txn = InventoryTransaction.objects.filter(
-        product=OuterRef('product')
-    ).order_by('-created_at')
- 
-    latest_audit = InventoryTransaction.objects.filter(
-        product=OuterRef('product'),
-        transaction_type='AUDIT'
-    ).order_by('-created_at')
- 
-    railkits = RailKit.objects.select_related(
-        'product', 'product__category', 'brand'
-    ).annotate(
-        latest_type     = Subquery(latest_txn.values('transaction_type')[:1]),
-        latest_location = Subquery(latest_txn.values('store_location')[:1]),
-        latest_status   = Subquery(latest_txn.values('stock_status')[:1]),
-        last_audit_date = Subquery(latest_audit.values('audited_on')[:1]),
-    )
-    railkits = _list_search(_exclude_out_or_frozen(railkits), (request.GET.get('q') or '').strip(), RailKit)
+# NOTE: railkit_list is defined via _list_view_annotated() further down
+# this file — that is the one actually routed to in urls.py.
 
-    return render(request, 'railkit/railkit_list.html', paginated_list_context(request, railkits.order_by('-id'), 'railkits'))
- 
- 
+
 def update_railkit_field(request):
     from apps.categories.models import RailKit
  
@@ -1124,31 +1042,10 @@ def add_harddisk(request):
     })
  
  
-def harddisk_list(request):
-    from apps.categories.models import HardDisk
- 
-    latest_txn = InventoryTransaction.objects.filter(
-        product=OuterRef('product')
-    ).order_by('-created_at')
- 
-    latest_audit = InventoryTransaction.objects.filter(
-        product=OuterRef('product'),
-        transaction_type='AUDIT'
-    ).order_by('-created_at')
- 
-    harddisks = HardDisk.objects.select_related(
-        'product', 'product__category', 'brand'
-    ).annotate(
-        latest_type     = Subquery(latest_txn.values('transaction_type')[:1]),
-        latest_location = Subquery(latest_txn.values('store_location')[:1]),
-        latest_status   = Subquery(latest_txn.values('stock_status')[:1]),
-        last_audit_date = Subquery(latest_audit.values('audited_on')[:1]),
-    )
-    harddisks = _list_search(_exclude_out_or_frozen(harddisks), (request.GET.get('q') or '').strip(), HardDisk)
+# NOTE: harddisk_list is defined via _list_view_annotated() further down
+# this file — that is the one actually routed to in urls.py.
 
-    return render(request, 'harddisk/harddisk_list.html', paginated_list_context(request, harddisks.order_by('-id'), 'harddisks'))
- 
- 
+
 def update_harddisk_field(request):
     from apps.categories.models import HardDisk
  
@@ -1265,9 +1162,21 @@ from apps.categories.models import (
 )
 
 
-def _list_view_annotated(model_class, template, context_key):
+def _list_view_annotated(model_class, template, context_key, lookalike_category=None, lookalike_label=None, category_q=None, page_title=None):
     """
     Generic annotated list view for spare categories.
+
+    lookalike_category: when this dedicated model has generic Spare rows
+    filed under a matching category name (almost always a Controller's own
+    child component, recorded via Spare.controller — see
+    apps.categories.spare_subcategories.DEDICATED_LOOKALIKE_CATEGORIES),
+    passing its category name here adds a read-only "Also recorded as Spare
+    parts under ..." section to the page. See dedicated_lookalike_spares().
+
+    category_q: narrows this dedicated model to a split-out subset (e.g. Hard
+    Disk 2.5" vs 3.5", filtered on the model's own `size` field) — same idea
+    as the spare sub-categories, but on a field of the dedicated model itself
+    rather than Product.category.
     """
 
     def view(request):
@@ -1332,14 +1241,18 @@ def _list_view_annotated(model_class, template, context_key):
                 ),
             )
         )
+        if category_q is not None:
+            qs = qs.filter(category_q)
         qs = _list_search(qs, q, model_class)
         qs = _exclude_out_or_frozen(qs)
 
-        return render(
-            request,
-            template,
-            paginated_list_context(request, qs.order_by('-id'), context_key)
-        )
+        context = paginated_list_context(request, qs.order_by('-id'), context_key)
+        if lookalike_category:
+            context['lookalike_spares'] = dedicated_lookalike_spares(lookalike_category)
+            context['lookalike_label'] = lookalike_label
+        if page_title:
+            context['page_title'] = page_title
+        return render(request, template, context)
 
     return view
 
@@ -1348,25 +1261,33 @@ def _list_view_annotated(model_class, template, context_key):
 card_list = _list_view_annotated(
     Card,
     'card/list.html',
-    'cards'
+    'cards',
+    lookalike_category='CARD',
+    lookalike_label='Card',
 )
 
 cpu_list = _list_view_annotated(
     CPU,
     'cpu/cpu_list.html',
-    'cpus'
+    'cpus',
+    lookalike_category='PROCESSOR',
+    lookalike_label='CPU',
 )
 
 memory_list = _list_view_annotated(
     Memory,
     'memory/memory_list.html',
-    'memories'
+    'memories',
+    lookalike_category='MEMORY',
+    lookalike_label='Memory',
 )
 
 sfp_list = _list_view_annotated(
     SFP,
     'sfp/sfp_list.html',
-    'sfps'
+    'sfps',
+    lookalike_category='SFP',
+    lookalike_label='SFP',
 )
 
 railkit_list = _list_view_annotated(
@@ -1378,7 +1299,31 @@ railkit_list = _list_view_annotated(
 harddisk_list = _list_view_annotated(
     HardDisk,
     'harddisk/harddisk_list.html',
-    'harddisks'
+    'harddisks',
+    lookalike_category='HARD DISK',
+    lookalike_label='Hard Disk',
+)
+
+# Split by physical size (2.5"/3.5") — same fields and logic as the combined
+# list above, just scoped to one size via the model's own `size` field.
+harddisk_25_list = _list_view_annotated(
+    HardDisk,
+    'harddisk/harddisk_list.html',
+    'harddisks',
+    category_q=Q(size='2.5'),
+    lookalike_category='HARD DISK',
+    lookalike_label='Hard Disk',
+    page_title='2.5" Hard Disk Inventory',
+)
+
+harddisk_35_list = _list_view_annotated(
+    HardDisk,
+    'harddisk/harddisk_list.html',
+    'harddisks',
+    category_q=Q(size='3.5'),
+    lookalike_category='HARD DISK',
+    lookalike_label='Hard Disk',
+    page_title='3.5" Hard Disk Inventory',
 )
 
 
@@ -1482,6 +1427,22 @@ LIST_MODELS = {
         'list_url': 'harddisk_list',
         'fields': [('Product', 'product.name'), ('Brand', 'brand.name'), ('OEM', 'oem'), ('Brand Model', 'brand_model_no'), ('OEM Model', 'oem_model_no'), ('Model', 'model'), ('Capacity', 'capacity'), ('RPM', 'rpm'), ('Interface', 'interface'), ('Size', 'size'), ('Part No', 'part_no'), ('Serial', 'product.serial_no'), ('Barcode', 'barcode'), ('Tray Barcode', 'tray_barcode'), ('Location', 'location'), ('Remark', 'remark')],
     },
+    'harddisk_25': {
+        'label': '2.5" Hard Disk',
+        'model': HardDisk,
+        'add_url': 'add_harddisk',
+        'list_url': 'harddisk_25_list',
+        'category_q': Q(size='2.5'),
+        'fields': [('Product', 'product.name'), ('Brand', 'brand.name'), ('OEM', 'oem'), ('Brand Model', 'brand_model_no'), ('OEM Model', 'oem_model_no'), ('Model', 'model'), ('Capacity', 'capacity'), ('RPM', 'rpm'), ('Interface', 'interface'), ('Size', 'size'), ('Part No', 'part_no'), ('Serial', 'product.serial_no'), ('Barcode', 'barcode'), ('Tray Barcode', 'tray_barcode'), ('Location', 'location'), ('Remark', 'remark')],
+    },
+    'harddisk_35': {
+        'label': '3.5" Hard Disk',
+        'model': HardDisk,
+        'add_url': 'add_harddisk',
+        'list_url': 'harddisk_35_list',
+        'category_q': Q(size='3.5'),
+        'fields': [('Product', 'product.name'), ('Brand', 'brand.name'), ('OEM', 'oem'), ('Brand Model', 'brand_model_no'), ('OEM Model', 'oem_model_no'), ('Model', 'model'), ('Capacity', 'capacity'), ('RPM', 'rpm'), ('Interface', 'interface'), ('Size', 'size'), ('Part No', 'part_no'), ('Serial', 'product.serial_no'), ('Barcode', 'barcode'), ('Tray Barcode', 'tray_barcode'), ('Location', 'location'), ('Remark', 'remark')],
+    },
     'networking_spare': {
         'label': 'Networking Spare',
         'model': __import__('apps.categories.models', fromlist=['NetworkingSpare']).NetworkingSpare,
@@ -1490,6 +1451,46 @@ LIST_MODELS = {
         'fields': [('Product', 'product.name'), ('Brand', 'brand.name'), ('Part No', 'part_no'), ('Alt Part', 'alt_part_no'), ('Serial', 'product.serial_no'), ('Alt Serial', 'alt_serial_no'), ('Specs', 'specs'), ('Qty', 'qty'), ('Barcode', 'barcode'), ('Location', 'location'), ('Reference Location', 'reference_location'), ('Remark', 'remark')],
     },
 }
+
+# The 19 split-out spare sub-categories (Cable, Battery, Motherboard, ...) —
+# same Spare model and fields as 'spare' above, scoped to one category group
+# each via 'category_q'. See apps.categories.spare_subcategories.
+for _slug, _cfg in SPARE_SUBCATEGORIES.items():
+    LIST_MODELS[spare_kind_key(_slug)] = {
+        'label': _cfg['label'],
+        'icon': _cfg['icon'],
+        'model': Spare,
+        'add_url': 'add_spare',
+        'list_url': 'spare_subcategory_list',
+        'preset_type': _cfg['canonical'],
+        'category_q': spare_subcategory_q(_slug),
+        'fields': LIST_MODELS['spare']['fields'],
+    }
+
+
+def dedicated_lookalike_spares(category_name):
+    """Generic Spare rows whose category text matches a dedicated model
+    (Card/CPU/Memory/SFP/HardDisk) — almost always a Controller's child
+    component, which only the Spare model can represent (via Spare.controller).
+    Shown as a read-only section on that dedicated list page instead of being
+    migrated into it, which would break the controller link. See
+    apps.categories.spare_subcategories.DEDICATED_LOOKALIKE_CATEGORIES."""
+    latest_txn = InventoryTransaction.objects.filter(product=OuterRef('product')).order_by('-created_at')
+    return Spare.objects.filter(product__category__name=category_name).select_related(
+        'product', 'brand', 'controller', 'controller__product',
+    ).annotate(
+        latest_location=Subquery(latest_txn.values('store_location')[:1]),
+        latest_status=Subquery(latest_txn.values('stock_status')[:1]),
+        latest_type=Subquery(latest_txn.values('transaction_type')[:1]),
+    ).exclude(latest_type='OUT').order_by('-id')
+
+
+def _scoped_queryset(config, **kwargs):
+    """_annotated_category_queryset() further narrowed to a LIST_MODELS
+    entry's category, when it has one (the 19 spare sub-categories)."""
+    qs = _annotated_category_queryset(config['model'], **kwargs)
+    category_q = config.get('category_q')
+    return qs.filter(category_q) if category_q is not None else qs
 
 
 def _resolve_attr(obj, path):
@@ -1504,7 +1505,16 @@ def _resolve_attr(obj, path):
 def _generic_list_context(kind, sold=False, status=None, filters=None, request=None):
     config = LIST_MODELS[kind]
     filters = filters or {}
-    base_items = _annotated_category_queryset(config['model'], sold=sold)
+    if request is not None:
+        # Callers that don't build their own filters dict (the live spare
+        # sub-category pages, Networking Spare) still get q/date filtering
+        # straight from the query string, instead of silently ignoring it.
+        filters = {
+            'q': filters.get('q', request.GET.get('q', '')),
+            'date_from': filters.get('date_from', request.GET.get('date_from', '')),
+            'date_to': filters.get('date_to', request.GET.get('date_to', '')),
+        }
+    base_items = _scoped_queryset(config, sold=sold)
     items = base_items
     if sold and status:
         items = items.filter(latest_status=status)
@@ -1565,7 +1575,7 @@ def inventory_sold_list(request, kind):
     defaulted = 'status' not in request.GET
     selected_status = 'SALE' if defaulted else request.GET.get('status', '').strip()
     config = LIST_MODELS[kind]
-    all_sold_qs = _annotated_category_queryset(config['model'], sold=True)
+    all_sold_qs = _scoped_queryset(config, sold=True)
     available_statuses = sorted(list(set(
         all_sold_qs.values_list('latest_status', flat=True)
     )))
@@ -1592,7 +1602,7 @@ def inventory_faulty_list(request, kind):
     if kind not in LIST_MODELS:
         return JsonResponse({'error': 'Unknown list'}, status=404)
     config = LIST_MODELS[kind]
-    items = _annotated_category_queryset(config['model'], include_stocked_out=True).filter(latest_status__in=('FAULTY', 'DAMAGED'))
+    items = _scoped_queryset(config, include_stocked_out=True).filter(latest_status__in=('FAULTY', 'DAMAGED'))
     q = request.GET.get('q', '').strip()
     if q:
         items = items.filter(Q(product__name__icontains=q) | Q(product__serial_no__icontains=q) | Q(barcode__icontains=q))
@@ -1622,7 +1632,7 @@ def export_inventory(request, kind, state='live'):
     import csv
     config = LIST_MODELS[kind]
     sold = state == 'sold'
-    qs = _annotated_category_queryset(config['model'], sold=sold)
+    qs = _scoped_queryset(config, sold=sold)
     if sold:
         selected_status = request.GET.get('status', '').strip()
         if selected_status:
@@ -1748,13 +1758,17 @@ def export_controllers(request, state='live'):
 @login_required
 def import_inventory_page(request):
     from apps.core.importers import IMPORT_LABELS
-    stock_in_labels = {}
-    stock_out_labels = {}
+    stock_in_labels = []
+    stock_out_labels = []
     for key, label in IMPORT_LABELS.items():
         if key.endswith('_stock_out') or key == 'stock_out':
-            stock_out_labels[key] = label
+            stock_out_labels.append((key, label))
         else:
-            stock_in_labels[key] = label
+            stock_in_labels.append((key, label))
+    # Alphabetical so the searchable picker reads naturally; the plain
+    # barcode-only "Stock Out" import stays first in its list.
+    stock_in_labels.sort(key=lambda kv: kv[1].lower())
+    stock_out_labels.sort(key=lambda kv: (kv[0] != 'stock_out', kv[1].lower()))
     can_stock_in = has_permission(request.user, 'stock_in')
     can_stock_out = has_permission(request.user, 'stock_out_import')
     if not (can_stock_in or can_stock_out):
@@ -1797,7 +1811,8 @@ def import_template_download(request, model_key):
 
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = label[:31]
+    # Excel forbids \ / ? * [ ] : in sheet names (e.g. "On/Off Switch").
+    sheet.title = ''.join(' ' if ch in '\\/?*[]:' else ch for ch in label)[:31].strip() or 'Template'
     sheet.append(headers)
 
     header_fill = PatternFill(fill_type='solid', fgColor='DCEBFF')
@@ -1946,23 +1961,48 @@ def universal_search(request):
     raw_results = []
     # Do not use the expensive list annotations here. Search only direct indexed
     # asset fields and limit each model before building display results.
-    for kind, config in LIST_MODELS.items():
+    # LIST_MODELS has one entry per spare sub-category (Cable, Battery, ...)
+    # but they're all backed by the SAME Spare model — search it once, not
+    # once per sub-category, or the same row shows up as a duplicate result
+    # under every one of the 19 categories.
+    seen_models = {}
+    for config in LIST_MODELS.values():
+        seen_models.setdefault(config['model'], config)
+
+    # Only IN-STOCK items: anything whose latest transaction is a stock-out
+    # (sold, rented, scrapped ...) is left out, so it can't be stocked out a
+    # second time from here. The current stock status comes along so faulty /
+    # damaged items can be highlighted.
+    latest_txn = InventoryTransaction.objects.filter(product=OuterRef('product')).order_by('-created_at', '-id')
+    # Explicit NULL check: an item with no transactions yet is in stock, and
+    # SQL "NULL <> 'OUT'" would silently drop it.
+    not_out = Q(latest_type__isnull=True) | ~Q(latest_type='OUT')
+    for model, config in seen_models.items():
         matches = _list_search(
-            config['model'].objects.select_related('product'), query, config['model']
-        ).order_by('-id')[:4]
+            model.objects.select_related('product', 'product__category'), query, model
+        ).annotate(
+            latest_type=Subquery(latest_txn.values('transaction_type')[:1]),
+            latest_status=Subquery(latest_txn.values('stock_status')[:1]),
+        ).filter(not_out).order_by('-id')[:4]
         raw_results.extend((config, item) for item in matches)
 
     memberships = _product_memberships([item.product_id for _, item in raw_results])
     results = []
     for config, item in raw_results:
+        # A Spare row's real category (e.g. "FRONT BEZEL") is more useful
+        # than the generic "Spare" / a single sub-category's label, since one
+        # search covers all 19 sub-categories at once.
+        display_type = config['label']
+        if config['model'] is Spare and item.product and item.product.category:
+            display_type = item.product.category.name
         results.append({
-            'type': config['label'],
+            'type': display_type,
             'title': str(item.product.name),
             'serial': item.product.serial_no or '',
             'part_no': item.product.part_no or getattr(item, 'part_no', '') or '',
             'barcode': getattr(item, 'barcode', '') or '',
             'location': getattr(item, 'location', '') or '',
-            'status': '',
+            'status': item.latest_status or '',
             'product_id': item.product_id,
             'url': request.build_absolute_uri(),
             **memberships[item.product_id],
@@ -1973,13 +2013,17 @@ def universal_search(request):
     # duplicating the parent server here.
     from apps.servers.models import Server
     from apps.servers.views import _server_queryset
+    from apps.servers.groups import SERVER_GROUPS
     server_q = (
         Q(machine_no__icontains=query) | Q(service_tag__icontains=query) |
         Q(model__icontains=query) | Q(part_no__icontains=query) |
         Q(barcode__icontains=query) | Q(location__icontains=query) |
         Q(alt_serial_no__icontains=query) | Q(alt_part_no__icontains=query)
     )
-    matched_ids = list(Server.objects.filter(server_q).order_by('-id').values_list('id', flat=True)[:4])
+    matched_ids = list(
+        _server_queryset().filter(server_q).filter(not_out)
+        .order_by('-id').values_list('id', flat=True)[:4]
+    )
     servers_by_id = {
         s.id: s for s in
         _server_queryset().filter(id__in=matched_ids).select_related('product')
@@ -1989,18 +2033,19 @@ def universal_search(request):
         if not server:
             continue
         results.append({
-            'type': 'Server',
+            'type': SERVER_GROUPS.get(server.group, {}).get('label', 'Server'),
             'title': server.model or 'Server',
-            'serial': server.service_tag,
+            'serial': 'System Service Tag No is missing' if server.service_tag_missing else server.service_tag,
             'part_no': server.part_no or '',
             'barcode': server.barcode or '',
             'location': server.location or '',
-            'status': server.status or '',
+            'status': server.latest_status or '',
             'product_id': server.product.id if server.product else '',
-            'url': request.build_absolute_uri('/servers/list/'),
+            'url': request.build_absolute_uri(
+                f'/servers/g/{server.group}/' if server.group in SERVER_GROUPS else '/servers/list/'),
             'in_server': False, 'server_label': '',
             'in_controller': False, 'controller_label': '',
-            'is_empty_server': not server.has_motherboard,
+            'is_empty_server': server.is_empty,
         })
 
     return JsonResponse({'results': results[:50]})

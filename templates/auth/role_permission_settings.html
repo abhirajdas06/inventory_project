@@ -5,22 +5,51 @@
 {% block content %}
 <div class="container-fluid px-3">
   <div class="inventory-list-shell">
-    <div class="inventory-list-toolbar">
+    <div class="inventory-list-toolbar d-flex flex-wrap justify-content-between align-items-end gap-2">
       <div>
         <h5 class="inventory-list-title">Role Permissions</h5>
-        <div class="inventory-list-subtitle">Choose which functions each user role can use. Changes apply immediately.</div>
+        <div class="inventory-list-subtitle">Choose which functions each user type can use. Changes apply immediately.</div>
       </div>
+      <a href="{% url 'role_permission_export' %}" class="btn btn-outline-success btn-sm">
+        <i class="bi bi-file-earmark-excel me-1"></i>Download for Approval (Excel)
+      </a>
     </div>
+
+    <form method="post" class="border rounded p-3 mb-3 bg-light">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add_role">
+      <div class="fw-semibold mb-2"><i class="bi bi-person-plus me-1"></i>Add User Type</div>
+      <div class="row g-2 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label small mb-1" for="newRoleLabel">Name</label>
+          <input type="text" id="newRoleLabel" name="label" class="form-control form-control-sm" maxlength="60" placeholder="e.g. Store Manager" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small mb-1" for="newRoleCopy">Start with permissions of</label>
+          <select id="newRoleCopy" name="copy_from" class="form-select form-select-sm">
+            <option value="">Nothing (tick them after adding)</option>
+            {% for value, label in roles %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-success btn-sm w-100" type="submit"><i class="bi bi-plus-lg me-1"></i>Add User Type</button>
+        </div>
+      </div>
+    </form>
+
     <div class="accordion" id="rolePermissionAccordion">
       {% for row in role_rows %}
       <div class="accordion-item">
         <h2 class="accordion-header" id="role-heading-{{ row.role }}">
-          <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#role-{{ row.role }}">
+          <button class="accordion-button {% if not row.open %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#role-{{ row.role }}">
             {{ row.label }}
-            {% if row.customized %}<span class="badge text-bg-primary ms-2">Custom</span>{% else %}<span class="badge text-bg-light border text-dark ms-2">Default</span>{% endif %}
+            {% if row.is_custom %}<span class="badge text-bg-success ms-2">Added type</span>
+            {% elif row.customized %}<span class="badge text-bg-primary ms-2">Custom</span>
+            {% else %}<span class="badge text-bg-light border text-dark ms-2">Default</span>{% endif %}
+            <span class="text-muted small ms-2">{{ row.user_count }} user{{ row.user_count|pluralize }}</span>
           </button>
         </h2>
-        <div id="role-{{ row.role }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" data-bs-parent="#rolePermissionAccordion">
+        <div id="role-{{ row.role }}" class="accordion-collapse collapse {% if row.open %}show{% endif %}" data-bs-parent="#rolePermissionAccordion">
           <div class="accordion-body">
             <form method="post">
               {% csrf_token %}
@@ -36,7 +65,22 @@
                 {% endfor %}
               </div>
               {% if row.role == 'ADMIN' %}<input type="hidden" name="user_management" value="on">{% endif %}
-              <button class="btn btn-primary btn-sm mt-3" type="submit"><i class="bi bi-check2-circle me-1"></i>Save {{ row.label }} Permissions</button>
+              <div class="d-flex flex-wrap gap-2 mt-3">
+                <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check2-circle me-1"></i>Save {{ row.label }} Permissions</button>
+                {% if row.is_custom %}
+                <button class="btn btn-outline-danger btn-sm" type="submit" name="action" value="delete_role"
+                        {% if row.user_count %}disabled title="Still given to {{ row.user_count }} user{{ row.user_count|pluralize }}. Change their role first."{% endif %}
+                        onclick="return confirm('Delete the user type {{ row.label|escapejs }}?');">
+                  <i class="bi bi-trash me-1"></i>Delete User Type
+                </button>
+                {% else %}
+                <button class="btn btn-outline-secondary btn-sm" type="submit" name="action" value="reset"
+                        {% if not row.customized %}disabled title="Already using the default permissions"{% endif %}
+                        onclick="return confirm('Reset {{ row.label|escapejs }} to the default permissions? Your custom choices for this role will be lost.');">
+                  <i class="bi bi-arrow-counterclockwise me-1"></i>Reset to Default
+                </button>
+                {% endif %}
+              </div>
             </form>
           </div>
         </div>

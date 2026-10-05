@@ -2,6 +2,7 @@ import json
 import traceback
 from datetime import date
  
+from django.utils import timezone
 from django.contrib import messages
 from django.http import JsonResponse
 from django.http import HttpResponse
@@ -48,6 +49,7 @@ def add_server(request):
             server_data = {
                 # server identity
                 'machine_type':           request.POST.get('machine_type', ''),
+                'group':                  request.POST.get('group', ''),
                 'machine_no':             request.POST.get('machine_no', ''),
                 'service_tag':            request.POST.get('service_tag', ''),
                 'model':                  request.POST.get('model', ''),
@@ -60,7 +62,7 @@ def add_server(request):
                 'qty':                    request.POST.get('qty', 1),
                 'barcode':                request.POST.get('barcode', ''),
                 # testing
-                'testing_date':           request.POST.get('testing_date', ''),
+                'testing_date':           timezone.localdate().isoformat(),  # always today
                 'tested_by':              request.POST.get('tested_by', ''),
                 # status / location
                 'status':                 request.POST.get('status', 'WORKING'),
@@ -99,42 +101,33 @@ def add_server(request):
             for component in server.components.select_related('product'):
                 _mark_latest_stock_in_user(component.product, request.user)
             messages.success(request, 'Server created successfully.')
-            return redirect('server_list')
- 
+            return redirect('server_group_list', server.group) if server.group else redirect('server_list')
+
         except Exception as e:
             import traceback
             traceback.print_exc()
             messages.error(request, str(e))
- 
+
     return render(request, 'servers/add_server.html', {
         'brands':           Brand.objects.all(),
         'spare_categories': SpareCategory.objects.all(),
+        'server_groups':    SERVER_GROUPS.items(),
+        # Opened from a group's "Add" link (?group=storage) — pre-selects it.
+        'preset_group':     (request.GET.get('group') or request.POST.get('group') or '').strip(),
     })
  
  
-# Category names used for a server's motherboard component. A server is
-# considered "Empty" (no motherboard) whenever none of its ServerComponent
-# rows with one of these spare_types has an in-stock (non-OUT) product —
-# this is fully derived from live data, so mapping/unmapping/stocking a
-# motherboard in or out automatically moves the server between the Live and
-# Empty tabs with no extra bookkeeping required.
-MOTHERBOARD_SPARE_TYPES = ['MOTHER BOARD', 'MOTHERBOARD', 'MAIN BOARD', 'SYSTEM BOARD']
+from apps.servers.groups import (  # noqa: E402
+    MOTHERBOARD_SPARE_TYPES, SERVER_GROUPS, annotate_empty, empty_reason,
+)
 
 
 def _server_queryset(include_component_search=False):
+    """All servers with stock-state annotations plus the per-group Empty
+    rule (``is_empty`` — see apps.servers.groups)."""
     latest_txn = InventoryTransaction.objects.filter(
         product=OuterRef('product')
     ).order_by('-created_at')
-
-    motherboard_in_stock = ServerComponent.objects.filter(
-        server=OuterRef('pk'),
-        spare_type__in=MOTHERBOARD_SPARE_TYPES,
-    ).annotate(
-        comp_latest_type=Subquery(
-            InventoryTransaction.objects.filter(product=OuterRef('product'))
-            .order_by('-created_at').values('transaction_type')[:1]
-        ),
-    ).exclude(comp_latest_type='OUT')
 
     queryset = Server.objects.select_related(
         'product', 'brand'
@@ -146,8 +139,8 @@ def _server_queryset(include_component_search=False):
         latest_invoice  = Subquery(latest_txn.values('invoice_no')[:1]),
         latest_olf_dc   = Subquery(latest_txn.values('olf_dc_number')[:1]),
         latest_out_date = Subquery(latest_txn.values('stock_out_date')[:1]),
-        has_motherboard = Exists(motherboard_in_stock),
     )
+    queryset = annotate_empty(queryset)
     if include_component_search:
         queryset = queryset.annotate(component_search=StringAgg(
             Concat(
@@ -171,11 +164,47 @@ def _server_queryset(include_component_search=False):
 
 
 # ── List ──────────────────────────────────────────────────
-def _search_in_stock_servers(q):
+def _resolve_group(group):
+    """None for the all-groups lists; the slug for a known group; raises
+    Http404 for anything else."""
+    from django.http import Http404
+    if group is None:
+        return None
+    if group not in SERVER_GROUPS:
+        raise Http404('Unknown server group')
+    return group
+
+
+def _group_urls(group):
+    """Live / Empty / Sold / Faulty URLs for this group (or for all servers)."""
+    from django.urls import reverse
+    if group:
+        return {
+            'live_url': reverse('server_group_list', args=[group]),
+            'empty_url': reverse('server_group_empty_list', args=[group]),
+            'sold_url': reverse('server_group_out_list', args=[group]),
+            'faulty_url': reverse('server_group_faulty_list', args=[group]),
+        }
+    return {
+        'live_url': reverse('server_list'),
+        'empty_url': reverse('server_empty_list'),
+        'sold_url': reverse('server_out_list'),
+        'faulty_url': reverse('server_faulty_list'),
+    }
+
+
+def _group_context(group):
+    label = SERVER_GROUPS[group]['label'] if group else 'Servers'
+    return {'group': group or '', 'group_label': label, **_group_urls(group)}
+
+
+def _search_in_stock_servers(q, group=None):
     """In-stock (not sold/frozen) servers, optionally filtered by the same
     search term used by both the Live and Empty tabs, so a search for e.g.
     "r630" can be split into how many are Live vs Empty."""
     servers = _server_queryset(include_component_search=bool(q))
+    if group:
+        servers = servers.filter(group=group)
     if q:
         server_filter = (
             Q(machine_no__icontains=q) | Q(service_tag__icontains=q) |
@@ -187,48 +216,44 @@ def _search_in_stock_servers(q):
     return _exclude_out_or_frozen(servers)
 
 
-def _live_empty_counts(q):
+def _live_empty_counts(q, group=None):
     """(live_count, empty_count) for the current search term, independent of
     pagination — shown together as "N Live · M Empty" on both tabs."""
-    base = _search_in_stock_servers(q)
-    return base.filter(has_motherboard=True).count(), base.filter(has_motherboard=False).count()
+    base = _search_in_stock_servers(q, group)
+    return base.filter(is_empty=False).count(), base.filter(is_empty=True).count()
 
 
-def server_list(request):
-    """Live Servers tab — in-stock servers that currently have a motherboard."""
+def _render_server_tab(request, group, empty):
+    group = _resolve_group(group)
     q = (request.GET.get('q') or '').strip()
-    servers = _search_in_stock_servers(q).filter(has_motherboard=True)
-    live_count, empty_count = _live_empty_counts(q)
-
-    return render(request, 'servers/server_list.html', paginated_list_context(
+    servers = _search_in_stock_servers(q, group).filter(is_empty=empty)
+    live_count, empty_count = _live_empty_counts(q, group)
+    context = paginated_list_context(
         request, servers, 'servers',
         spare_categories=SpareCategory.objects.all(),
         brands=Brand.objects.all(),
-        active_tab='live',
+        active_tab='empty' if empty else 'live',
         live_count=live_count,
         empty_count=empty_count,
         q=q,
-    ))
+        **_group_context(group),
+    )
+    for server in context['servers']:
+        server.empty_reason = empty_reason(server) if server.is_empty else ''
+    return render(request, 'servers/server_list.html', context)
 
 
-def server_empty_list(request):
-    """Empty Servers tab — in-stock servers with no motherboard currently
-    mapped and in stock (never had one, it was unmapped, or it was stocked
-    out). Fully derived from live data: mapping a motherboard back in moves
-    the server straight back to the Live tab, no manual flag to update."""
-    q = (request.GET.get('q') or '').strip()
-    servers = _search_in_stock_servers(q).filter(has_motherboard=False)
-    live_count, empty_count = _live_empty_counts(q)
+def server_list(request, group=None):
+    """Live tab — in-stock machines that pass their group's Empty rule
+    (e.g. a rack server with a motherboard in stock)."""
+    return _render_server_tab(request, group, empty=False)
 
-    return render(request, 'servers/server_list.html', paginated_list_context(
-        request, servers, 'servers',
-        spare_categories=SpareCategory.objects.all(),
-        brands=Brand.objects.all(),
-        active_tab='empty',
-        live_count=live_count,
-        empty_count=empty_count,
-        q=q,
-    ))
+
+def server_empty_list(request, group=None):
+    """Empty tab — in-stock machines failing their group's Empty rule (see
+    apps.servers.groups). Fully derived from live data: mapping the missing
+    part back in moves the machine straight back to the Live tab."""
+    return _render_server_tab(request, group, empty=True)
 
 
 def _server_sold_search(qs, q):
@@ -241,9 +266,12 @@ def _server_sold_search(qs, q):
     )
 
 
-def server_out_list(request):
+def server_out_list(request, group=None):
+    group = _resolve_group(group)
     q = (request.GET.get('q') or '').strip()
     servers = _server_sold_search(_server_queryset().filter(latest_type='OUT'), q)
+    if group:
+        servers = servers.filter(group=group)
     # Same behaviour as the other sold lists: open on SALE; an explicit empty
     # status ("All statuses") shows everything.
     defaulted = 'status' not in request.GET
@@ -254,6 +282,7 @@ def server_out_list(request):
         request, servers.order_by('-latest_out_date', '-id'), 'servers',
         can_stock_return=has_permission(request.user, 'stock_return'),
         can_stock_out=has_permission(request.user, 'stock_out'),
+        **_group_context(group),
     )
     if defaulted:
         context['list_filter']['values']['status'] = 'SALE'
@@ -261,9 +290,12 @@ def server_out_list(request):
     return render(request, 'servers/server_out_list.html', context)
 
 
-def server_faulty_list(request):
+def server_faulty_list(request, group=None):
+    group = _resolve_group(group)
     q = (request.GET.get('q') or '').strip()
     servers = _server_sold_search(_server_queryset().filter(latest_status__in=('FAULTY', 'DAMAGED')), q)
+    if group:
+        servers = servers.filter(group=group)
 
     return render(request, 'servers/server_out_list.html', paginated_list_context(
         request, servers.order_by('-id'), 'servers',
@@ -271,6 +303,7 @@ def server_faulty_list(request):
         is_faulty=True,
         can_stock_return=has_permission(request.user, 'stock_return'),
         can_stock_out=has_permission(request.user, 'stock_out'),
+        **_group_context(group),
     ))
 
 
@@ -317,6 +350,9 @@ def export_servers(request, state='live'):
         selected_status = request.GET.get('status', '').strip()
         if selected_status:
             servers = servers.filter(latest_status=selected_status)
+    server_group = (request.GET.get('group') or '').strip()
+    if server_group in SERVER_GROUPS:
+        servers = servers.filter(group=server_group)
 
     wb = Workbook()
     ws = wb.active
@@ -338,7 +374,7 @@ def export_servers(request, state='live'):
             server.tested_by or '',
             server.machine_type or '',
             server.machine_no or '',
-            server.service_tag or '',
+            '' if server.service_tag_missing else (server.service_tag or ''),
             server.model or '',
             'CABINET',
             server.part_no or '',
@@ -364,7 +400,7 @@ def export_servers(request, state='live'):
                 server.tested_by or '',
                 server.machine_type or '',
                 server.machine_no or '',
-                server.service_tag or '',
+                '' if server.service_tag_missing else (server.service_tag or ''),
                 server.model or '',
                 c.spare_type or (c.product.category.name if c.product and c.product.category else ''),
                 c.part_no or '',

@@ -1,0 +1,68 @@
+{% if lookalike_spares %}
+<div class="inventory-list-shell mt-3">
+    <div class="inventory-list-toolbar">
+        <div>
+            <h5 class="inventory-list-title mb-1">Also recorded as Spare parts under "{{ lookalike_label }}"</h5>
+            <div class="inventory-list-subtitle">
+                {{ lookalike_spares|length }} item{{ lookalike_spares|length|pluralize }} — entered through the
+                generic Spare form (usually a Controller's component), not this dedicated table. Read-only here;
+                use the Controller's own components view or the Spare list to edit them.
+            </div>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle inventory-list-table">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Brand</th>
+                    <th>Model</th>
+                    <th>Part No</th>
+                    <th>Serial</th>
+                    <th>Barcode</th>
+                    <th>Qty</th>
+                    <th>Location</th>
+                    <th>Store</th>
+                    <th>Status</th>
+                    <th>Installed In</th>
+                    <th>Ledger</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in lookalike_spares %}
+                <tr data-id="{{ s.product.id }}" data-status="{{ s.latest_status }}">
+                    <td>{{ s.product.name }}</td>
+                    <td>{{ s.brand|default:"-" }}</td>
+                    <td>{{ s.model|default:"-" }}</td>
+                    <td>{{ s.part_no|default:"-" }}</td>
+                    <td><code>{{ s.product.serial_no }}</code></td>
+                    <td>{{ s.barcode|default:"-" }}</td>
+                    <td>{{ s.qty }}</td>
+                    <td>{{ s.location|default:"-" }}</td>
+                    <td>{{ s.latest_location|default:"-" }}</td>
+                    <td>
+                        <span class="badge
+                            {% if s.latest_status == 'LIVE' %}bg-success
+                            {% elif s.latest_status == 'FAULTY' %}bg-danger
+                            {% elif s.latest_status == 'DAMAGED' %}badge-damaged
+                            {% else %}bg-secondary{% endif %}">
+                            {{ s.latest_status|default:"-" }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if s.controller %}
+                        <span class="installed-in-badge"><i class="bi bi-hdd-rack me-1"></i>Controller: {{ s.controller.model|default:s.controller.product.serial_no }}</span>
+                        {% else %}<span class="text-muted">-</span>{% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'asset_movement_ledger' s.product.id %}" class="btn btn-sm btn-outline-secondary" title="Movement ledger">
+                            <i class="bi bi-clock-history"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}

@@ -41,13 +41,31 @@
     <div class="row g-3 p-3">
  
         <div class="col-md-2">
+            <label class="form-label fw-semibold">Group</label>
+            <select name="group" class="form-select form-select-sm">
+                <option value="">Auto (from Machine Type)</option>
+                {% for slug, cfg in server_groups %}
+                <option value="{{ slug }}" {% if slug == preset_group %}selected{% endif %}>{{ cfg.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-2">
             <label class="form-label fw-semibold">Machine Type</label>
             <select name="machine_type" class="form-select form-select-sm">
                 <option value="">Select</option>
                 <option value="RACK SERVER">Rack Server</option>
                 <option value="TOWER SERVER">Tower Server</option>
                 <option value="BLADE SERVER">Blade Server</option>
+                <option value="WORKSTATION">Workstation</option>
+                <option value="DESKTOP">Desktop</option>
+                <option value="CHASSIS">Chassis</option>
                 <option value="STORAGE">Storage</option>
+                <option value="TAPE LIBRARY">Tape Library</option>
+                <option value="FIREWALL">Firewall</option>
+                <option value="ROUTER">Router</option>
+                <option value="MODEM">Modem</option>
+                <option value="SWITCH">Switch</option>
                 <option value="OTHER">Other</option>
             </select>
         </div>
@@ -98,7 +116,7 @@
         <div class="col-md-2">
             <label class="form-label fw-semibold">Testing Date</label>
             <input name="testing_date" type="date"
-                   class="form-control form-control-sm">
+                   class="today-only form-control form-control-sm">
         </div>
  
         <div class="col-md-2">

@@ -3,6 +3,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>
+        // Today's date in the user's local time (YYYY-MM-DD). Not toISOString(),
+        // which is UTC and gives yesterday's date before 05:30 IST.
+        function todayLocal() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Inventory System{% endblock %}</title>
@@ -490,6 +498,12 @@
         .universal-result-actions { display: flex; gap: 6px; flex-wrap: wrap; }
         .universal-result-actions .btn { font-size: 11px; padding: 2px 8px; }
         .universal-result-empty { background: #eef0f3; margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 4px; }
+        .universal-result-faulty,
+        .universal-result-damaged,
+        .universal-result-scrap { margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 4px; border-left: 4px solid; }
+        .universal-result-faulty  { background: #fbd3d3; border-left-color: #dc3545; }
+        .universal-result-damaged { background: #ffe0b0; border-left-color: #fd7e14; }
+        .universal-result-scrap   { background: #e3d4f2; border-left-color: #7b3fb0; }
 
         .topbar-title      { font-size: 14px; font-weight: 600; color: var(--text-main); }
         .topbar-breadcrumb { font-size: 11.5px; color: var(--text-muted); }
@@ -845,23 +859,23 @@
     <div class="nav-section">
         <span class="nav-section-label">Spare Parts</span>
 
-        <div class="nav-group-toggle {% nav_active 'add_spare' 'spare_list' 'spare_out_report' 'inventory_faulty:spare' %}" data-bs-toggle="collapse" data-bs-target="#nav-spare" aria-expanded="false" data-sb-tip="Spare">
-            <i class="bi bi-puzzle nav-icon"></i>
-            <span class="nav-label">Spare</span>
+        {% for item in spare_subcategory_nav %}
+        <div class="nav-group-toggle {% if item.list_active or item.sold_active or item.faulty_active %}active{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-spare-{{ item.kind }}" aria-expanded="false" data-sb-tip="{{ item.label }}">
+            <i class="bi {{ item.icon }} nav-icon"></i>
+            <span class="nav-label">{{ item.label }}</span>
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
-        <div class="collapse nav-subitems {% nav_open 'add_spare' 'spare_list' 'spare_out_report' 'inventory_faulty:spare' %}" id="nav-spare">
+        <div class="collapse nav-subitems {% if item.list_active or item.sold_active or item.faulty_active %}show{% endif %}" id="nav-spare-{{ item.kind }}">
             {% if can.stock_in %}
-            <a href="{% url 'add_spare' %}"        class="nav-subitem-link {% block nav_spare_add %}{% endblock %}{% nav_active 'add_spare' %}">Add Spare</a>
+            <a href="{{ item.add_url }}" class="nav-subitem-link">Add {{ item.label }}</a>
             {% endif %}
-            <a href="{% url 'spare_list' %}"       class="nav-subitem-link {% block nav_spare_list %}{% endblock %}{% nav_active 'spare_list' %}">Spare List</a>
-            {% if user.is_authenticated %}
-              {% if can.sold_view or can.reports %}
-              <a href="{% url 'spare_out_report' %}" class="nav-subitem-link {% block nav_spare_out %}{% endblock %}{% nav_active 'spare_out_report' %}">Stock Out Report</a>
-              <a href="{% url 'inventory_faulty' 'spare' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:spare' %}">Faulty Spares</a>
-              {% endif %}
+            {% if can.view_live %}<a href="{{ item.list_url }}" class="nav-subitem-link {% if item.list_active %}active{% endif %}">{{ item.label }} List</a>{% endif %}
+            {% if can.sold_view or can.reports %}
+            <a href="{{ item.sold_url }}" class="nav-subitem-link {% if item.sold_active %}active{% endif %}">Sold {{ item.label }}</a>
+            <a href="{{ item.faulty_url }}" class="nav-subitem-link {% if item.faulty_active %}active{% endif %}">Faulty {{ item.label }}</a>
             {% endif %}
         </div>
+        {% endfor %}
 
         <div class="nav-group-toggle {% nav_active 'add_memory' 'memory_list' 'inventory_sold:memory' 'inventory_faulty:memory' %}" data-bs-toggle="collapse" data-bs-target="#nav-memory" aria-expanded="false" data-sb-tip="Memory">
             <i class="bi bi-memory nav-icon"></i>
@@ -872,7 +886,7 @@
             {% if can.stock_in %}
             <a href="{% url 'add_memory' %}"  class="nav-subitem-link {% block nav_memory_add %}{% endblock %}{% nav_active 'add_memory' %}">Add Memory</a>
             {% endif %}
-            <a href="{% url 'memory_list' %}" class="nav-subitem-link {% block nav_memory_list %}{% endblock %}{% nav_active 'memory_list' %}">Memory List</a>
+            {% if can.view_live %}<a href="{% url 'memory_list' %}" class="nav-subitem-link {% block nav_memory_list %}{% endblock %}{% nav_active 'memory_list' %}">Memory List</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'memory' %}" class="nav-subitem-link {% nav_active 'inventory_sold:memory' %}">Sold Memory</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'memory' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:memory' %}">Faulty Memory</a>{% endif %}
         </div>
@@ -886,7 +900,7 @@
             {% if can.stock_in %}
             <a href="{% url 'add_card' %}"  class="nav-subitem-link {% block nav_card_add %}{% endblock %}{% nav_active 'add_card' %}">Add Card</a>
             {% endif %}
-            <a href="{% url 'card_list' %}" class="nav-subitem-link {% block nav_card_list %}{% endblock %}{% nav_active 'card_list' %}">Card List</a>
+            {% if can.view_live %}<a href="{% url 'card_list' %}" class="nav-subitem-link {% block nav_card_list %}{% endblock %}{% nav_active 'card_list' %}">Card List</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'card' %}" class="nav-subitem-link {% nav_active 'inventory_sold:card' %}">Sold Cards</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'card' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:card' %}">Faulty Cards</a>{% endif %}
         </div>
@@ -900,7 +914,7 @@
             {% if can.stock_in %}
             <a href="{% url 'add_cpu' %}"  class="nav-subitem-link {% block nav_cpu_add %}{% endblock %}{% nav_active 'add_cpu' %}">Add CPU</a>
             {% endif %}
-            <a href="{% url 'cpu_list' %}" class="nav-subitem-link {% block nav_cpu_list %}{% endblock %}{% nav_active 'cpu_list' %}">CPU List</a>
+            {% if can.view_live %}<a href="{% url 'cpu_list' %}" class="nav-subitem-link {% block nav_cpu_list %}{% endblock %}{% nav_active 'cpu_list' %}">CPU List</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'cpu' %}" class="nav-subitem-link {% nav_active 'inventory_sold:cpu' %}">Sold CPUs</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'cpu' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:cpu' %}">Faulty CPUs</a>{% endif %}
         </div>
@@ -914,7 +928,7 @@
             {% if can.stock_in %}
             <a href="{% url 'add_sfp' %}"  class="nav-subitem-link {% block nav_sfp_add %}{% endblock %}{% nav_active 'add_sfp' %}">Add SFP</a>
             {% endif %}
-            <a href="{% url 'sfp_list' %}" class="nav-subitem-link {% block nav_sfp_list %}{% endblock %}{% nav_active 'sfp_list' %}">SFP List</a>
+            {% if can.view_live %}<a href="{% url 'sfp_list' %}" class="nav-subitem-link {% block nav_sfp_list %}{% endblock %}{% nav_active 'sfp_list' %}">SFP List</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'sfp' %}" class="nav-subitem-link {% nav_active 'inventory_sold:sfp' %}">Sold SFP</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'sfp' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:sfp' %}">Faulty SFP</a>{% endif %}
         </div>
@@ -928,23 +942,37 @@
             {% if can.stock_in %}
             <a href="{% url 'add_railkit' %}"  class="nav-subitem-link {% block nav_railkit_add %}{% endblock %}{% nav_active 'add_railkit' %}">Add Rail Kit</a>
             {% endif %}
-            <a href="{% url 'railkit_list' %}" class="nav-subitem-link {% block nav_railkit_list %}{% endblock %}{% nav_active 'railkit_list' %}">Rail Kit List</a>
+            {% if can.view_live %}<a href="{% url 'railkit_list' %}" class="nav-subitem-link {% block nav_railkit_list %}{% endblock %}{% nav_active 'railkit_list' %}">Rail Kit List</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'railkit' %}" class="nav-subitem-link {% nav_active 'inventory_sold:railkit' %}">Sold Rail Kits</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'railkit' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:railkit' %}">Faulty Rail Kits</a>{% endif %}
         </div>
 
-        <div class="nav-group-toggle {% nav_active 'add_harddisk' 'harddisk_list' 'inventory_sold:harddisk' 'inventory_faulty:harddisk' %}" data-bs-toggle="collapse" data-bs-target="#nav-harddisk" aria-expanded="false" data-sb-tip="Hard Disk">
+        <div class="nav-group-toggle {% nav_active 'add_harddisk' 'harddisk_25_list' 'inventory_sold:harddisk_25' 'inventory_faulty:harddisk_25' %}" data-bs-toggle="collapse" data-bs-target="#nav-harddisk25" aria-expanded="false" data-sb-tip="Hard Disk 2.5&quot;">
             <i class="bi bi-hdd nav-icon"></i>
-            <span class="nav-label">Hard Disk</span>
+            <span class="nav-label">Hard Disk 2.5"</span>
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
-        <div class="collapse nav-subitems {% nav_open 'add_harddisk' 'harddisk_list' 'inventory_sold:harddisk' 'inventory_faulty:harddisk' %}" id="nav-harddisk">
+        <div class="collapse nav-subitems {% nav_open 'add_harddisk' 'harddisk_25_list' 'inventory_sold:harddisk_25' 'inventory_faulty:harddisk_25' %}" id="nav-harddisk25">
             {% if can.stock_in %}
-            <a href="{% url 'add_harddisk' %}"  class="nav-subitem-link {% block nav_hdd_add %}{% endblock %}{% nav_active 'add_harddisk' %}">Add Hard Disk</a>
+            <a href="{% url 'add_harddisk' %}"  class="nav-subitem-link {% nav_active 'add_harddisk' %}">Add Hard Disk</a>
             {% endif %}
-            <a href="{% url 'harddisk_list' %}" class="nav-subitem-link {% block nav_hdd_list %}{% endblock %}{% nav_active 'harddisk_list' %}">Hard Disk List</a>
-            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'harddisk' %}" class="nav-subitem-link {% nav_active 'inventory_sold:harddisk' %}">Sold Hard Disks</a>{% endif %}
-            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'harddisk' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:harddisk' %}">Faulty Hard Disks</a>{% endif %}
+            {% if can.view_live %}<a href="{% url 'harddisk_25_list' %}" class="nav-subitem-link {% nav_active 'harddisk_25_list' %}">Hard Disk 2.5" List</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'harddisk_25' %}" class="nav-subitem-link {% nav_active 'inventory_sold:harddisk_25' %}">Sold 2.5"</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'harddisk_25' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:harddisk_25' %}">Faulty 2.5"</a>{% endif %}
+        </div>
+
+        <div class="nav-group-toggle {% nav_active 'add_harddisk' 'harddisk_35_list' 'inventory_sold:harddisk_35' 'inventory_faulty:harddisk_35' %}" data-bs-toggle="collapse" data-bs-target="#nav-harddisk35" aria-expanded="false" data-sb-tip="Hard Disk 3.5&quot;">
+            <i class="bi bi-hdd-fill nav-icon"></i>
+            <span class="nav-label">Hard Disk 3.5"</span>
+            <i class="bi bi-chevron-right nav-chevron"></i>
+        </div>
+        <div class="collapse nav-subitems {% nav_open 'add_harddisk' 'harddisk_35_list' 'inventory_sold:harddisk_35' 'inventory_faulty:harddisk_35' %}" id="nav-harddisk35">
+            {% if can.stock_in %}
+            <a href="{% url 'add_harddisk' %}"  class="nav-subitem-link {% nav_active 'add_harddisk' %}">Add Hard Disk</a>
+            {% endif %}
+            {% if can.view_live %}<a href="{% url 'harddisk_35_list' %}" class="nav-subitem-link {% nav_active 'harddisk_35_list' %}">Hard Disk 3.5" List</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'harddisk_35' %}" class="nav-subitem-link {% nav_active 'inventory_sold:harddisk_35' %}">Sold 3.5"</a>{% endif %}
+            {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'harddisk_35' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:harddisk_35' %}">Faulty 3.5"</a>{% endif %}
         </div>
 
         <div class="nav-group-toggle {% nav_active 'add_networking_spare' 'networking_spare_list' 'inventory_sold:networking_spare' 'inventory_faulty:networking_spare' %}" data-bs-toggle="collapse" data-bs-target="#nav-networking" aria-expanded="false" data-sb-tip="Networking Spare">
@@ -956,7 +984,7 @@
             {% if can.stock_in %}
             <a href="{% url 'add_networking_spare' %}" class="nav-subitem-link {% nav_active 'add_networking_spare' %}">Add Networking Spare</a>
             {% endif %}
-            <a href="{% url 'networking_spare_list' %}" class="nav-subitem-link {% nav_active 'networking_spare_list' %}">Networking List</a>
+            {% if can.view_live %}<a href="{% url 'networking_spare_list' %}" class="nav-subitem-link {% nav_active 'networking_spare_list' %}">Networking List</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'networking_spare' %}" class="nav-subitem-link {% nav_active 'inventory_sold:networking_spare' %}">Sold Networking</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'networking_spare' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:networking_spare' %}">Faulty Networking</a>{% endif %}
         </div>
@@ -966,21 +994,40 @@
     <div class="nav-section">
         <span class="nav-section-label">Servers</span>
 
-        <div class="nav-group-toggle {% nav_active 'add_server' 'server_list' 'server_out_list' 'server_faulty_list' %}" data-bs-toggle="collapse" data-bs-target="#nav-server" aria-expanded="false" data-sb-tip="Servers">
+        <div class="nav-group-toggle {% nav_active 'add_server' 'server_list' 'server_out_list' 'server_faulty_list' %}" data-bs-toggle="collapse" data-bs-target="#nav-server" aria-expanded="false" data-sb-tip="All Servers">
             <i class="bi bi-hdd-network nav-icon"></i>
-            <span class="nav-label">Servers</span>
+            <span class="nav-label">All Servers</span>
             <i class="bi bi-chevron-right nav-chevron"></i>
         </div>
         <div class="collapse nav-subitems {% nav_open 'add_server' 'server_list' 'server_out_list' 'server_faulty_list' %}" id="nav-server">
             {% if can.stock_in %}
             <a href="{% url 'add_server' %}"       class="nav-subitem-link {% block nav_server_add %}{% endblock %}{% nav_active 'add_server' %}">Add Server</a>
             {% endif %}
-            <a href="{% url 'server_list' %}"      class="nav-subitem-link {% block nav_server_list %}{% endblock %}{% nav_active 'server_list' %}">Server List</a>
+            {% if can.view_live %}<a href="{% url 'server_list' %}"      class="nav-subitem-link {% block nav_server_list %}{% endblock %}{% nav_active 'server_list' %}">All Servers</a>{% endif %}
             {% if can.sold_view or can.reports %}
-            <a href="{% url 'server_out_list' %}"  class="nav-subitem-link {% block nav_server_out %}{% endblock %}{% nav_active 'server_out_list' %}">Sold Servers</a>
-            <a href="{% url 'server_faulty_list' %}" class="nav-subitem-link {% nav_active 'server_faulty_list' %}">Faulty Servers</a>
+            <a href="{% url 'server_out_list' %}"  class="nav-subitem-link {% block nav_server_out %}{% endblock %}{% nav_active 'server_out_list' %}">All Sold</a>
+            <a href="{% url 'server_faulty_list' %}" class="nav-subitem-link {% nav_active 'server_faulty_list' %}">All Faulty</a>
             {% endif %}
         </div>
+
+        {% for item in server_group_nav %}
+        <div class="nav-group-toggle {% if item.open %}active{% endif %}" data-bs-toggle="collapse" data-bs-target="#nav-server-{{ item.group }}" aria-expanded="false" data-sb-tip="{{ item.label }}">
+            <i class="bi {{ item.icon }} nav-icon"></i>
+            <span class="nav-label">{{ item.label }}</span>
+            <i class="bi bi-chevron-right nav-chevron"></i>
+        </div>
+        <div class="collapse nav-subitems {% if item.open %}show{% endif %}" id="nav-server-{{ item.group }}">
+            {% if can.stock_in %}
+            <a href="{{ item.add_url }}" class="nav-subitem-link">Add {{ item.label }}</a>
+            {% endif %}
+            {% if can.view_live %}<a href="{{ item.list_url }}" class="nav-subitem-link {% if item.list_active %}active{% endif %}">{{ item.label }} List</a>{% endif %}
+            {% if can.view_live %}<a href="{{ item.empty_url }}" class="nav-subitem-link {% if item.empty_active %}active{% endif %}">Empty {{ item.label }}</a>{% endif %}
+            {% if can.sold_view or can.reports %}
+            <a href="{{ item.sold_url }}" class="nav-subitem-link {% if item.sold_active %}active{% endif %}">Sold {{ item.label }}</a>
+            <a href="{{ item.faulty_url }}" class="nav-subitem-link {% if item.faulty_active %}active{% endif %}">Faulty {{ item.label }}</a>
+            {% endif %}
+        </div>
+        {% endfor %}
     </div>
 
     <!-- CONTROLLERS -->
@@ -996,7 +1043,7 @@
             {% if can.stock_in %}
             <a href="{% url 'add_controller' %}"  class="nav-subitem-link {% block nav_ctrl_add %}{% endblock %}{% nav_active 'add_controller' %}">Add Controller</a>
             {% endif %}
-            <a href="{% url 'controller_list' %}" class="nav-subitem-link {% block nav_ctrl_list %}{% endblock %}{% nav_active 'controller_list' %}">Controller List</a>
+            {% if can.view_live %}<a href="{% url 'controller_list' %}" class="nav-subitem-link {% block nav_ctrl_list %}{% endblock %}{% nav_active 'controller_list' %}">Controller List</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_sold' 'controller' %}" class="nav-subitem-link {% nav_active 'inventory_sold:controller' %}">Sold Controllers</a>{% endif %}
             {% if can.sold_view or can.reports %}<a href="{% url 'inventory_faulty' 'controller' %}" class="nav-subitem-link {% nav_active 'inventory_faulty:controller' %}">Faulty Controllers</a>{% endif %}
         </div>
@@ -1055,6 +1102,12 @@
         <a href="{% url 'frozen_inventory_list' %}" class="nav-item-link {% nav_active 'frozen_inventory_list' %}" data-sb-tip="Frozen Stock">
             <i class="bi bi-snow2"></i>
             <span class="nav-label">Frozen Stock</span>
+        </a>
+        {% endif %}
+        {% if can.freeze or can.status_update %}
+        <a href="{% url 'bulk_update' %}" class="nav-item-link {% nav_active 'bulk_update' %}" data-sb-tip="Bulk Update (Excel)">
+            <i class="bi bi-file-earmark-spreadsheet"></i>
+            <span class="nav-label">Bulk Update (Excel)</span>
         </a>
         {% endif %}
         {% if can.sales_return %}
@@ -1158,12 +1211,14 @@
 
     <div class="ms-auto d-flex align-items-center gap-2">
 
+        {% if can.view_live %}
         <div class="topbar-search">
             <div class="input-group input-group-sm">
                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                 <input type="text" id="universalSearchInput" class="form-control" placeholder="Search inventory">
             </div>
         </div>
+        {% endif %}
 
         <!-- Quick Add -->
         {% if can.stock_in %}
@@ -1263,7 +1318,7 @@
       <input type="hidden" id="globalAuditProductId">
       <div class="mb-2">
         <label class="form-label">Audit Date</label>
-        <input type="date" id="globalAuditDate" class="form-control">
+        <input type="date" id="globalAuditDate" class="today-only form-control">
       </div>
       <div class="mb-2">
         <label class="form-label">Audit Result</label>
@@ -1319,11 +1374,11 @@
       </div>
       <div class="mb-2">
         <label class="form-label">Date</label>
-        <input type="date" id="globalStockOutDate" class="form-control">
+        <input type="date" id="globalStockOutDate" class="today-only form-control">
       </div>
       <div class="mb-2" id="globalStockOutReturnWrap" style="display:none;">
         <label class="form-label">Expected Return Date <span class="text-muted small">(rentals)</span></label>
-        <input type="date" id="globalStockOutReturnDate" class="form-control">
+        <input type="date" id="globalStockOutReturnDate" class="future-only form-control">
       </div>
       <button class="btn btn-danger w-100 mt-2" id="globalSaveStockOut">Confirm Stock Out</button>
       <div id="globalStockOutMsg" class="mt-2 small"></div>
@@ -1545,24 +1600,69 @@
         });
     });
 
+    // Sidebar menu search. Most links live inside collapsible groups (Battery,
+    // Rack Server, ...) that are closed by default, so a match inside a closed
+    // group used to stay invisible — that's why search only "worked" for
+    // top-level items. Now a group whose name matches shows all its links, a
+    // group with any matching link is opened (temporarily) and its header kept,
+    // and groups with no match are hidden. Clearing the box restores the
+    // groups to exactly how they were.
+    function normalise(text) {
+        return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
     function filterMenu(term) {
-        const value = (term || '').trim().toLowerCase();
-        const links = document.querySelectorAll('#sidebar .nav-item-link, #sidebar .nav-subitem-link');
+        const value = normalise(term);
+        const sidebar = document.getElementById('sidebar');
+        if (!sidebar) return;
+        const topLinks = sidebar.querySelectorAll('.nav-section > .nav-item-link, .sidebar-footer .nav-item-link');
+        const toggles = sidebar.querySelectorAll('.nav-group-toggle');
 
         if (!value) {
-            links.forEach(function (a) { a.style.display = ''; });
-            document.querySelectorAll('#sidebar .nav-section').forEach(function (s) { s.style.display = ''; });
+            topLinks.forEach(function (a) { a.style.display = ''; });
+            toggles.forEach(function (t) { t.style.display = ''; });
+            sidebar.querySelectorAll('.nav-subitem-link').forEach(function (a) { a.style.display = ''; });
+            sidebar.querySelectorAll('.collapse[data-search-opened]').forEach(function (c) {
+                c.classList.remove('show');
+                c.removeAttribute('data-search-opened');
+                const t = sidebar.querySelector('[data-bs-target="#' + c.id + '"]');
+                if (t) t.setAttribute('aria-expanded', 'false');
+            });
+            sidebar.querySelectorAll('.nav-section').forEach(function (s) { s.style.display = ''; });
             return;
         }
 
-        links.forEach(function (a) {
-            const text = (a.textContent || '').toLowerCase();
-            a.style.display = text.includes(value) ? '' : 'none';
+        topLinks.forEach(function (a) {
+            a.style.display = normalise(a.textContent).includes(value) ? '' : 'none';
         });
 
-        document.querySelectorAll('#sidebar .nav-section').forEach(function (section) {
-            const anyVisible = Array.from(section.querySelectorAll('.nav-item-link, .nav-subitem-link'))
-                .some(function (a) { return a.style.display !== 'none'; });
+        toggles.forEach(function (toggle) {
+            const target = toggle.getAttribute('data-bs-target');
+            const group = target ? sidebar.querySelector(target) : null;
+            const groupMatches = normalise(toggle.textContent).includes(value);
+            let anyLink = false;
+            if (group) {
+                group.querySelectorAll('.nav-subitem-link').forEach(function (a) {
+                    const show = groupMatches || normalise(a.textContent).includes(value);
+                    a.style.display = show ? '' : 'none';
+                    anyLink = anyLink || show;
+                });
+                if (anyLink && !group.classList.contains('show')) {
+                    group.classList.add('show');
+                    group.setAttribute('data-search-opened', '1');
+                    toggle.setAttribute('aria-expanded', 'true');
+                } else if (!anyLink && group.hasAttribute('data-search-opened')) {
+                    group.classList.remove('show');
+                    group.removeAttribute('data-search-opened');
+                    toggle.setAttribute('aria-expanded', 'false');
+                }
+            }
+            toggle.style.display = (groupMatches || anyLink) ? '' : 'none';
+        });
+
+        sidebar.querySelectorAll('.nav-section').forEach(function (section) {
+            const anyVisible = Array.from(section.querySelectorAll('.nav-item-link, .nav-subitem-link, .nav-group-toggle'))
+                .some(function (el) { return el.style.display !== 'none'; });
             section.style.display = anyVisible ? '' : 'none';
         });
     }
@@ -1611,10 +1711,16 @@
                 membership = `<div class="mt-1"><span class="badge bg-warning text-dark"><i class="bi bi-hdd-rack me-1"></i>Installed in Controller: ${esc(item.controller_label)}</span></div>`;
             }
             if (item.is_empty_server) {
-                membership += '<div class="mt-1"><span class="badge bg-secondary"><i class="bi bi-exclamation-octagon me-1"></i>EMPTY — No Motherboard</span></div>';
+                membership += '<div class="mt-1"><span class="badge bg-secondary"><i class="bi bi-exclamation-octagon me-1"></i>EMPTY — missing key part</span></div>';
             }
+            // Faulty / damaged / scrap items are still in stock — flag them clearly.
+            const flagged = {FAULTY: 'bg-danger', DAMAGED: 'badge-damaged', SCRAP: 'bg-dark'}[item.status] || '';
+            if (flagged) {
+                membership = `<div class="mt-1"><span class="badge ${flagged}"><i class="bi bi-exclamation-triangle-fill me-1"></i>${esc(item.status)}</span></div>` + membership;
+            }
+            const rowClass = flagged ? ' universal-result-' + item.status.toLowerCase() : (item.is_empty_server ? ' universal-result-empty' : '');
             return `
-                <div class="universal-result${item.is_empty_server ? ' universal-result-empty' : ''}">
+                <div class="universal-result${rowClass}">
                     <span class="badge text-bg-light align-self-start mt-1">${item.type || ''}</span>
                     <div>
                         <strong>${item.title || ''}</strong>
@@ -1692,7 +1798,7 @@
         const label     = auditBtn.dataset.itemLabel || '';
         document.getElementById('globalAuditProductId').value = productId;
         document.getElementById('globalAuditItemLabel').textContent = label;
-        document.getElementById('globalAuditDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('globalAuditDate').value = todayLocal();
         document.getElementById('globalAuditRemark').value = '';
         document.getElementById('globalAuditMsg').textContent = '';
         // Close the search modal first so the audit modal isn't trapped behind it.
@@ -1738,7 +1844,7 @@
         document.getElementById('globalStockOutClient').value  = '';
         document.getElementById('globalStockOutInvoice').value = '';
         document.getElementById('globalStockOutOlfDc').value = '';
-        document.getElementById('globalStockOutDate').value    = new Date().toISOString().split('T')[0];
+        document.getElementById('globalStockOutDate').value    = todayLocal();
         document.getElementById('globalStockOutMsg').textContent = '';
         // Close search modal first, then open stockout
         const searchModal = bootstrap.Modal.getInstance(document.getElementById('universalSearchModal'));
@@ -1815,7 +1921,7 @@
             flag.title = status === 'FAULTY' ? 'FAULTY — needs attention'
                 : status === 'DAMAGED' ? 'DAMAGED — needs attention'
                 : status === 'SCRAP' ? 'SCRAP — marked for scrap'
-                : 'EMPTY — no motherboard mapped';
+                : 'EMPTY — missing a key part (motherboard / controller / power supply / tape drive)';
             flag.textContent = status === 'EMPTY' ? '∅' : '!';
         } else if (flag) {
             flag.remove();
@@ -1897,7 +2003,7 @@
         if (info.out) row.classList.add('row-installed-out');
         const text = installedText(info);
         const target = row.querySelector('td:not(.serial-col):not(.sticky-col):not(.action-cell)');
-        if (target && !row.querySelector('.membership-badge')) {
+        if (target) {
             const badge = document.createElement('div');
             badge.className = 'installed-in-badge';
             badge.title = text;
@@ -2236,12 +2342,17 @@
             ['/spare/sfp-list/', '/spare/export/sfp/live/'],
             ['/spare/railkit-list/', '/spare/export/railkit/live/'],
             ['/spare/harddisk-list/', '/spare/export/harddisk/live/'],
+            ['/spare/harddisk-list/2.5/', '/spare/export/harddisk_25/live/'],
+            ['/spare/harddisk-list/3.5/', '/spare/export/harddisk_35/live/'],
             ['/spare/networking-spare/list/', '/spare/export/networking_spare/live/'],
             ['/servers/list/', '/servers/export/live/'],
             ['/servers/empty/', '/servers/export/live/'],
             ['/servers/sold/', '/servers/export/sold/']
         ];
-        const match = map.find(function (item) { return path === item[0]; });
+        let match = map.find(function (item) { return path === item[0]; });
+        // Per-group server lists: /servers/g/<group>/ and /servers/g/<group>/empty/
+        const groupMatch = path.match(/^\/servers\/g\/([a-z_]+)\/(empty\/)?$/);
+        if (!match && groupMatch) match = [path, '/servers/export/live/?group=' + groupMatch[1]];
         const actions = document.querySelector('.inventory-list-actions, .server-list-actions');
         if (!match || !actions || actions.querySelector('.js-export-btn')) return;
         const a = document.createElement('a');
@@ -2304,5 +2415,38 @@
 
 {% block extra_js %}{% endblock %}
 
+<script>
+/* Date rules: entry dates are always today (no back / future dating);
+   only a rental's expected return date may be picked, and only from today on.
+   The server enforces the same rules — this just keeps the pickers honest. */
+(function () {
+    function applyDateRules(root) {
+        const today = todayLocal();
+        (root || document).querySelectorAll('input[type="date"].today-only').forEach(function (el) {
+            el.value = today;
+            el.min = today;
+            el.max = today;
+            el.readOnly = true;
+            el.title = "Only today's date is allowed";
+        });
+        (root || document).querySelectorAll('input[type="date"].future-only').forEach(function (el) {
+            el.min = today;
+            el.removeAttribute('max');
+            if (el.value && el.value < today) el.value = '';
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function () { applyDateRules(document); });
+    document.addEventListener('show.bs.modal', function (e) { applyDateRules(e.target); });
+    document.addEventListener('shown.bs.modal', function (e) { applyDateRules(e.target); });
+    document.addEventListener('change', function (e) {
+        const el = e.target;
+        if (!el.matches || !el.matches('input[type="date"].future-only')) return;
+        if (el.value && el.value < todayLocal()) {
+            el.value = '';
+            alert('The expected return date cannot be in the past.');
+        }
+    });
+})();
+</script>
 </body>
 </html>

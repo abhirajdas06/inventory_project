@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% block title %}CPU Inventory{% endblock %}
+{% block page_title %}CPU Inventory{% endblock %}
 {% load static %}
 
 {% block extra_css %}
@@ -125,6 +127,7 @@
 
         </div>
         {% include "partials/list_pagination.html" %}
+{% include "partials/lookalike_spares_section.html" %}
     </div>
 </div>
 

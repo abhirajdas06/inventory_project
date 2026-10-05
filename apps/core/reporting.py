@@ -1,5 +1,7 @@
+import time
 from datetime import datetime
 from pathlib import Path
+from smtplib import SMTPException
 
 from django.conf import settings
 from django.utils import timezone
@@ -132,7 +134,7 @@ def _write_server_sheet(ws, sold=False):
             server.tested_by or '',
             server.machine_type or '',
             server.machine_no or '',
-            server.service_tag or '',
+            '' if server.service_tag_missing else (server.service_tag or ''),
             server.model or '',
             'CABINET',
             server.part_no or '',
@@ -158,7 +160,7 @@ def _write_server_sheet(ws, sold=False):
                 server.tested_by or '',
                 server.machine_type or '',
                 server.machine_no or '',
-                server.service_tag or '',
+                '' if server.service_tag_missing else (server.service_tag or ''),
                 server.model or '',
                 getattr(component, 'spare_type', '') or (component.product.category.name if component.product and component.product.category else ''),
                 component.part_no or '',
@@ -206,13 +208,40 @@ def export_daily_inventory_snapshots(output_dir=None, export_date=None):
     return outputs
 
 
+DAILY_EMAIL_RETRIES = 2  # first attempt + this many retries on a connection/timeout error
+
+
+def _send_with_retry(email):
+    """Send an EmailMessage, retrying on a dropped/timed-out SMTP connection.
+
+    A large attachment on a slow link can time out mid-transfer — smtplib then
+    raises SMTPServerDisconnected instead of a plain timeout. Each retry opens
+    a brand new connection (never reuses the dead one) and waits briefly
+    first, since the failure is usually transient (a stalled connection, not
+    a permanent one)."""
+    last_exc = None
+    for attempt in range(1, DAILY_EMAIL_RETRIES + 2):
+        try:
+            email.connection = None  # force a fresh connection, never reuse a dead one
+            email.send(fail_silently=False)
+            return
+        except (SMTPException, OSError, TimeoutError) as exc:
+            last_exc = exc
+            if attempt <= DAILY_EMAIL_RETRIES:
+                time.sleep(5 * attempt)
+    raise last_exc
+
+
 def send_daily_inventory_email(recipients=None, output_dir=None, export_date=None):
     """Generate the daily snapshots and email them as Excel attachments.
 
     Recipients default to the active "Daily inventory report" rows of
     ReportRecipient (Admin Panel -> Report recipients), falling back to
-    settings.DAILY_REPORT_RECIPIENTS. Returns a dict with the send result and
-    the generated file paths.
+    settings.DAILY_REPORT_RECIPIENTS. Sent as two separate emails (live,
+    stocked-out) rather than one with both attachments — smaller messages are
+    less likely to hit EMAIL_TIMEOUT on a slow link, and one report still
+    gets through even if the other times out. Returns a dict with the send
+    result and the generated file paths.
     """
     from django.core.mail import EmailMessage
     from apps.core.notifications import get_recipients
@@ -230,28 +259,37 @@ def send_daily_inventory_email(recipients=None, output_dir=None, export_date=Non
                       'so nothing was actually delivered',
         }
 
-    subject = f'Daily Inventory Report — {export_date.isoformat()}'
-    body = (
-        f'Attached are the automated inventory snapshots for {export_date.isoformat()}:\n\n'
-        '  • inventory-live — everything currently in stock\n'
-        '  • inventory-stocked_out — everything stocked out / sold\n\n'
-        'Each workbook has one sheet per category (Spares, Card, CPU, Hard Disk, Memory, '
-        'Networking Spare, Rail Kit, SFP, Controller, Server).\n\n'
-        'To re-import: Import page -> choose the category -> upload the SAME file '
-        '(the sheet with that category name is read). Use the normal import for the live '
-        'file and the "<category> — Stock Out" import for the stocked-out file.\n\n'
-        'This is an automated message from InvenTrack.'
-    )
-    email = EmailMessage(
-        subject=subject,
-        body=body,
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
-        to=recipients,
-    )
+    labels = {'live': 'Live (in stock)', 'stocked_out': 'Stocked Out / Sold'}
     content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    for path in outputs.values():
+    sent_states = []
+    errors = {}
+    for state, path in outputs.items():
         p = Path(path)
+        subject = f'Daily Inventory Report — {labels.get(state, state)} — {export_date.isoformat()}'
+        body = (
+            f'Attached is the automated {labels.get(state, state)} inventory snapshot for '
+            f'{export_date.isoformat()}.\n\n'
+            'The workbook has one sheet per category (Spares, Card, CPU, Hard Disk, Memory, '
+            'Networking Spare, Rail Kit, SFP, Controller, Server).\n\n'
+            'To re-import: Import page -> choose the category -> upload this file '
+            '(the sheet with that category name is read). Use the normal import for the live '
+            'file and the "<category> — Stock Out" import for the stocked-out file.\n\n'
+            'This is an automated message from InvenTrack.'
+        )
+        email = EmailMessage(
+            subject=subject, body=body,
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None), to=recipients,
+        )
         email.attach(p.name, p.read_bytes(), content_type)
+        try:
+            _send_with_retry(email)
+            sent_states.append(state)
+        except Exception as exc:
+            errors[state] = str(exc)
 
-    email.send(fail_silently=False)
-    return {'sent': True, 'recipients': recipients, 'outputs': outputs}
+    if errors and not sent_states:
+        raise RuntimeError(f'All daily report emails failed: {errors}')
+    result = {'sent': bool(sent_states), 'recipients': recipients, 'outputs': outputs}
+    if errors:
+        result['partial_failure'] = errors  # some reports sent, others didn't — surfaced but not fatal
+    return result

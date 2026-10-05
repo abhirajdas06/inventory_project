@@ -4,9 +4,9 @@
 <link rel="stylesheet" href="{% static 'css/server.css' %}">
 {% endblock extra_css %}
 
-{% block title %}{% if is_faulty %}Faulty Servers{% else %}Sold Servers{% endif %}{% endblock %}
-{% block page_title %}{% if is_faulty %}Faulty Servers{% else %}Sold Servers{% endif %}{% endblock %}
-{% block breadcrumb %}<a href="{% url 'server_list' %}">Servers</a> / Sold{% endblock %}
+{% block title %}{% if is_faulty %}Faulty{% else %}Sold{% endif %} {{ group_label }}{% endblock %}
+{% block page_title %}{% if is_faulty %}Faulty{% else %}Sold{% endif %} {{ group_label }}{% endblock %}
+{% block breadcrumb %}<a href="{{ live_url }}">{{ group_label }}</a> / {% if is_faulty %}Faulty{% else %}Sold{% endif %}{% endblock %}
 {% block nav_server_out %}active{% endblock %}
 
 {% block content %}
@@ -15,17 +15,17 @@
 
     <div class="server-list-toolbar">
         <div>
-            <h5 class="server-list-title">{% if is_faulty %}Faulty Servers{% else %}Sold / Stocked Out Servers{% endif %}</h5>
+            <h5 class="server-list-title">{% if is_faulty %}Faulty{% else %}Sold / Stocked Out{% endif %} — {{ group_label }}</h5>
             <div class="server-list-subtitle">{{ total_count }} {% if is_faulty %}faulty{% else %}sold{% endif %} server{{ total_count|pluralize }}{% if q or list_filter.active_count %} (filtered){% endif %}</div>
         </div>
         <div class="server-list-actions d-flex align-items-center gap-2">
             {% if can.reports %}
-            <a href="{% url 'server_export' 'sold' %}{% if list_filter.values.status %}?status={{ list_filter.values.status }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+            <a href="{% url 'server_export' 'sold' %}?group={{ group }}{% if list_filter.values.status %}&status={{ list_filter.values.status }}{% endif %}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-download me-1"></i>Export CSV
             </a>
             {% endif %}
-            <a href="{% url 'server_list' %}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrow-left me-1"></i>Active Servers
+            <a href="{{ live_url }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1"></i>In-stock {{ group_label }}
             </a>
         </div>
     </div>
@@ -60,7 +60,7 @@
                     <td>{{ page_obj.start_index|add:forloop.counter0 }}</td>
                     <td>{{ s.machine_type|default:"-" }}</td>
                     <td>{{ s.machine_no|default:"-" }}</td>
-                    <td><code>{{ s.service_tag }}</code></td>
+                    <td>{% if s.service_tag_missing %}<span class="text-warning fw-semibold" style="cursor:help" title="System Service Tag No is missing"><i class="bi bi-exclamation-triangle-fill me-1"></i>No Tag</span>{% else %}<code>{{ s.service_tag }}</code>{% endif %}</td>
                     <td>{{ s.brand|default:"-" }}</td>
                     <td><strong>{{ s.model|default:"-" }}</strong></td>
                     <td>{{ s.latest_location|default:"-" }}</td>

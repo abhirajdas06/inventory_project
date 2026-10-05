@@ -18,9 +18,10 @@ class AuthAndNetworkingSpareTests(TestCase):
         self.user = User.objects.create_user(username='owner', password='pass12345')
         UserProfile.objects.create(user=self.user, role='ADMIN')
 
-    def test_anonymous_can_view_live_list_but_cannot_add(self):
+    def test_anonymous_cannot_view_live_list_or_add(self):
         live = self.client.get(reverse('networking_spare_list'))
-        self.assertEqual(live.status_code, 200)
+        self.assertEqual(live.status_code, 302)
+        self.assertIn(reverse('home'), live['Location'])
 
         add = self.client.get(reverse('add_networking_spare'))
         self.assertEqual(add.status_code, 302)
@@ -219,6 +220,7 @@ class AuthAndNetworkingSpareTests(TestCase):
             for product in created_products
         ])
 
+        self.client.force_login(self.user)
         response = self.client.get(reverse('spare_list'))
 
         self.assertEqual(response.status_code, 200)
@@ -230,6 +232,7 @@ class AuthAndNetworkingSpareTests(TestCase):
         product = Product.objects.create(category=category, serial_no='SEARCH-001', name='Universal search item')
         Spare.objects.create(product=product, barcode='SEARCH-BC')
 
+        self.client.force_login(self.user)
         too_short = self.client.get(reverse('universal_search'), {'q': 'se'})
         response = self.client.get(reverse('universal_search'), {'q': 'SEA'})
 

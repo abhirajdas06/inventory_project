@@ -164,7 +164,7 @@ $(document).ready(function () {
         $('#auditProductId').val(product_id);
 
         // set today's date as default
-        let today = new Date().toISOString().split('T')[0];
+        let today = todayLocal();
         $('#auditDate').val(today);
 
         let modal = new bootstrap.Modal(document.getElementById('auditModal'));

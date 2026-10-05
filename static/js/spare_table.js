@@ -169,7 +169,7 @@ $(document).ready(function () {
         let productId = $(this).closest('tr').data('id');
 
         $('#auditProductId').val(productId);
-        $('#auditDate').val(new Date().toISOString().split('T')[0]);
+        $('#auditDate').val(todayLocal());
 
         new bootstrap.Modal(document.getElementById('auditModal')).show();
     });

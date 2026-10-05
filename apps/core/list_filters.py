@@ -111,15 +111,21 @@ def apply_list_filters(request, qs, *, hide=(), status_options=None, sold=None):
         elif qs.model.__name__ == 'Product':
             product_ref = 'pk'
     if product_ref and installed in ('yes', 'no'):
-        # Plain "IN (subquery)" lookups (not Exists() expressions combined with |):
-        # they work on every Django version we deploy on, including 4.0.
-        from django.db.models import Q
+        # Two separate Exists() annotations filtered as plain booleans — the same
+        # pattern the Empty-server tab uses in production. Avoids OR-ing Exists()
+        # (crashes on Django 4.0) and negated IN-subqueries (unreliable there).
+        from django.db.models import Exists, OuterRef
         from apps.categories.models import Spare
         from apps.servers.models import ServerComponent
-        column = 'pk' if product_ref == 'pk' else 'product_id'
-        in_server = Q(**{f'{column}__in': ServerComponent.objects.values('product_id')})
-        in_controller = Q(**{f'{column}__in': Spare.objects.filter(controller__isnull=False).values('product_id')})
-        qs = qs.filter(in_server | in_controller) if installed == 'yes' else qs.exclude(in_server | in_controller)
+        qs = qs.annotate(
+            _in_server=Exists(ServerComponent.objects.filter(product_id=OuterRef(product_ref))),
+            _in_controller=Exists(Spare.objects.filter(product_id=OuterRef(product_ref), controller__isnull=False)),
+        )
+        if installed == 'yes':
+            from django.db.models import Q
+            qs = qs.filter(Q(_in_server=True) | Q(_in_controller=True))
+        else:
+            qs = qs.filter(_in_server=False, _in_controller=False)
     else:
         installed = ''
 

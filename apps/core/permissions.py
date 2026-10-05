@@ -2,7 +2,7 @@ from functools import wraps
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
-from apps.core.models import RolePermission
+from apps.core.models import RolePermission, UserProfile
 
 
 ROLE_PERMISSIONS = {
@@ -11,24 +11,34 @@ ROLE_PERMISSIONS = {
         'transfer_request', 'transfer_receive', 'audit', 'audit_view',
         'product_history', 'sales_return', 'sold_view', 'rent_return',
         'reconciliation', 'mapping', 'freeze', 'reports', 'audit_findings',
-        'attend_audit_finding', 'stock_return', 'status_update',
+        'attend_audit_finding', 'stock_return', 'status_update', 'view_live',
     },
     'STOCK_IN': {
         'stock_in', 'sales_return', 'rent_return', 'transfer_receive',
         'audit_view', 'product_history', 'sold_view', 'mapping',
         'audit_findings', 'attend_audit_finding', 'stock_return', 'reports',
-        'status_update',
+        'status_update', 'view_live',
     },
     'STOCK_OUT': {
         'stock_out', 'stock_out_import', 'transfer_request', 'freeze', 'mapping',
-        'sold_view', 'reports', 'status_update',
+        'sold_view', 'reports', 'status_update', 'view_live',
     },
     'AUDIT': {
-        'audit', 'audit_findings',
+        'audit', 'audit_findings', 'view_live',
+    },
+    # View-only roles: can open lists but every action button is hidden and
+    # every write endpoint refuses them (they hold no action permission).
+    'READONLY_LIVE': {
+        'view_live',
+    },
+    'READONLY_OUT': {
+        'sold_view',
     },
 }
 
 PERMISSION_LABELS = {
+    'view_live': 'Read-only: view live (in-stock) lists and search',
+    'sold_view': 'Read-only: view out-stock lists (sold, faulty, stock status)',
     'user_management': 'Manage users and role settings',
     'stock_in': 'Add stock and components',
     'stock_out': 'Stock out products',
@@ -43,13 +53,27 @@ PERMISSION_LABELS = {
     'sales_return': 'Process sales returns',
     'stock_return': 'Return non-sale stocked-out products',
     'rent_return': 'Process rental returns',
-    'sold_view': 'View sold, faulty, and stock-status lists',
     'reconciliation': 'Reconcile audit differences',
     'mapping': 'Map products and update list remarks',
     'freeze': 'Freeze and unfreeze stock',
     'reports': 'View and export reports',
     'status_update': 'Update stock status (Faulty, Damaged, etc.) with a remark',
 }
+
+
+def all_roles():
+    """Every role a user can have: the built-in ones, then the user types
+    added in Role Settings (alphabetical)."""
+    custom = RolePermission.objects.filter(is_custom=True).order_by('label').values_list('role', 'label')
+    return list(UserProfile.ROLE_CHOICES) + [(role, label or role) for role, label in custom]
+
+
+def role_label(role):
+    builtin = dict(UserProfile.ROLE_CHOICES)
+    if role in builtin:
+        return builtin[role]
+    custom = RolePermission.objects.filter(role=role, is_custom=True).values_list('label', flat=True).first()
+    return custom or role
 
 
 def user_role(user):

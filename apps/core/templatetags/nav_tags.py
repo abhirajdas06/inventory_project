@@ -70,6 +70,12 @@ def legend_chip(context, status):
         target = reverse('server_list' if active else 'server_empty_list')
         params.pop('status', None)
         return {'url': target + ('?' + params.urlencode() if params else ''), 'active': active}
+    if status == 'EMPTY' and url_name in ('server_group_list', 'server_group_empty_list'):
+        group = request.resolver_match.kwargs.get('group')
+        active = url_name == 'server_group_empty_list'
+        target = reverse('server_group_list' if active else 'server_group_empty_list', args=[group])
+        params.pop('status', None)
+        return {'url': target + ('?' + params.urlencode() if params else ''), 'active': active}
 
     f = context.get('list_filter')
     if status == 'INSTALLED':

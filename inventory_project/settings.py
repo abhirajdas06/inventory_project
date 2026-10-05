@@ -83,6 +83,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'apps.core.context_processors.permissions',
+                'apps.core.context_processors.spare_subcategory_nav',
             ],
         },
     },
@@ -154,7 +155,11 @@ EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
 EMAIL_USE_SSL = env_bool('EMAIL_USE_SSL', False)
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '30'))
+# 30s (the old default) is too short for the daily report's multi-MB Excel
+# attachments on a slow/throttled outbound link — smtplib surfaces that as a
+# confusing "SMTPServerDisconnected: Server not connected" rather than a
+# plain timeout. 180s gives a large attachment room to actually finish.
+EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '180'))
 DEFAULT_FROM_EMAIL = os.getenv(
     'DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'inventory@localhost'
 )

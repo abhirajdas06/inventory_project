@@ -5,6 +5,12 @@
 {% block breadcrumb %}Bulk upload{% endblock %}
 
 {% block content %}
+<style>
+    .import-picker .dropdown-menu { max-width: 100%; }
+    .import-picker-list { max-height: 320px; overflow-y: auto; }
+    .import-picker-list .dropdown-item { border-radius: 4px; white-space: normal; }
+    #templateDownloadLink.disabled { pointer-events: none; opacity: .55; }
+</style>
 <div class="inventory-list-shell">
     <div class="inventory-list-toolbar">
         <div>
@@ -13,22 +19,44 @@
         </div>
     </div>
 
+    <!-- Import type: two separate sections so each list stays short -->
+    <div class="btn-group mb-3" role="group" aria-label="Import type">
+        {% if can_stock_in %}
+        <input type="radio" class="btn-check" name="importMode" id="importModeIn" value="in" autocomplete="off" checked>
+        <label class="btn btn-outline-primary btn-sm" for="importModeIn"><i class="bi bi-box-arrow-in-down me-1"></i>Stock In Import</label>
+        {% endif %}
+        {% if can_stock_out %}
+        <input type="radio" class="btn-check" name="importMode" id="importModeOut" value="out" autocomplete="off" {% if not can_stock_in %}checked{% endif %}>
+        <label class="btn btn-outline-danger btn-sm" for="importModeOut"><i class="bi bi-box-arrow-up-right me-1"></i>Stock Out Import</label>
+        {% endif %}
+    </div>
+
     <form id="importForm" class="row g-3 align-items-end" enctype="multipart/form-data">
         {% csrf_token %}
         <div class="col-md-4">
-            <label class="form-label">Model</label>
-            <select class="form-select" name="model_key" id="importModelKey" required>
-                {% if can_stock_in %}<optgroup label="Stock In">
-                    {% for key, label in stock_in_labels.items %}
-                        <option value="{{ key }}">{{ label }}</option>
-                    {% endfor %}
-                </optgroup>{% endif %}
-                {% if can_stock_out %}<optgroup label="Stock Out (Stock In + immediate Stock Out)">
-                    {% for key, label in stock_out_labels.items %}
-                        <option value="{{ key }}">{{ label }}</option>
-                    {% endfor %}
-                </optgroup>{% endif %}
-            </select>
+            <label class="form-label" id="importModelLabel">Category</label>
+            <input type="hidden" name="model_key" id="importModelKey" required>
+            <div class="dropdown import-picker">
+                <button class="form-select text-start" type="button" id="importPickerBtn"
+                        data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                    <span id="importPickerText" class="text-muted">Select…</span>
+                </button>
+                <div class="dropdown-menu w-100 p-2 shadow">
+                    <input type="search" class="form-control form-control-sm mb-2" id="importPickerSearch"
+                           placeholder="Search…" autocomplete="off">
+                    <div class="import-picker-list" id="importPickerListIn" data-mode="in">
+                        {% for key, label in stock_in_labels %}
+                        <button type="button" class="dropdown-item" data-key="{{ key }}">{{ label }}</button>
+                        {% endfor %}
+                    </div>
+                    <div class="import-picker-list d-none" id="importPickerListOut" data-mode="out">
+                        {% for key, label in stock_out_labels %}
+                        <button type="button" class="dropdown-item" data-key="{{ key }}">{{ label }}</button>
+                        {% endfor %}
+                    </div>
+                    <div class="text-muted small px-2 py-1 d-none" id="importPickerEmpty">No match</div>
+                </div>
+            </div>
         </div>
         <div class="col-md-3">
             <label class="form-label">Store Location <span class="text-danger">*</span></label>
@@ -94,16 +122,75 @@
     const success = document.getElementById('successCount');
     const errors = document.getElementById('errorCount');
     const errorBox = document.getElementById('importErrors');
-    const modelSelect = document.getElementById('importModelKey');
+    const modelInput = document.getElementById('importModelKey');
     const templateLink = document.getElementById('templateDownloadLink');
     const csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
 
+    // ── Searchable category picker, split into Stock In / Stock Out ──
+    const pickerBtn = document.getElementById('importPickerBtn');
+    const pickerText = document.getElementById('importPickerText');
+    const pickerSearch = document.getElementById('importPickerSearch');
+    const pickerEmpty = document.getElementById('importPickerEmpty');
+    const pickerLabel = document.getElementById('importModelLabel');
+    const lists = {in: document.getElementById('importPickerListIn'), out: document.getElementById('importPickerListOut')};
+    let mode = (document.querySelector('input[name=importMode]:checked') || {}).value || 'in';
+
     function updateTemplateLink() {
-        templateLink.href = `/spare/import/template/${modelSelect.value}/`;
+        templateLink.href = modelInput.value ? `/spare/import/template/${modelInput.value}/` : '#';
+        templateLink.classList.toggle('disabled', !modelInput.value);
     }
 
-    modelSelect.addEventListener('change', updateTemplateLink);
-    updateTemplateLink();
+    function choose(item) {
+        modelInput.value = item ? item.dataset.key : '';
+        pickerText.textContent = item ? item.textContent.trim() : 'Select…';
+        pickerText.classList.toggle('text-muted', !item);
+        Object.values(lists).forEach(function (l) {
+            l.querySelectorAll('.dropdown-item').forEach(function (b) { b.classList.toggle('active', b === item); });
+        });
+        updateTemplateLink();
+    }
+
+    function filterPicker() {
+        const term = pickerSearch.value.trim().toLowerCase();
+        let shown = 0;
+        lists[mode].querySelectorAll('.dropdown-item').forEach(function (b) {
+            const match = !term || b.textContent.toLowerCase().includes(term);
+            b.classList.toggle('d-none', !match);
+            if (match) shown += 1;
+        });
+        pickerEmpty.classList.toggle('d-none', shown > 0);
+    }
+
+    function setMode(newMode) {
+        mode = newMode;
+        Object.entries(lists).forEach(function ([m, l]) { l.classList.toggle('d-none', m !== mode); });
+        pickerLabel.textContent = mode === 'out' ? 'Stock Out category' : 'Stock In category';
+        pickerSearch.value = '';
+        filterPicker();
+        choose(null);
+    }
+
+    document.querySelectorAll('input[name=importMode]').forEach(function (r) {
+        r.addEventListener('change', function () { setMode(this.value); });
+    });
+    Object.values(lists).forEach(function (l) {
+        l.addEventListener('click', function (e) {
+            const item = e.target.closest('.dropdown-item');
+            if (!item) return;
+            choose(item);
+            bootstrap.Dropdown.getOrCreateInstance(pickerBtn).hide();
+        });
+    });
+    pickerSearch.addEventListener('input', filterPicker);
+    pickerSearch.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {  // Enter picks the first visible match
+            e.preventDefault();
+            const first = lists[mode].querySelector('.dropdown-item:not(.d-none)');
+            if (first) { choose(first); bootstrap.Dropdown.getOrCreateInstance(pickerBtn).hide(); }
+        }
+    });
+    pickerBtn.addEventListener('shown.bs.dropdown', function () { pickerSearch.focus(); });
+    setMode(mode);
 
     function updateProgress(data) {
         const pct = data.percent || 0;
@@ -144,6 +231,11 @@
 
     form.addEventListener('submit', function (event) {
         event.preventDefault();
+        if (!modelInput.value) {
+            status.textContent = 'Choose a category first';
+            bootstrap.Dropdown.getOrCreateInstance(pickerBtn).show();
+            return;
+        }
         const fd = new FormData(form);
         bar.classList.remove('bg-danger');
         status.textContent = 'Uploading file';

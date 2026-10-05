@@ -941,10 +941,17 @@ def create_server_with_components(server_data, components):
             except ValueError:
                 continue
 
+    from apps.servers.groups import SERVER_GROUPS, infer_server_group
+    group = (server_data.get('group') or '').strip()
+    if group not in SERVER_GROUPS:
+        group = infer_server_group(server_data.get('machine_type'), model)
+
     server = Server.objects.create(
         machine_type          = server_data.get('machine_type'),
         machine_no            = server_data.get('machine_no'),
+        group                 = group,
         service_tag           = service_tag,
+        service_tag_missing   = bool(server_data.get('service_tag_missing')),
         model                 = model,
         brand                 = brand,
         # cabinet fields

@@ -5,6 +5,7 @@ from django.db.models import Q
 from openpyxl import load_workbook
 
 from apps.categories.models import ImportJob, NetworkingSpare
+from apps.categories.spare_subcategories import SPARE_SUBCATEGORIES, spare_kind_key
 from apps.core.activity import log_activity, log_timeline
 from apps.core.models import Brand, Product, SpareCategory
 from apps.core.services import (
@@ -225,11 +226,88 @@ HEADER_MAPS = {
 }
 
 
+# ════════════════════════════════════════════════════════════
+#  SPARE SUB-CATEGORY IMPORTS — one option per split-out category
+#  (Cable, Battery, Motherboard, ...). Same columns as the common
+#  "Spares" import minus Product/category — the category is implied
+#  by which import option was picked, so the sheet doesn't need it.
+#
+#  Miscellaneous is the one exception: it's a grab-bag of many distinct
+#  product types (FRONT BEZEL, CARTRIDGE, KEYBOARD, MOUSE, ...), not a single
+#  category, so — like the old common "Spares" import — it KEEPS the Product
+#  column and stores each row's own value as its category, instead of
+#  forcing every row to the literal text "MISCELLANEOUS". That value is only
+#  a fallback for a row that leaves the column blank.
+# ════════════════════════════════════════════════════════════
+_SPARE_SUBCATEGORY_HEADERS = {k: v for k, v in HEADER_MAPS['battery'].items() if k != 'Product'}
+for _slug, _cfg in SPARE_SUBCATEGORIES.items():
+    HEADER_MAPS[spare_kind_key(_slug)] = (
+        dict(HEADER_MAPS['battery']) if _slug == 'miscellaneous' else dict(_SPARE_SUBCATEGORY_HEADERS)
+    )
+    IMPORT_LABELS[spare_kind_key(_slug)] = _cfg['label']
+
+
+# ════════════════════════════════════════════════════════════
+#  HARD DISK SIZE IMPORTS — Hard Disk 2.5" / 3.5", same idea as the spare
+#  sub-categories above but on the HardDisk model's own `size` field: same
+#  columns as the common Hard Disk import minus Size(2.5/3.5), since the
+#  import option itself decides it.
+# ════════════════════════════════════════════════════════════
+HARDDISK_SIZE_IMPORTS = {'harddisk_25': '2.5', 'harddisk_35': '3.5'}
+_HARDDISK_SIZE_HEADERS = {k: v for k, v in HEADER_MAPS['harddisk'].items() if k != 'Size(2.5/3.5)'}
+for _hdd_key, _hdd_label in (('harddisk_25', '2.5" Hard Disk'), ('harddisk_35', '3.5" Hard Disk')):
+    HEADER_MAPS[_hdd_key] = dict(_HARDDISK_SIZE_HEADERS)
+    IMPORT_LABELS[_hdd_key] = _hdd_label
+
+
+# ════════════════════════════════════════════════════════════
+#  SERVER GROUP IMPORTS — Blade Server, Storage, Networking Switch, ...
+#  Exactly the Server import's columns; the option picked decides which
+#  group (list) every server in the sheet goes into. Machine Type alone
+#  can't tell e.g. Cisco from HP chassis, or a Sun rack server from any
+#  other rack server — the generic "Server" import has to guess.
+# ════════════════════════════════════════════════════════════
+from apps.servers.groups import SERVER_GROUPS  # noqa: E402
+
+SERVER_GROUP_IMPORTS = {f'server_{_slug}': _slug for _slug in SERVER_GROUPS}
+for _srv_key, _srv_slug in SERVER_GROUP_IMPORTS.items():
+    HEADER_MAPS[_srv_key] = dict(HEADER_MAPS['server'])
+    IMPORT_LABELS[_srv_key] = SERVER_GROUPS[_srv_slug]['label']
+
+
 # Snapshot which Excel columns are REQUIRED per model, BEFORE we merge in the
 # optional "Stock In Status" column below. That column must never become a
 # required header — otherwise every existing stock-in template (which
 # doesn't have it) would suddenly fail with "Missing columns: ...".
 REQUIRED_HEADERS = {key: set(headers) for key, headers in HEADER_MAPS.items()}
+
+
+def _spare_subcategory_creator(canonical_category):
+    """A CREATE_BY_KEY entry that stocks in a Spare with a fixed category —
+    the sheet has no Product/category column, so the import option itself
+    decides it."""
+    def _create(data):
+        return create_product_and_spare({**data, 'category': canonical_category})
+    return _create
+
+
+def _miscellaneous_creator(canonical_category):
+    """Miscellaneous keeps the sheet's own Product column as the category
+    (FRONT BEZEL, CARTRIDGE, KEYBOARD, ...) — only a row that leaves it blank
+    falls back to the canonical "MISCELLANEOUS" text."""
+    def _create(data):
+        row = dict(data)
+        row['category'] = (row.get('category') or '').strip() or canonical_category
+        return create_product_and_spare(row)
+    return _create
+
+
+def _harddisk_size_creator(size):
+    """A CREATE_BY_KEY entry that stocks in a Hard Disk with a fixed size —
+    the sheet has no Size(2.5/3.5) column, so the import option decides it."""
+    def _create(data):
+        return create_product_and_harddisk({**data, 'size': size})
+    return _create
 
 
 CREATE_BY_KEY = {
@@ -241,6 +319,13 @@ CREATE_BY_KEY = {
     'railkit': create_product_and_railkit,
     'sfp': create_product_and_sfp,
 }
+for _slug, _cfg in SPARE_SUBCATEGORIES.items():
+    CREATE_BY_KEY[spare_kind_key(_slug)] = (
+        _miscellaneous_creator(_cfg['canonical']) if _slug == 'miscellaneous'
+        else _spare_subcategory_creator(_cfg['canonical'])
+    )
+for _hdd_key, _hdd_size in HARDDISK_SIZE_IMPORTS.items():
+    CREATE_BY_KEY[_hdd_key] = _harddisk_size_creator(_hdd_size)
 
 
 # ════════════════════════════════════════════════════════════
@@ -268,7 +353,7 @@ STOCK_OUT_APPEND_COLUMNS = {
 STOCK_OUT_BASE_KEYS = [
     'battery', 'card', 'cpu', 'harddisk', 'memory',
     'railkit', 'sfp', 'networking_spare', 'controller', 'server',
-]
+] + [spare_kind_key(_slug) for _slug in SPARE_SUBCATEGORIES] + list(HARDDISK_SIZE_IMPORTS) + list(SERVER_GROUP_IMPORTS)
 
 # Optional "Stock In Status" column, added to every Stock-In template (and
 # inherited by the combined Stock-In + Stock-Out templates below). It is NOT
@@ -305,6 +390,14 @@ def normalize_qty(value):
         return int(float(value))
     except (TypeError, ValueError):
         return 1
+
+
+def _normalize_header(value):
+    """Case/whitespace-insensitive key for matching an Excel column header to
+    the header map. Real warehouse sheets are hand-typed over years, so the
+    same column shows up as "QTY", "Qty", "Part No" / "Part no" etc — we
+    still want those recognised rather than rejected as a missing column."""
+    return ' '.join(str(value or '').split()).upper()
 
 
 def _base_key(model_key):
@@ -367,7 +460,8 @@ def start_import_job(model_key, upload, user, store_location=None):
     expected = REQUIRED_HEADERS.get(model_key, set(HEADER_MAPS[model_key]))
     if model_key == 'stock_out':
         expected = {'Barcode No'}  # the other five columns are optional (blank -> Sale / today)
-    missing = sorted(expected - set(headers))
+    present = {_normalize_header(h) for h in headers}
+    missing = sorted(h for h in expected if _normalize_header(h) not in present)
     if missing:
         job.status = 'FAILED'
         job.errors = [{'row': 1, 'error': f"Missing columns: {', '.join(missing)}"}]
@@ -390,6 +484,7 @@ def process_import_chunk(job, chunk_size=100, user=None):
     wb = load_workbook(job.upload.path, read_only=True, data_only=True)
     ws = select_sheet(wb, job.model_key)
     headers = [clean_value(c.value) for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    normalized_headers = [_normalize_header(h) for h in headers]
     field_map = HEADER_MAPS[job.model_key]
     processed_this_call = 0
     seen_data_rows = 0
@@ -400,8 +495,10 @@ def process_import_chunk(job, chunk_size=100, user=None):
             continue
         seen_data_rows += 1
 
-        raw = dict(zip(headers, values))
-        row = {target: clean_value(raw.get(source)) for source, target in field_map.items()}
+        # Match sheet columns to the header map ignoring case/spacing — the
+        # same real-world files spell "QTY" as "Qty" and "Part No" as "Part no".
+        raw = dict(zip(normalized_headers, values))
+        row = {target: clean_value(raw.get(_normalize_header(source))) for source, target in field_map.items()}
         row['qty'] = normalize_qty(row.get('qty'))
         row['store_location'] = job.store_location or DEFAULT_STORE
         if job.model_key == 'stock_out':
@@ -511,6 +608,8 @@ def import_row(model_key, row, user=None):
         return import_controller_row(row, user=user)
     if model_key == 'server':
         return import_server_row(row, user=user)
+    if model_key in SERVER_GROUP_IMPORTS:
+        return import_server_row(row, user=user, group=SERVER_GROUP_IMPORTS[model_key])
     if model_key == 'stock_out':
         return import_stock_out_row(row, user=user)
     if model_key.endswith('_stock_out'):
@@ -948,10 +1047,21 @@ def import_controller_row(row, user=None):
     return product
 
 
-def import_server_row(row, user=None):
+def import_server_row(row, user=None, group=None):
+    """One sheet row of a server import. ``group`` comes from a group-specific
+    import option; the generic Server import leaves it None and the group is
+    inferred from Machine Type / Model when the server is first created."""
     service_tag = (row.get('service_tag') or '').strip().upper()
+    service_tag_missing = False
     if not service_tag:
-        raise ValueError('System Service Tag No is required')
+        # No tag in the sheet: still store the machine, grouping its rows by
+        # Machine no under a placeholder tag, and flag it so the lists show
+        # "System Service Tag No is missing" on hover.
+        machine_no = ' '.join((row.get('machine_no') or '').upper().split())
+        if not machine_no:
+            raise ValueError('System Service Tag No and Machine no are both missing — cannot tell which machine this row belongs to')
+        service_tag = f'NOTAG-{machine_no}'
+        service_tag_missing = True
 
     store_location = (row.get('store_location') or DEFAULT_STORE).strip().upper()
     provided_status = (row.get('stock_status') or '').strip().upper()
@@ -962,7 +1072,9 @@ def import_server_row(row, user=None):
         'tested_by': row.get('tested_by'),
         'machine_type': row.get('machine_type'),
         'machine_no': row.get('machine_no'),
+        'group': group or '',
         'service_tag': service_tag,
+        'service_tag_missing': service_tag_missing,
         'model': row.get('server_model'),
         'brand': '',
         'part_no': '',

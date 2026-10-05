@@ -139,7 +139,7 @@
       </div>
       <div class="mb-2">
         <label class="form-label">Return Date</label>
-        <input type="date" id="rentalReturnDate" class="form-control">
+        <input type="date" id="rentalReturnDate" class="today-only form-control">
       </div>
       <div class="mb-2">
         <label class="form-label">Remarks</label>
@@ -163,7 +163,7 @@
         if (!btn) return;
         document.getElementById('rentalReturnId').value = btn.dataset.rentalId;
         document.getElementById('rentalReturnLabel').textContent = btn.dataset.label || '';
-        document.getElementById('rentalReturnDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('rentalReturnDate').value = todayLocal();
         document.getElementById('rentalReturnRemarks').value = '';
         document.getElementById('rentalReturnDisposition').value = 'LIVE';
         document.getElementById('rentalReturnWarehouse').value = '';

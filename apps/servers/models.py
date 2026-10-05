@@ -31,7 +31,27 @@ class Server(models.Model):
         null=True, blank=True
     )
     machine_no   = models.CharField(max_length=100, null=True, blank=True)
+    # Which list the machine belongs to (Rack Server, Storage, Networking
+    # Switch, ...) — see apps.servers.groups. Set by the group's import option,
+    # or inferred from Machine Type / Model.
+    group        = models.CharField(max_length=40, blank=True, default='', db_index=True,
+                                    choices=(
+                                        ('blade_server', 'Blade Server'),
+                                        ('cisco_chassis', 'Cisco Chassis'),
+                                        ('desktop', 'Desktop'),
+                                        ('hp_ibm_dell_chassis', 'HP-IBM-DELL Chassis'),
+                                        ('rack_server', 'Rack Server'),
+                                        ('storage', 'Storage'),
+                                        ('sun_servers', 'Sun Servers'),
+                                        ('networking_firewall', 'Networking Firewall'),
+                                        ('networking_router_modem', 'Networking Router & Modem'),
+                                        ('networking_switch', 'Networking Switch'),
+                                    ))
     service_tag  = models.CharField(max_length=100, unique=True)
+    # True when the import sheet had no System Service Tag No: service_tag then
+    # holds a placeholder ("NOTAG-<Machine no>") purely so the machine's rows
+    # can still be grouped and stored; lists show it as missing on hover.
+    service_tag_missing = models.BooleanField(default=False)
     model        = models.CharField(max_length=255, null=True, blank=True)
  
     brand = models.ForeignKey(
