@@ -127,7 +127,7 @@ class ActivityLog(models.Model):
         blank=True,
         related_name='activity_logs',
     )
-    role = models.CharField(max_length=20, blank=True)
+    role = models.CharField(max_length=40, blank=True)  # fits user types added in Role Settings
     action = models.CharField(max_length=100, db_index=True)
     module = models.CharField(max_length=20, choices=MODULE_CHOICES, db_index=True)
     entity = models.CharField(max_length=100, blank=True, db_index=True)

@@ -22,6 +22,7 @@ from django.utils.timezone import now
 from django.db.models import Count, OuterRef, Subquery, Q
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from apps.core.permissions import has_permission
 from apps.core.pagination import paginated_list_context
 from openpyxl import load_workbook
@@ -2452,3 +2453,141 @@ def bulk_update_apply(request, kind):
             remarks=f'{config["label"]} by Excel: {done} of {len(results)} rows updated',
         )
     return JsonResponse({'success': True, 'results': results})
+
+
+# ── Delete inventory ───────────────────────────────────────────────────────
+#
+# Deleting an item removes its Product row (and with it the category row,
+# transactions, freeze / rental / return records and timeline). Anything
+# inside it goes too: a server's components and a controller's mapped spares,
+# all the way down. Every deleted item leaves a full snapshot in the
+# Activity Trail (ActivityLog is immutable), so the record of what was
+# deleted, by whom and why survives.
+
+def _child_products(product):
+    """Products directly inside this one (server components, controller spares)."""
+    children = []
+    server = getattr(product, 'server', None)
+    if server is not None:
+        children += [c.product for c in server.components.select_related('product', 'product__category')]
+    controller = getattr(product, 'controller', None)
+    if controller is not None:
+        children += [s.product for s in controller.components.select_related('product', 'product__category')]
+    return children
+
+
+def _deletion_tree(product):
+    """[(product, parent_or_None)] — the item first, then everything inside it."""
+    tree, seen, queue = [], {product.id}, [(product, None)]
+    while queue:
+        current, parent = queue.pop(0)
+        tree.append((current, parent))
+        for child in _child_products(current):
+            if child.id not in seen:
+                seen.add(child.id)
+                queue.append((child, current))
+    return tree
+
+
+def _product_label(product):
+    category = getattr(product.category, 'name', '') if product.category_id else ''
+    return ' · '.join(filter(None, [category, product.serial_no or '', _barcode_for_product(product)]))
+
+
+def _product_snapshot(product, parent=None):
+    latest = product.transactions.order_by('-created_at', '-id').first()
+    kind, mapped_to, _ = _current_mapping(product)
+    snapshot = {
+        'product_id': product.id,
+        'name': product.name,
+        'category': product.category.name if product.category_id else '',
+        'serial_no': product.serial_no or '',
+        'part_no': product.part_no or '',
+        'brand': product.brand or '',
+        'model': product.model or '',
+        'barcode': _barcode_for_product(product),
+        'last_transaction': latest.transaction_type if latest else '',
+        'stock_status': latest.stock_status if latest else '',
+        'store_location': latest.store_location if latest else '',
+        'location': _latest_location(product) or '',
+        'installed_in': f'{kind}: {mapped_to}' if kind else '',
+        'created_at': product.created_at.isoformat() if product.created_at else '',
+        'frozen': _is_frozen(product),
+    }
+    if parent is not None:
+        snapshot['deleted_with_parent'] = {'product_id': parent.id, 'label': _product_label(parent)}
+    return snapshot
+
+
+def _delete_inventory(product, user, reason):
+    """Delete the product and everything inside it. Returns (deleted list, error)."""
+    tree = _deletion_tree(product)
+    blocked = [p for p, _ in tree if _has_pending_transfer(p)]
+    if blocked:
+        return [], ('Pending receipt in a transfer request: '
+                    + ', '.join(_product_label(p) for p in blocked[:5])
+                    + '. Receive or cancel the transfer first.')
+    snapshots = [(_product_snapshot(p, parent), p) for p, parent in tree]
+    ids = [p.id for p, _ in tree]
+    with transaction.atomic():
+        # These two point at the products (or their transactions) with PROTECT,
+        # so they have to go first.
+        SalesReturn.objects.filter(Q(product_id__in=ids) | Q(stock_out_transaction__product_id__in=ids)).delete()
+        TransferRequestItem.objects.filter(product_id__in=ids).delete()
+        # Server.product is SET_NULL, so the server row would otherwise be left
+        # behind without a product. Its component links go with it (CASCADE).
+        from apps.servers.models import Server
+        Server.objects.filter(product_id__in=ids).delete()
+        Product.objects.filter(id__in=ids).delete()
+        for snapshot, p in snapshots:
+            parent = snapshot.get('deleted_with_parent')
+            log_activity(
+                action='DELETE',
+                module='INVENTORY',
+                entity=(p.name or '')[:100],
+                entity_id=p.id,
+                user=user,
+                barcode=(snapshot['barcode'] or '')[:100],
+                warehouse=snapshot['store_location'],
+                location=(snapshot['location'] or '')[:255],
+                old_values=snapshot,
+                remarks=(f'Deleted with its parent {parent["label"]}. Reason: {reason}' if parent
+                         else f'Deleted. Reason: {reason}'),
+            )
+    return [s for s, _ in snapshots], ''
+
+
+@require_permission('delete_inventory')
+def delete_inventory_preview(request):
+    """What a delete would remove: the item and everything inside it."""
+    product = get_object_or_404(Product.objects.select_related('category'), id=request.GET.get('product_id'))
+    tree = _deletion_tree(product)
+    rows = []
+    for p, parent in tree:
+        latest = p.transactions.order_by('-created_at', '-id').first()
+        rows.append({
+            'product_id': p.id,
+            'label': _product_label(p),
+            'status': (latest.stock_status if latest else '') or '',
+            'is_out': bool(latest and latest.transaction_type == 'OUT'),
+            'is_child': parent is not None,
+            'pending_transfer': _has_pending_transfer(p),
+        })
+    return JsonResponse({'success': True, 'item': rows[0], 'children': rows[1:]})
+
+
+@require_permission('delete_inventory')
+@require_POST
+def delete_inventory(request):
+    product = get_object_or_404(Product.objects.select_related('category'), id=request.POST.get('product_id'))
+    reason = ' '.join((request.POST.get('reason') or '').split())
+    if not reason:
+        return JsonResponse({'success': False, 'error': 'Please give a reason for deleting'})
+    deleted, error = _delete_inventory(product, request.user, reason)
+    if error:
+        return JsonResponse({'success': False, 'error': error})
+    return JsonResponse({
+        'success': True,
+        'deleted': len(deleted),
+        'deleted_ids': [d['product_id'] for d in deleted],
+    })

@@ -12,6 +12,7 @@ ROLE_PERMISSIONS = {
         'product_history', 'sales_return', 'sold_view', 'rent_return',
         'reconciliation', 'mapping', 'freeze', 'reports', 'audit_findings',
         'attend_audit_finding', 'stock_return', 'status_update', 'view_live',
+        'delete_inventory',
     },
     'STOCK_IN': {
         'stock_in', 'sales_return', 'rent_return', 'transfer_receive',
@@ -58,6 +59,7 @@ PERMISSION_LABELS = {
     'freeze': 'Freeze and unfreeze stock',
     'reports': 'View and export reports',
     'status_update': 'Update stock status (Faulty, Damaged, etc.) with a remark',
+    'delete_inventory': 'Delete inventory items (a server / controller is deleted with everything inside it)',
 }
 
 

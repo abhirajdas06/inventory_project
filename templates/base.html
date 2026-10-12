@@ -1388,6 +1388,34 @@
   </div>
 </div>
 
+{% if can.delete_inventory %}
+<!-- ── Delete inventory (from any list row or a View Components dialog) ── -->
+<div class="modal fade" id="deleteInventoryModal" tabindex="-1" style="z-index: 1075;">
+  <div class="modal-dialog">
+    <div class="modal-content p-3">
+      <h5 class="mb-1 text-danger"><i class="bi bi-trash3 me-1"></i>Delete Inventory</h5>
+      <p class="text-muted small mb-2">This permanently removes the item from inventory. A full copy is kept in the Activity Trail.</p>
+      <input type="hidden" id="deleteInventoryProductId">
+      <div id="deleteInventoryItem" class="fw-semibold mb-2"></div>
+      <div id="deleteInventoryChildrenWrap" class="alert alert-warning py-2 px-3 small d-none">
+        <div class="fw-semibold mb-1"><i class="bi bi-diagram-3 me-1"></i><span id="deleteInventoryChildCount"></span> item(s) inside it will be deleted too:</div>
+        <ul id="deleteInventoryChildren" class="mb-0 ps-3" style="max-height: 180px; overflow:auto;"></ul>
+      </div>
+      <div class="mb-2">
+        <label class="form-label" for="deleteInventoryReason">Reason <span class="text-danger">*</span></label>
+        <textarea id="deleteInventoryReason" class="form-control" rows="2" placeholder="Why is this being deleted?"></textarea>
+      </div>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" id="deleteInventoryConfirm">
+        <label class="form-check-label small" for="deleteInventoryConfirm">I understand this cannot be undone.</label>
+      </div>
+      <button class="btn btn-danger w-100" id="deleteInventorySubmit" disabled><i class="bi bi-trash3 me-1"></i>Delete</button>
+      <div id="deleteInventoryMsg" class="mt-2 small"></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="modal fade" id="globalTransferModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content p-3">
@@ -1902,6 +1930,7 @@
     const canFreeze = {% if can.freeze %}true{% else %}false{% endif %};
     const canMap = {% if can.mapping %}true{% else %}false{% endif %};
     const canStatusUpdate = {% if can.status_update %}true{% else %}false{% endif %};
+    const canDeleteInventory = {% if can.delete_inventory %}true{% else %}false{% endif %};
 
     // A small, always-visible "!" badge in the sticky Actions column (the one
     // cell guaranteed to stay on screen without horizontal scrolling) so a
@@ -1983,6 +2012,15 @@
                 statusBtn.title = 'Update status (e.g. Faulty / Damaged)';
                 statusBtn.innerHTML = '<i class="bi bi-exclamation-triangle"></i>';
                 cell.appendChild(statusBtn);
+            }
+            if (canDeleteInventory && !cell.querySelector('.delete-inventory-btn')) {
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'btn btn-sm btn-outline-danger delete-inventory-btn';
+                del.dataset.productId = productId;
+                del.title = 'Delete (with everything inside it)';
+                del.innerHTML = '<i class="bi bi-trash3"></i>';
+                cell.appendChild(del);
             }
         });
     }
@@ -2076,6 +2114,103 @@
     }
     document.addEventListener('shown.bs.modal', function (e) { showInstalledNotice(e.target); });
     document.addEventListener('hidden.bs.modal', function () { actionProductId = ''; });
+
+    // ── Delete inventory ────────────────────────────────────────────────
+    // Opened from a list row or from a View Components dialog. Shows what
+    // will go (the item + everything inside it) before anything is deleted.
+    window.CAN_DELETE_INVENTORY = canDeleteInventory;
+    (function () {
+        const modalEl = document.getElementById('deleteInventoryModal');
+        if (!modalEl) return;
+        const $ = function (id) { return document.getElementById(id); };
+        const reason = $('deleteInventoryReason');
+        const confirmBox = $('deleteInventoryConfirm');
+        const submit = $('deleteInventorySubmit');
+        const msg = $('deleteInventoryMsg');
+        let fromComponents = false;
+        let deletedSomething = false;
+        let blocked = false;
+
+        function text(value) { const span = document.createElement('span'); span.textContent = value; return span.innerHTML; }
+        function refreshSubmit() { submit.disabled = blocked || !confirmBox.checked || !reason.value.trim(); }
+        reason.addEventListener('input', refreshSubmit);
+        confirmBox.addEventListener('change', refreshSubmit);
+
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.delete-inventory-btn');
+            if (!btn) return;
+            e.preventDefault();
+            const productId = btn.dataset.productId || (btn.closest('tr') && btn.closest('tr').dataset.id) || '';
+            if (!productId) return;
+            fromComponents = !!btn.closest('.modal');
+            $('deleteInventoryProductId').value = productId;
+            $('deleteInventoryItem').textContent = 'Loading…';
+            $('deleteInventoryChildrenWrap').classList.add('d-none');
+            $('deleteInventoryChildren').innerHTML = '';
+            reason.value = '';
+            confirmBox.checked = false;
+            msg.innerHTML = '';
+            blocked = false;
+            refreshSubmit();
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            fetch('/inventory/delete/preview/?product_id=' + encodeURIComponent(productId))
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data.success) throw new Error(data.error || 'Could not load the item');
+                    const item = data.item;
+                    $('deleteInventoryItem').textContent = item.label + (item.status ? '  (' + item.status + ')' : '');
+                    if (data.children.length) {
+                        $('deleteInventoryChildCount').textContent = data.children.length;
+                        $('deleteInventoryChildren').innerHTML = data.children.map(function (c) {
+                            return '<li>' + text(c.label) + (c.status ? ' <span class="text-muted">(' + text(c.status) + ')</span>' : '') + '</li>';
+                        }).join('');
+                        $('deleteInventoryChildrenWrap').classList.remove('d-none');
+                    }
+                    const pending = [item].concat(data.children).filter(function (c) { return c.pending_transfer; });
+                    if (pending.length) {
+                        blocked = true;
+                        msg.innerHTML = '<span class="text-danger">Cannot delete: ' + pending.length + ' item(s) are waiting to be received in a transfer request.</span>';
+                    }
+                    refreshSubmit();
+                })
+                .catch(function (err) { $('deleteInventoryItem').textContent = ''; msg.innerHTML = '<span class="text-danger">' + text(err.message) + '</span>'; blocked = true; refreshSubmit(); });
+        });
+
+        // Sit above an open View Components dialog.
+        modalEl.addEventListener('shown.bs.modal', function () {
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            if (backdrops.length > 1) backdrops[backdrops.length - 1].style.zIndex = 1070;
+        });
+
+        submit.addEventListener('click', function () {
+            submit.disabled = true;
+            msg.innerHTML = '<span class="text-muted">Deleting…</span>';
+            const fd = new FormData();
+            fd.append('product_id', $('deleteInventoryProductId').value);
+            fd.append('reason', reason.value.trim());
+            fetch('/inventory/delete/', { method: 'POST', body: fd, headers: { 'X-CSRFToken': csrfToken() } })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data.success) throw new Error(data.error || 'Delete failed');
+                    deletedSomething = true;
+                    data.deleted_ids.forEach(function (id) {
+                        document.querySelectorAll('tr[data-id="' + id + '"], tr[data-product-id="' + id + '"]').forEach(function (row) { row.remove(); });
+                    });
+                    msg.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Deleted ' + data.deleted + ' item(s).</span>';
+                    setTimeout(function () { bootstrap.Modal.getOrCreateInstance(modalEl).hide(); }, 900);
+                })
+                .catch(function (err) { msg.innerHTML = '<span class="text-danger">' + text(err.message) + '</span>'; refreshSubmit(); });
+        });
+
+        // Refresh counts once the user is back on the list.
+        modalEl.addEventListener('hidden.bs.modal', function () {
+            if (deletedSomething && !fromComponents) window.location.reload();
+            if (document.querySelector('.modal.show')) document.body.classList.add('modal-open');
+        });
+        document.addEventListener('hidden.bs.modal', function (e) {
+            if (e.target !== modalEl && deletedSomething && fromComponents && !document.querySelector('.modal.show')) window.location.reload();
+        });
+    })();
 
     document.addEventListener('DOMContentLoaded', addWorkflowButtons);
     if (window.jQuery) {

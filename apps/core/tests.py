@@ -1655,3 +1655,134 @@ class RolePermissionExportTests(TestCase):
         viewer = User.objects.get(username='export-viewer')
         self.client.force_login(viewer)
         self.assertEqual(self.client.get(reverse('role_permission_export')).status_code, 403)
+
+
+class DeleteInventoryTests(TestCase):
+    """Delete an item; a parent (server / controller) takes everything inside
+    it along; a single child can be deleted on its own; the trail keeps a copy."""
+
+    def setUp(self):
+        from apps.core.models import ActivityLog
+        self.ActivityLog = ActivityLog
+        self.user = User.objects.create_user(username='del-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+
+    def _server(self, tag, children):
+        cat = SpareCategory.objects.get_or_create(name='SERVER')[0]
+        product = Product.objects.create(category=cat, serial_no=tag, name=f'Server {tag}')
+        server = Server.objects.create(product=product, service_tag=tag, machine_no=f'M-{tag}', group='rack_server')
+        InventoryTransaction.objects.create(product=product, transaction_type='IN', store_location='WH1', stock_status='LIVE')
+        from apps.servers.models import ServerComponent
+        kids = []
+        for code in children:
+            child = _barcoded_item(code, category='MOTHERBOARD')
+            ServerComponent.objects.create(server=server, product=child, spare_type='MOTHERBOARD', barcode=code)
+            kids.append(child)
+        return product, server, kids
+
+    def _delete(self, product, reason='Duplicate entry'):
+        return self.client.post(reverse('delete_inventory'), {'product_id': product.id, 'reason': reason}).json()
+
+    def test_delete_single_item_keeps_trail(self):
+        from apps.categories.models import Spare
+        item = _barcoded_item('DEL-ONE')
+        res = self._delete(item)
+        self.assertTrue(res['success'])
+        self.assertEqual(res['deleted'], 1)
+        self.assertFalse(Product.objects.filter(id=item.id).exists())
+        self.assertFalse(Spare.objects.filter(barcode='DEL-ONE').exists())
+        self.assertFalse(InventoryTransaction.objects.filter(product_id=item.id).exists())
+        log = self.ActivityLog.objects.get(action='DELETE', entity_id=str(item.id))
+        self.assertEqual(log.barcode, 'DEL-ONE')
+        self.assertEqual(log.old_values['serial_no'], 'SN-DEL-ONE')
+        self.assertEqual(log.old_values['stock_status'], 'LIVE')
+        self.assertIn('Duplicate entry', log.remarks)
+        self.assertEqual(log.user, self.user)
+
+    def test_deleting_server_deletes_all_components(self):
+        product, server, kids = self._server('SRV-DEL', ['MB-1', 'MB-2'])
+        preview = self.client.get(reverse('delete_inventory_preview'), {'product_id': product.id}).json()
+        self.assertEqual(len(preview['children']), 2)
+        res = self._delete(product)
+        self.assertEqual(res['deleted'], 3)
+        self.assertFalse(Server.objects.filter(id=server.id).exists())
+        for kid in kids:
+            self.assertFalse(Product.objects.filter(id=kid.id).exists())
+            log = self.ActivityLog.objects.get(action='DELETE', entity_id=str(kid.id))
+            self.assertEqual(log.old_values['deleted_with_parent']['product_id'], product.id)
+            self.assertIn('Deleted with its parent', log.remarks)
+
+    def test_deleting_one_component_keeps_the_server(self):
+        from apps.servers.models import ServerComponent
+        product, server, kids = self._server('SRV-KEEP', ['MB-A', 'MB-B'])
+        res = self._delete(kids[0])
+        self.assertEqual(res['deleted'], 1)
+        self.assertTrue(Server.objects.filter(id=server.id).exists())
+        self.assertEqual(list(ServerComponent.objects.filter(server=server).values_list('product_id', flat=True)), [kids[1].id])
+
+    def test_deleting_controller_deletes_its_spares(self):
+        from apps.categories.models import Controller, Spare
+        cat = SpareCategory.objects.get_or_create(name='CONTROLLER')[0]
+        ctrl_product = Product.objects.create(category=cat, serial_no='CTRL-DEL', name='Controller')
+        controller = Controller.objects.create(product=ctrl_product, barcode='CTRL-DEL-BC')
+        InventoryTransaction.objects.create(product=ctrl_product, transaction_type='IN', store_location='WH1', stock_status='LIVE')
+        spare_product = _barcoded_item('CTRL-CHILD')
+        Spare.objects.filter(product=spare_product).update(controller=controller)
+        res = self._delete(ctrl_product)
+        self.assertEqual(res['deleted'], 2)
+        self.assertFalse(Product.objects.filter(id__in=[ctrl_product.id, spare_product.id]).exists())
+
+    def test_nested_server_controller_spare(self):
+        from apps.categories.models import Controller, Spare
+        from apps.servers.models import ServerComponent
+        product, server, _ = self._server('SRV-NEST', [])
+        cat = SpareCategory.objects.get_or_create(name='CONTROLLER')[0]
+        ctrl_product = Product.objects.create(category=cat, serial_no='CTRL-NEST', name='Controller')
+        controller = Controller.objects.create(product=ctrl_product, barcode='CTRL-NEST-BC')
+        ServerComponent.objects.create(server=server, product=ctrl_product, spare_type='CONTROLLER')
+        spare_product = _barcoded_item('NEST-SPARE')
+        Spare.objects.filter(product=spare_product).update(controller=controller)
+        self.assertEqual(self._delete(product)['deleted'], 3)
+
+    def test_sold_and_returned_item_can_be_deleted(self):
+        item = _barcoded_item('DEL-RET')
+        self.client.post(reverse('stock_out'), {'product_id': item.id, 'stock_status': 'SALE'})
+        self.client.post(reverse('sales_return'), {'product_id': item.id, 'reason': 'NORMAL'})
+        self.assertTrue(item.sales_returns.exists())
+        self.assertTrue(self._delete(item)['success'])
+        self.assertFalse(Product.objects.filter(id=item.id).exists())
+
+    def test_pending_transfer_blocks_delete(self):
+        from apps.inventory.models import TransferRequest, TransferRequestItem
+        item = _barcoded_item('DEL-TRF')
+        req = TransferRequest.objects.create(requested_by=self.user)
+        TransferRequestItem.objects.create(request=req, product=item)
+        res = self._delete(item)
+        self.assertFalse(res['success'])
+        self.assertIn('transfer', res['error'])
+        self.assertTrue(Product.objects.filter(id=item.id).exists())
+
+    def test_reason_required(self):
+        item = _barcoded_item('DEL-NOREASON')
+        res = self._delete(item, reason='  ')
+        self.assertFalse(res['success'])
+        self.assertTrue(Product.objects.filter(id=item.id).exists())
+
+    def test_permission_from_role_settings(self):
+        item = _barcoded_item('DEL-PERM')
+        clerk = User.objects.create_user(username='del-clerk', password='x')
+        UserProfile.objects.create(user=clerk, role='STOCK_IN')
+        self.client.force_login(clerk)
+        self.assertEqual(self.client.post(reverse('delete_inventory'), {'product_id': item.id, 'reason': 'x'}).status_code, 403)
+        self.assertIn('const canDeleteInventory = false;', self.client.get(reverse('card_list')).content.decode())
+
+        RolePermission.objects.create(role='STOCK_IN', permissions=['stock_in', 'view_live', 'delete_inventory'])
+        self.assertIn('const canDeleteInventory = true;', self.client.get(reverse('card_list')).content.decode())
+        self.assertTrue(self._delete(item)['success'])
+
+    def test_admin_has_delete_by_default_and_option_in_role_settings(self):
+        self.assertTrue(has_permission(self.user, 'delete_inventory'))
+        html = self.client.get(reverse('role_permission_settings')).content.decode()
+        self.assertIn('name="delete_inventory"', html)
+        self.assertIn('id="deleteInventoryModal"', self.client.get(reverse('card_list')).content.decode())

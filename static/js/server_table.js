@@ -89,6 +89,22 @@ $(document).ready(function () {
     });
 
 
+
+    function ensureDeleteColumn(table) {
+        if (!window.CAN_DELETE_INVENTORY || !table) return;
+        const headRow = table.querySelector('thead tr');
+        if (headRow && !headRow.querySelector('.delete-col')) {
+            const th = document.createElement('th');
+            th.className = 'delete-col';
+            th.textContent = 'Delete';
+            headRow.appendChild(th);
+        }
+    }
+    function deleteCell(productId) {
+        if (!window.CAN_DELETE_INVENTORY) return '';
+        return `<td><button type="button" class="btn btn-sm btn-outline-danger delete-inventory-btn" data-product-id="${productId}" title="Delete only this component"><i class="bi bi-trash3"></i></button></td>`;
+    }
+
     // ========================================
     // VIEW COMPONENTS MODAL
     // ========================================
@@ -114,6 +130,8 @@ $(document).ready(function () {
                 return;
             }
 
+            ensureDeleteColumn(document.getElementById('compDetailBody').closest('table'));
+
             // update modal title
             $('#viewCompModalTitle').text(`Components — ${res.server_model || ''}`);
 
@@ -138,7 +156,7 @@ $(document).ready(function () {
                 let tablePill = `<span class="badge bg-light text-dark border" style="font-size:10px;">${c.category_table || 'spare'}</span>`;
 
                 body.append(`
-                    <tr class="${rowClass}">
+                    <tr class="${rowClass}" data-product-id="${c.product_id}">
                         <td><span class="badge bg-secondary">${c.spare_type}</span></td>
                         <td>${tablePill}</td>
                         <td>${c.part_no}</td>
@@ -160,6 +178,7 @@ $(document).ready(function () {
                         <td>${isOut ? `<span class="text-danger fw-semibold">${c.invoice}</span>` : '-'}</td>
                         <td>${isOut ? `<span class="text-danger fw-semibold">${c.olf_dc}</span>` : '-'}</td>
                         <td>${isOut ? `<span class="text-danger">${c.out_date}</span>` : '-'}</td>
+                        ${deleteCell(c.product_id)}
                     </tr>
                 `);
             });
