@@ -1786,3 +1786,32 @@ class DeleteInventoryTests(TestCase):
         html = self.client.get(reverse('role_permission_settings')).content.decode()
         self.assertIn('name="delete_inventory"', html)
         self.assertIn('id="deleteInventoryModal"', self.client.get(reverse('card_list')).content.decode())
+
+
+class LtoSubcategoryTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='lto-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+        for code, cat in (('MLTOA000085', 'LTO'), ('TAPE-1', 'TAPE DRIVE'), ('BEZEL-1', 'FRONT BEZEL')):
+            _barcoded_item(code, category=cat)
+
+    def test_lto_has_its_own_list_and_leaves_miscellaneous(self):
+        lto = self.client.get(reverse('spare_subcategory_list', args=['spare_lto'])).content.decode()
+        self.assertIn('MLTOA000085', lto)
+        self.assertIn('TAPE-1', lto)
+        self.assertNotIn('BEZEL-1', lto)
+        misc = self.client.get(reverse('spare_subcategory_list', args=['spare_miscellaneous'])).content.decode()
+        self.assertNotIn('MLTOA000085', misc)
+        self.assertIn('BEZEL-1', misc)
+
+    def test_lto_import_nav_dashboard_and_sold_pages(self):
+        from apps.core.importers import IMPORT_LABELS
+        self.assertEqual(IMPORT_LABELS['spare_lto'], 'LTO')
+        self.assertIn('spare_lto_stock_out', IMPORT_LABELS)
+        self.assertEqual(self.client.get(reverse('inventory_import_template', args=['spare_lto'])).status_code, 200)
+        page = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn(reverse('spare_subcategory_list', args=['spare_lto']), page)
+        self.assertEqual(self.client.get(reverse('inventory_sold', args=['spare_lto'])).status_code, 200)
+        self.assertEqual(self.client.get(reverse('inventory_faulty', args=['spare_lto'])).status_code, 200)
+        self.assertEqual(self.client.get(reverse('dashboard_card_detail', args=['spare_lto'])).json()['in_stock'], 2)

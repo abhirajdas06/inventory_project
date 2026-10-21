@@ -1,4 +1,4 @@
-"""Splits the old single "common Spare" bucket into 19 named sub-categories.
+"""Splits the old single "common Spare" bucket into 20 named sub-categories.
 
 Nothing about the underlying data changes: every item here is still a plain
 `Spare` row (same fields, same stock in/out logic) — this module only says
@@ -68,6 +68,11 @@ SPARE_SUBCATEGORIES = OrderedDict([
     ('ip_phone', {
         'label': 'IP Phone', 'canonical': 'IP PHONE', 'icon': 'bi-telephone-fill',
         'match': {'IP PHONE', 'IP PHONES'},
+    }),
+    ('lto', {
+        'label': 'LTO', 'canonical': 'LTO', 'icon': 'bi-cassette-fill',
+        # Tape drives (LTO, DLT, VXA, DAT ...) — the LTO MASTER sheet files them all as "LTO".
+        'match': {'LTO', 'LTO DRIVE', 'LTO TAPE DRIVE', 'TAPE DRIVE'},
     }),
     ('miscellaneous', {
         'label': 'Miscellaneous', 'canonical': 'MISCELLANEOUS', 'icon': 'bi-box-seam-fill',
