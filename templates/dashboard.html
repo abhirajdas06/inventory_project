@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Dashboard{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
@@ -6,38 +7,34 @@
 {% block nav_dashboard %}active{% endblock %}
 
 {% block extra_css %}
-<style>
-    .dash-card { position: relative; padding: 0; overflow: hidden; }
-    .dash-card-btn {
-        width: 100%; text-align: left; background: none; border: 0; padding: 14px;
-        cursor: pointer; color: inherit; display: block;
-    }
-    .dash-card-btn:hover { background: #f8fafc; }
-    .dash-card-btn:focus-visible { outline: 2px solid var(--accent, #4f8ef7); outline-offset: -2px; }
-    .dash-card-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-    .dash-card-head span { display: flex; align-items: center; gap: 6px; color: #64748b; font-size: 12px; font-weight: 600; }
-    .dash-card-warn {
-        display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700;
-        color: #b91c1c; background: #fee2e2; border-radius: 999px; padding: 1px 7px;
-    }
-    .dash-card-stores { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-    .dash-card-store-chip {
-        font-size: 11px; background: #eef2ff; color: #3730a3; border-radius: 999px;
-        padding: 1px 8px; white-space: nowrap;
-    }
-    .dash-card-more { font-size: 11px; color: #94a3b8; }
-    #cardDetailModal .modal-stat { text-align: center; }
-    #cardDetailModal .modal-stat strong { display: block; font-size: 24px; line-height: 1.1; }
-    #cardDetailModal .modal-stat span { font-size: 12px; color: #64748b; }
-    #cardDetailModal .store-row td { padding: 4px 8px; }
-</style>
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="dashboard-grid">
-    <section class="dashboard-summary">
+<div class="dashboard-page">
+    <section class="dashboard-hero">
+        <div>
+            <span class="dashboard-eyebrow"><i class="bi bi-grid-1x2"></i> Operations overview</span>
+            <h1>Inventory at a glance</h1>
+            <p>Current stock position across every product family. Open a family to inspect stores, sold stock, and exceptions.</p>
+        </div>
+        <div class="dashboard-refresh"><i class="bi bi-arrow-repeat"></i> Snapshot refreshes every 30 seconds</div>
+    </section>
+
+    <section class="dashboard-summary dashboard-kpis" aria-label="Inventory summary">
+        <article class="dash-card kpi-card"><span>Total tracked</span><strong>{{ portfolio.total }}</strong><small>Across {{ cards|length }} product families</small></article>
+        <article class="dash-card kpi-card kpi-live"><span>Available stock</span><strong>{{ portfolio.in_stock }}</strong><small>Live and ready for operations</small></article>
+        <article class="dash-card kpi-card kpi-sold"><span>Stocked out</span><strong>{{ portfolio.sold }}</strong><small>Sold and other outbound movements</small></article>
+        <article class="dash-card kpi-card kpi-attention"><span>Needs attention</span><strong>{{ portfolio.attention }}</strong><small>Faulty, damaged, or scrap-related</small></article>
+    </section>
+
+    <section class="dashboard-section-head">
+        <div><h2>Inventory families</h2><p>Choose a family for a warehouse breakdown and direct navigation.</p></div>
+        <label class="dashboard-card-search"><i class="bi bi-search"></i><input id="dashboardCardSearch" type="search" placeholder="Find a product family" aria-label="Find a product family"></label>
+    </section>
+    <section class="dashboard-summary dashboard-card-grid" id="dashboardCardsGrid">
         {% for card in cards %}
-        <article class="dash-card">
+        <article class="dash-card inventory-family-card" data-search="{{ card.label|lower }}">
             <button type="button" class="dash-card-btn" data-kind="{{ card.kind }}" data-label="{{ card.label }}">
                 <div class="dash-card-head">
                     <span><i class="bi {{ card.icon }}"></i> {{ card.label }}</span>
@@ -59,6 +56,7 @@
         </article>
         {% endfor %}
     </section>
+    <div class="dashboard-no-results d-none" id="dashboardNoResults">No product family matches this search.</div>
 
     <section class="dashboard-panels">
         <div class="dash-panel">
@@ -216,6 +214,21 @@
                 });
         });
     });
+
+    const cardSearch = document.getElementById('dashboardCardSearch');
+    const noResults = document.getElementById('dashboardNoResults');
+    if (cardSearch) {
+        cardSearch.addEventListener('input', function () {
+            const query = this.value.trim().toLowerCase();
+            let visible = 0;
+            document.querySelectorAll('.inventory-family-card').forEach(function (card) {
+                const matches = !query || card.dataset.search.includes(query);
+                card.classList.toggle('d-none', !matches);
+                if (matches) visible += 1;
+            });
+            noResults.classList.toggle('d-none', visible > 0);
+        });
+    }
 })();
 </script>
 {% endblock %}

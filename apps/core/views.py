@@ -2,6 +2,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib import messages
+from django.core.cache import cache
 from django.db.models import Count, OuterRef, Subquery
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -41,22 +42,34 @@ def logout_view(request):
 def dashboard(request):
     from apps.core.dashboard_stats import dashboard_registry, kind_overview
 
-    cards = []
-    for kind, cfg in dashboard_registry().items():
-        data = kind_overview(cfg['model'], cfg.get('category_q'), with_empty=cfg.get('is_server', False))
-        data.update({'kind': kind, 'label': cfg['label'], 'icon': cfg['icon']})
-        # Compact card face: total store-wise breakdown, top few only — the
-        # rest (full store list, faulty/damaged, faulty/damaged/scrap-out) is
-        # one click away in the detail modal so the card never grows huge.
-        data['top_stores'] = data['by_store'][:4]
-        data['more_stores'] = max(0, len(data['by_store']) - 4)
-        cards.append(data)
+    # The overview contains many per-model aggregate queries. A short cache
+    # keeps the dashboard responsive without making operational data stale for
+    # long; detailed cards still load on demand.
+    cache_key = 'inventory:dashboard:overview:v2'
+    cards = cache.get(cache_key)
+    if cards is None:
+        cards = []
+        for kind, cfg in dashboard_registry().items():
+            data = kind_overview(cfg['model'], cfg.get('category_q'), with_empty=cfg.get('is_server', False))
+            data.update({'kind': kind, 'label': cfg['label'], 'icon': cfg['icon']})
+            data['top_stores'] = data['by_store'][:4]
+            data['more_stores'] = max(0, len(data['by_store']) - 4)
+            cards.append(data)
+        cache.set(cache_key, cards, timeout=30)
+
+    portfolio = {
+        'total': sum(card['total'] for card in cards),
+        'in_stock': sum(card['in_stock'] for card in cards),
+        'sold': sum(card['sold'] for card in cards),
+        'attention': sum(card['faulty_damaged_in_stock'] + card['faulty_damaged_scrap_out'] for card in cards),
+    }
 
     recent = InventoryTransaction.objects.select_related('product', 'performed_by', 'audited_by').order_by('-created_at')[:12]
     tx_counts = InventoryTransaction.objects.values('transaction_type').annotate(total=Count('id'))
 
     return render(request, 'dashboard.html', {
         'cards': cards,
+        'portfolio': portfolio,
         'recent_transactions': recent,
         'tx_counts': list(tx_counts),
     })
