@@ -1487,7 +1487,7 @@ def dedicated_lookalike_spares(category_name):
 
 def _scoped_queryset(config, **kwargs):
     """_annotated_category_queryset() further narrowed to a LIST_MODELS
-    entry's category, when it has one (the 19 spare sub-categories)."""
+    entry's category, when it has one (the spare sub-categories)."""
     qs = _annotated_category_queryset(config['model'], **kwargs)
     category_q = config.get('category_q')
     return qs.filter(category_q) if category_q is not None else qs
@@ -1991,7 +1991,7 @@ def universal_search(request):
     for config, item in raw_results:
         # A Spare row's real category (e.g. "FRONT BEZEL") is more useful
         # than the generic "Spare" / a single sub-category's label, since one
-        # search covers all 19 sub-categories at once.
+        # search covers all the sub-categories at once.
         display_type = config['label']
         if config['model'] is Spare and item.product and item.product.category:
             display_type = item.product.category.name

@@ -2,7 +2,7 @@
     background: #fff;
     border: 1px solid #dfe5ee;
     border-radius: 8px;
-    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.055);
     overflow: hidden;
 }
 
@@ -13,8 +13,17 @@
     gap: 16px;
     padding: 16px 18px;
     border-bottom: 1px solid #e5ebf3;
-    background: #fbfcfe;
+    background: #f9fbfe;
 }
+
+.inventory-list-toolbar h1 {
+    margin: 0;
+    color: #172033;
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.inventory-list-toolbar p { margin: 2px 0 0; color: #697386; font-size: 12px; }
 
 .inventory-list-title {
     margin: 0;
@@ -40,6 +49,29 @@
     width: 100%;
     overflow-x: auto;
 }
+
+.inventory-list-shell .table-container,
+.inventory-list-shell > .table-responsive {
+    max-height: calc(100vh - 255px);
+    overflow: auto;
+    scrollbar-color: #aebdce transparent;
+    scrollbar-width: thin;
+}
+
+.inventory-list-query {
+    margin: 14px 16px 10px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+}
+
+.inventory-list-query .form-label { font-weight: 650; }
+.inventory-list-query .form-control,
+.inventory-list-query .form-select,
+.inventory-list-query .input-group-text { border-color: #cfd9e6; }
+.inventory-list-query .form-control:focus,
+.inventory-list-query .form-select:focus { border-color: #6499e8; box-shadow: 0 0 0 3px rgba(37, 99, 235, .1); }
 
 .inventory-list-table {
     width: 100% !important;
@@ -81,7 +113,7 @@
 }
 
 .inventory-list-table tbody tr:hover td {
-    background: #f2f7ff;
+    background: #eef6ff;
 }
 
 .inventory-list-table code {
@@ -105,6 +137,10 @@
     font-weight: 600;
     padding: 5px 7px;
 }
+
+.inventory-list-shell .pagination { margin: 12px 16px 14px; }
+.inventory-list-shell .page-link { color: #275ea9; border-color: #d5dfeb; font-size: 12px; }
+.inventory-list-shell .page-item.disabled .page-link { color: #8a96a8; background: #f8fafc; }
 
 .inventory-list-table .editable-cell {
     cursor: pointer;

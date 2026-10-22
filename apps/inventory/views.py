@@ -610,7 +610,8 @@ def sales_return_history(request):
     q = request.GET.get('q', '').strip()
     if q:
         records = records.filter(Q(product__name__icontains=q) | Q(product__serial_no__icontains=q) | Q(remarks__icontains=q))
-    return render(request, 'inventory/sales_return_list.html', {'records': records[:2000], 'q': q})
+    context = paginated_list_context(request, records.order_by('-returned_on', '-id'), 'records')
+    return render(request, 'inventory/sales_return_list.html', context)
 
 
 @require_any_permission('sold_view', 'reports')
@@ -788,17 +789,16 @@ def audit_report(request):
     if date_to:
         audits = audits.filter(audited_on__lte=date_to)
 
-    audits = list(audits[:2000])
+    audit_page = paginated_list_context(request, audits, 'audits')
 
     from apps.core.models import SpareCategory
     audit_user_ids = base.exclude(audited_by__isnull=True).values_list('audited_by', flat=True).distinct()
     from django.contrib.auth.models import User as AuthUser
-    audit_users = AuthUser.objects.filter(id__in=list(audit_user_ids)).order_by('username')
+    audit_users = AuthUser.objects.filter(id__in=audit_user_ids).order_by('username')
 
-    return render(request, 'spare/audit_report.html', {
-        'audits': audits,
+    audit_page.update({
         'total_count': total_count,
-        'result_count': len(audits),
+        'result_count': audit_page['page_obj'].paginator.count,
         'audit_users': audit_users,
         'categories': SpareCategory.objects.order_by('name'),
         'result_choices': InventoryTransaction.AUDIT_RESULT,
@@ -807,6 +807,7 @@ def audit_report(request):
             'date_from': date_from, 'date_to': date_to,
         },
     })
+    return render(request, 'spare/audit_report.html', audit_page)
     
     
 
@@ -1220,13 +1221,13 @@ def transfer_history(request):
     if date_to:
         transfers = transfers.filter(created_at__date__lte=date_to)
 
-    transfers = list(transfers)
-    return render(request, 'inventory/transfer_history.html', {
-        'transfers': transfers,
+    context = paginated_list_context(request, transfers, 'transfers')
+    context.update({
         'total_count': total_count,
-        'result_count': len(transfers),
+        'result_count': context['page_obj'].paginator.count,
         'filters': {'q': q, 'date_from': date_from, 'date_to': date_to},
     })
+    return render(request, 'inventory/transfer_history.html', context)
 
 
 def _freeze_related_children(product, user, reason):
@@ -1424,13 +1425,13 @@ def audit_finding_list(request):
     if date_to:
         findings = findings.filter(audit_date__lte=date_to)
 
-    findings = list(findings)
-    return render(request, 'inventory/audit_findings.html', {
-        'findings': findings,
+    context = paginated_list_context(request, findings, 'findings')
+    context.update({
         'total_count': total_count,
-        'result_count': len(findings),
+        'result_count': context['page_obj'].paginator.count,
         'filters': {'q': q, 'date_from': date_from, 'date_to': date_to},
     })
+    return render(request, 'inventory/audit_findings.html', context)
 
 
 @require_permission('audit')
@@ -1483,14 +1484,14 @@ def general_audit_finding_list(request):
     if date_to:
         findings = findings.filter(audit_date__lte=date_to)
 
-    findings = list(findings)
-    return render(request, 'inventory/general_audit_findings.html', {
-        'findings': findings,
+    context = paginated_list_context(request, findings, 'findings')
+    context.update({
         'total_count': total_count,
-        'result_count': len(findings),
+        'result_count': context['page_obj'].paginator.count,
         'status_choices': GeneralAuditFinding.STATUS_CHOICES,
         'filters': {'q': q, 'status': status, 'date_from': date_from, 'date_to': date_to},
     })
+    return render(request, 'inventory/general_audit_findings.html', context)
 
 
 @require_permission('audit')
@@ -1585,14 +1586,15 @@ def activity_trail(request):
     result_count = logs.count()
     has_filters = bool(q or action or user_id or date_from or date_to)
 
-    return render(request, 'inventory/activity_trail.html', {
-        'logs': logs[:1000],
+    context = paginated_list_context(request, logs, 'logs')
+    context.update({
         'actions': actions,
         'activity_users': unique_users,
         'total_count': total_count,
-        'result_count': result_count,
+        'result_count': context['page_obj'].paginator.count,
         'has_filters': has_filters,
     })
+    return render(request, 'inventory/activity_trail.html', context)
 
 
 @require_permission('product_history')
@@ -1962,15 +1964,15 @@ def rental_list(request):
     if date_to:
         records = records.filter(rent_out_date__lte=date_to)
 
-    records = list(records)
-    return render(request, 'inventory/rental_list.html', {
-        'records': records,
+    context = paginated_list_context(request, records, 'records')
+    context.update({
         'status': status,
         'total_on_rent': total_on_rent,
         'total_all': total_all,
-        'result_count': len(records),
+        'result_count': context['page_obj'].paginator.count,
         'filters': {'q': q, 'date_from': date_from, 'date_to': date_to},
     })
+    return render(request, 'inventory/rental_list.html', context)
 
 
 @require_permission('mapping')
@@ -1986,21 +1988,22 @@ def mapping_history(request):
     if date_to:
         logs = logs.filter(timestamp__date__lte=date_to)
     total_count = ActivityLog.objects.filter(action__in=['MAP', 'UNMAP']).count()
-    logs = list(logs[:1000])
+    context = paginated_list_context(request, logs, 'logs')
     rows = []
-    for log in logs:
+    for log in context['logs']:
         parent = ''
         if isinstance(log.new_values, dict):
             parent = log.new_values.get('parent', '')
         if not parent and isinstance(log.old_values, dict):
             parent = log.old_values.get('parent', '')
         rows.append({'log': log, 'parent': parent})
-    return render(request, 'inventory/mapping_history.html', {
+    context.update({
         'rows': rows,
         'total_count': total_count,
-        'result_count': len(rows),
+        'result_count': context['page_obj'].paginator.count,
         'filters': {'q': q, 'date_from': date_from, 'date_to': date_to},
     })
+    return render(request, 'inventory/mapping_history.html', context)
 
 
 # ════════════════════════════════════════════════════════════

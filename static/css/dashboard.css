@@ -1,0 +1,53 @@
+.dashboard-page { max-width: 1680px; margin: 0 auto; }
+
+.dashboard-hero {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 24px;
+    margin: 2px 0 20px;
+}
+.dashboard-eyebrow { color: #2563eb; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0; }
+.dashboard-hero h1 { margin: 5px 0 5px; color: #172033; font-size: 25px; line-height: 1.15; font-weight: 750; }
+.dashboard-hero p { margin: 0; color: #64748b; font-size: 13px; max-width: 680px; }
+.dashboard-refresh { color: #64748b; font-size: 12px; white-space: nowrap; padding-bottom: 3px; }
+
+.dashboard-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.dashboard-kpis .kpi-card { position: relative; overflow: hidden; min-height: 118px; }
+.dashboard-kpis .kpi-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: #64748b; }
+.dashboard-kpis .kpi-live::before { background: #059669; }
+.dashboard-kpis .kpi-sold::before { background: #2563eb; }
+.dashboard-kpis .kpi-attention::before { background: #d97706; }
+.kpi-card strong { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+.dashboard-section-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 28px 0 12px; }
+.dashboard-section-head h2 { margin: 0; color: #172033; font-size: 17px; font-weight: 750; }
+.dashboard-section-head p { margin: 2px 0 0; color: #64748b; font-size: 12px; }
+.dashboard-card-search { display: flex; align-items: center; gap: 7px; width: min(100%, 300px); padding: 7px 10px; background: #fff; border: 1px solid #d7e0ec; border-radius: 6px; color: #64748b; }
+.dashboard-card-search:focus-within { border-color: #5792ed; box-shadow: 0 0 0 3px rgba(37, 99, 235, .11); }
+.dashboard-card-search input { width: 100%; border: 0; outline: 0; color: #172033; font-size: 12px; background: transparent; }
+.dashboard-card-grid { grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); }
+.inventory-family-card { min-height: 142px; padding: 0; overflow: hidden; border-radius: 7px; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.inventory-family-card:hover { border-color: #b7cae8; box-shadow: 0 7px 18px rgba(30, 64, 110, .11); transform: translateY(-1px); }
+.dash-card-btn { width: 100%; height: 100%; padding: 14px; text-align: left; color: inherit; background: transparent; border: 0; cursor: pointer; }
+.dash-card-btn:focus-visible { outline: 3px solid #7aa7ed; outline-offset: -3px; }
+.dash-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dash-card-head span { display: flex; align-items: center; gap: 6px; color: #475569; font-size: 12px; font-weight: 700; }
+.dash-card-warn { color: #a16207 !important; background: #fff7df; border: 1px solid #f2d59a; border-radius: 999px; padding: 2px 7px; font-size: 11px !important; }
+.dash-card-stores { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+.dash-card-store-chip { background: #edf4ff; color: #285caa; border: 1px solid #d7e7ff; border-radius: 4px; padding: 2px 6px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.dash-card-more { align-self: center; color: #7c899b; font-size: 11px; }
+.dashboard-no-results { padding: 32px; color: #64748b; text-align: center; background: #fff; border: 1px dashed #cbd5e1; border-radius: 7px; }
+
+#cardDetailModal .modal-stat { text-align: center; }
+#cardDetailModal .modal-stat strong { display: block; color: #172033; font-size: 24px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+#cardDetailModal .modal-stat span { color: #64748b; font-size: 12px; }
+#cardDetailModal .store-row td { padding: 6px 8px; }
+
+@media (max-width: 1100px) { .dashboard-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+    .dashboard-hero, .dashboard-section-head { align-items: flex-start; flex-direction: column; }
+    .dashboard-refresh { padding: 0; }
+    .dashboard-kpis { grid-template-columns: 1fr; }
+    .dashboard-card-search { width: 100%; }
+}
