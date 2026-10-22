@@ -13,9 +13,10 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Inventory System{% endblock %} · Zaco</title>
-    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}">
+    <title>{% block title %}Inventory System{% endblock %} · Inventory ERP</title>
     <link rel="icon" href="{% static 'img/favicon.ico' %}" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="{% static 'img/InvIcon.svg' %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}">
     <link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon.png' %}">
 
     <!-- Bootstrap -->
@@ -205,16 +206,16 @@
             overflow: hidden;
         }
 
-        /* Zaco logo: full white logo when the sidebar is open, just the globe
-           when it is collapsed. */
-        .sidebar-brand-logo  { height: 34px; width: auto; flex-shrink: 0; display: block; }
-        .sidebar-brand-globe { height: 30px; width: auto; flex-shrink: 0; display: none; }
+        /* Inventory ERP logo (light version for the dark sidebar): full logo
+           when the sidebar is open, just the box icon when it is collapsed. */
+        .sidebar-brand-logo { height: 32px; width: auto; max-width: 100%; flex-shrink: 0; display: block; }
+        .sidebar-brand-icon { height: 26px; width: auto; flex-shrink: 0; display: none; }
         body.sb-collapsed .sidebar-brand-logo { display: none; }
-        body.sb-collapsed .sidebar-brand-globe { display: block; }
+        body.sb-collapsed .sidebar-brand-icon { display: block; }
         body.sb-collapsed #sidebar:hover .sidebar-brand-logo { display: block; }
-        body.sb-collapsed #sidebar:hover .sidebar-brand-globe { display: none; }
+        body.sb-collapsed #sidebar:hover .sidebar-brand-icon { display: none; }
 
-        .sidebar-brand-text { overflow: hidden; padding-left: 10px; border-left: 1px solid var(--nav-border); }
+        .sidebar-brand-text { overflow: hidden; }
         .sidebar-brand-name {
             display: block;
             font-size: 14px;
@@ -825,13 +826,9 @@
 ═══════════════════════════════════════════════ -->
 <div id="sidebar">
 
-    <a href="/" class="sidebar-brand" data-sb-tip="Zaco Inventory">
-        <img src="{% static 'img/zaco-logo-white.png' %}" alt="Zaco Information Technology" class="sidebar-brand-logo">
-        <img src="{% static 'img/zaco-globe-white.png' %}" alt="Zaco" class="sidebar-brand-globe">
-        <div class="sidebar-brand-text nav-label">
-            <span class="sidebar-brand-name">Inventory</span>
-            <span class="sidebar-brand-sub">Asset Management</span>
-        </div>
+    <a href="/" class="sidebar-brand" data-sb-tip="Inventory ERP">
+        <img src="{% static 'img/InvLogo-light.png' %}" alt="Inventory ERP — a product of Zaco Information Technology" class="sidebar-brand-logo">
+        <img src="{% static 'img/InvIcon-light.png' %}" alt="Inventory ERP" class="sidebar-brand-icon">
     </a>
 
     <div class="sidebar-search-wrap">
