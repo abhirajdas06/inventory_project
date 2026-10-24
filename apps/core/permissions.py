@@ -12,7 +12,7 @@ ROLE_PERMISSIONS = {
         'product_history', 'sales_return', 'sold_view', 'rent_return',
         'reconciliation', 'mapping', 'freeze', 'reports', 'audit_findings',
         'attend_audit_finding', 'stock_return', 'status_update', 'view_live',
-        'delete_inventory',
+        'delete_inventory', 'stock_out_register',
     },
     'STOCK_IN': {
         'stock_in', 'sales_return', 'rent_return', 'transfer_receive',
@@ -25,7 +25,7 @@ ROLE_PERMISSIONS = {
         'sold_view', 'reports', 'status_update', 'view_live',
     },
     'AUDIT': {
-        'audit', 'audit_findings', 'view_live',
+        'audit', 'audit_findings', 'view_live', 'stock_out_register',
     },
     # View-only roles: can open lists but every action button is hidden and
     # every write endpoint refuses them (they hold no action permission).
@@ -33,13 +33,14 @@ ROLE_PERMISSIONS = {
         'view_live',
     },
     'READONLY_OUT': {
-        'sold_view',
+        'sold_view', 'stock_out_register',
     },
 }
 
 PERMISSION_LABELS = {
     'view_live': 'Read-only: view live (in-stock) lists and search',
     'sold_view': 'Read-only: view out-stock lists (sold, faulty, stock status)',
+    'stock_out_register': 'Stock Out Register: view and export every stock out by date (for auditors)',
     'user_management': 'Manage users and role settings',
     'stock_in': 'Add stock and components',
     'stock_out': 'Stock out products',

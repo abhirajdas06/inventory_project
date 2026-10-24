@@ -1815,3 +1815,113 @@ class LtoSubcategoryTests(TestCase):
         self.assertEqual(self.client.get(reverse('inventory_sold', args=['spare_lto'])).status_code, 200)
         self.assertEqual(self.client.get(reverse('inventory_faulty', args=['spare_lto'])).status_code, 200)
         self.assertEqual(self.client.get(reverse('dashboard_card_detail', args=['spare_lto'])).json()['in_stock'], 2)
+
+
+class StockOutRegisterTests(TestCase):
+    """Auditor page: every stock out for a date / range, with client + invoice,
+    filterable by status / store / text, exportable to a pivot-ready Excel."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        self.today = timezone.localdate()
+        self.yesterday = self.today - timedelta(days=1)
+        self.auditor = User.objects.create_user(username='reg-auditor', password='pass12345')
+        UserProfile.objects.create(user=self.auditor, role='AUDIT')
+        self.client.force_login(self.auditor)
+        self.url = reverse('stock_out_register')
+
+        def out(code, status, client, invoice, day, store='WH1'):
+            product = _barcoded_item(code)
+            return InventoryTransaction.objects.create(
+                product=product, transaction_type='OUT', store_location=store, stock_status=status,
+                stock_out_date=day, client_name=client, invoice_no=invoice, olf_dc_number=f'DC-{code}')
+        self.sale = out('REG-SALE', 'SALE', 'Acme Corp', 'INV-100', self.today)
+        self.rent = out('REG-RENT', 'RENT', 'Beta Ltd', 'INV-200', self.today, store='WH2')
+        self.scrap = out('REG-SCRAP', 'SCRAP', '', '', self.yesterday)
+        # Sold yesterday, already back in stock today.
+        self.returned = out('REG-BACK', 'SALE', 'Gamma', 'INV-300', self.yesterday)
+        InventoryTransaction.objects.create(product=self.returned.product, transaction_type='IN', store_location='WH1', stock_status='LIVE')
+
+    def _rows(self, **params):
+        res = self.client.get(self.url, params)
+        self.assertEqual(res.status_code, 200)
+        return {r['barcode']: r for r in res.context['rows']}
+
+    def test_one_day_defaults_to_today(self):
+        rows = self._rows()
+        self.assertEqual(set(rows), {'REG-SALE', 'REG-RENT'})
+        sale = rows['REG-SALE']
+        self.assertEqual((sale['client'], sale['invoice'], sale['olf_dc'], sale['status']), ('Acme Corp', 'INV-100', 'DC-REG-SALE', 'SALE'))
+        self.assertEqual(sale['current_state'], 'Still out')
+        self.assertEqual(set(self._rows(date=str(self.yesterday))), {'REG-SCRAP', 'REG-BACK'})
+
+    def test_date_range_status_store_and_search(self):
+        rng = {'mode': 'range', 'date_from': str(self.yesterday), 'date_to': str(self.today)}
+        self.assertEqual(len(self._rows(**rng)), 4)
+        self.assertEqual(set(self._rows(**rng, status='SALE')), {'REG-SALE', 'REG-BACK'})
+        self.assertEqual(set(self._rows(**rng, store='WH2')), {'REG-RENT'})
+        self.assertEqual(set(self._rows(**rng, q='inv-300')), {'REG-BACK'})
+        self.assertEqual(set(self._rows(**rng, q='REG-SCRAP')), {'REG-SCRAP'})
+        # Reversed range is swapped, not empty.
+        self.assertEqual(len(self._rows(mode='range', date_from=str(self.today), date_to=str(self.yesterday))), 4)
+
+    def test_returned_item_shows_current_state_and_counts(self):
+        rows = self._rows(date=str(self.yesterday))
+        self.assertTrue(rows['REG-BACK']['current_state'].startswith('Back in stock (LIVE)'))
+        res = self.client.get(self.url, {'mode': 'range', 'date_from': str(self.yesterday), 'date_to': str(self.today)})
+        counts = {k: n for k, _, n in res.context['status_counts']}
+        self.assertEqual(counts, {'SALE': 2, 'RENT': 1, 'SCRAP': 1})
+        self.assertEqual(res.context['unique_invoices'], 3)
+
+    def test_old_rows_without_stock_out_date_use_entry_date(self):
+        product = _barcoded_item('REG-NODATE')
+        InventoryTransaction.objects.create(product=product, transaction_type='OUT', store_location='WH1', stock_status='SALE', client_name='Legacy')
+        self.assertIn('REG-NODATE', self._rows())
+
+    def test_parts_inside_a_server_can_be_hidden(self):
+        from apps.servers.models import ServerComponent
+        cat = SpareCategory.objects.get_or_create(name='SERVER')[0]
+        server_product = Product.objects.create(category=cat, serial_no='REG-SRV', name='Server')
+        server = Server.objects.create(product=server_product, service_tag='REG-SRV', machine_no='M1', group='rack_server', barcode='REG-SRV-BC')
+        part = _barcoded_item('REG-PART', category='MOTHERBOARD')
+        ServerComponent.objects.create(server=server, product=part, spare_type='MOTHERBOARD', barcode='REG-PART')
+        for p in (server_product, part):
+            InventoryTransaction.objects.create(product=p, transaction_type='OUT', store_location='WH1', stock_status='SALE',
+                                                stock_out_date=self.today, client_name='Acme Corp', invoice_no='INV-400')
+        rows = self._rows()
+        self.assertIn('REG-PART', rows)
+        self.assertIn('Server:', rows['REG-PART']['installed_in'])
+        hidden = self._rows(main_only='1')
+        self.assertNotIn('REG-PART', hidden)
+        self.assertIn('REG-SRV-BC', hidden)
+
+    def test_excel_export_is_pivot_ready(self):
+        from datetime import date as date_cls, datetime as datetime_cls
+        res = self.client.get(reverse('stock_out_register_export'),
+                              {'mode': 'range', 'date_from': str(self.yesterday), 'date_to': str(self.today), 'status': 'SALE'})
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(f'stock-out-register_{self.yesterday}_to_{self.today}.xlsx', res['Content-Disposition'])
+        book = load_workbook(BytesIO(res.content))
+        sheet = book['Stock Out Register']
+        header = [c.value for c in sheet[1]]
+        self.assertEqual(header[:3], ['Stock Out Date', 'Status', 'Category'])
+        for col in ('Client', 'Invoice No', 'OLF / DC No', 'Barcode No', 'Current State'):
+            self.assertIn(col, header)
+        data = [dict(zip(header, [c.value for c in row])) for row in sheet.iter_rows(min_row=2)]
+        self.assertEqual({d['Barcode No'] for d in data}, {'REG-SALE', 'REG-BACK'})
+        self.assertIsInstance(data[0]['Stock Out Date'], (date_cls, datetime_cls))
+        self.assertEqual(sheet.auto_filter.ref, f'A1:R{len(data) + 1}')
+        self.assertEqual(sheet.freeze_panes, 'A2')
+        filters = {r[0]: r[1] for r in book['Filters'].iter_rows(values_only=True) if r and len(r) > 1}
+        self.assertEqual(filters['Status'], 'Sale')
+        self.assertEqual(filters['Rows'], 2)
+
+    def test_who_can_open_it(self):
+        self.assertIn(reverse('stock_out_register'), self.client.get(reverse('dashboard')).content.decode())
+        for role, code in (('READONLY_OUT', 200), ('STOCK_IN', 403), ('READONLY_LIVE', 403)):
+            user = User.objects.create_user(username=f'reg-{role.lower()}', password='x')
+            UserProfile.objects.create(user=user, role=role)
+            self.client.force_login(user)
+            self.assertEqual(self.client.get(self.url).status_code, code, role)
+            self.assertEqual(self.client.get(reverse('stock_out_register_export')).status_code, code, role)

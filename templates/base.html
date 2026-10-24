@@ -1053,6 +1053,12 @@
     <div class="nav-section">
         <span class="nav-section-label">Reports</span>
         {% if user.is_authenticated %}
+        {% if can.stock_out_register %}
+        <a href="{% url 'stock_out_register' %}" class="nav-item-link {% nav_active 'stock_out_register' %}" data-sb-tip="Stock Out Register">
+            <i class="bi bi-journal-check"></i>
+            <span class="nav-label">Stock Out Register</span>
+        </a>
+        {% endif %}
         {% if can.audit_view %}
         <a href="{% url 'audit_report' %}" class="nav-item-link {% block nav_audit_report %}{% endblock %}{% nav_active 'audit_report' %}" data-sb-tip="Audit Report">
             <i class="bi bi-clipboard2-check"></i>

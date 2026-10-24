@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import stock_out_register, views
 
 urlpatterns = [
     path('stock-out/', views.stock_out, name='stock_out'),
@@ -23,6 +23,8 @@ urlpatterns = [
     path('unfreeze/', views.unfreeze_inventory, name='unfreeze_inventory'),
     path('frozen/', views.frozen_inventory_list, name='frozen_inventory_list'),
     path('bulk-update/', views.bulk_update_page, name='bulk_update'),
+    path('stock-out-register/', stock_out_register.stock_out_register, name='stock_out_register'),
+    path('stock-out-register/export/', stock_out_register.stock_out_register_export, name='stock_out_register_export'),
     path('delete/preview/', views.delete_inventory_preview, name='delete_inventory_preview'),
     path('delete/', views.delete_inventory, name='delete_inventory'),
     path('bulk-update/template/<str:kind>/', views.bulk_update_template, name='bulk_update_template'),

@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Stock Out Register{% endblock %}
+{% block page_title %}Stock Out Register{% endblock %}
+{% block breadcrumb %}Reports / Stock Out Register{% endblock %}
+
+{% block extra_css %}
+<style>
+    .register-filters { border: 1px solid var(--border, #e2e8f0); border-radius: 10px; padding: 12px 14px; background: #f8fafc; margin-bottom: 14px; }
+    .register-filters .form-label { font-size: 12px; margin-bottom: 2px; color: #64748b; }
+    .register-period { font-size: 13px; color: #475569; }
+    .status-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #dbe3ee; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; text-decoration: none; color: #1e293b; background: #fff; }
+    .status-chip strong { font-size: 12.5px; }
+    .status-chip.active { background: #1e3a8a; border-color: #1e3a8a; color: #fff; }
+    .register-table td, .register-table th { font-size: 12.5px; white-space: nowrap; }
+    .register-table td.wrap { white-space: normal; min-width: 160px; }
+    .state-out { color: #b42318; font-weight: 600; }
+    .state-back { color: #027a48; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar d-flex flex-wrap justify-content-between align-items-end gap-2">
+        <div>
+            <h5 class="inventory-list-title mb-1">Stock Out Register</h5>
+            <div class="inventory-list-subtitle register-period">
+                Every stock out
+                {% if filters.mode == 'day' %}on <strong>{{ filters.date|date:"l, d M Y" }}</strong>
+                {% else %}from <strong>{{ filters.date_from|date:"d M Y" }}</strong> to <strong>{{ filters.date_to|date:"d M Y" }}</strong>{% endif %}
+                — what went out, to which client, on which invoice.
+            </div>
+        </div>
+        <a href="{% url 'stock_out_register_export' %}?{{ export_query }}" class="btn btn-success btn-sm">
+            <i class="bi bi-file-earmark-excel me-1"></i>Export to Excel
+        </a>
+    </div>
+
+    <form method="get" class="register-filters" id="registerFilters">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label d-block">Period</label>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check" name="mode" id="modeDay" value="day" {% if filters.mode == 'day' %}checked{% endif %}>
+                    <label class="btn btn-outline-primary" for="modeDay">One day</label>
+                    <input type="radio" class="btn-check" name="mode" id="modeRange" value="range" {% if filters.mode == 'range' %}checked{% endif %}>
+                    <label class="btn btn-outline-primary" for="modeRange">Date range</label>
+                </div>
+            </div>
+            <div class="col-auto period-day {% if filters.mode == 'range' %}d-none{% endif %}">
+                <label class="form-label" for="registerDate">Date</label>
+                <div class="input-group input-group-sm">
+                    <button type="button" class="btn btn-outline-secondary" id="prevDay" title="Previous day"><i class="bi bi-chevron-left"></i></button>
+                    <input type="date" name="date" id="registerDate" class="form-control" value="{{ filters.date|date:'Y-m-d' }}">
+                    <button type="button" class="btn btn-outline-secondary" id="nextDay" title="Next day"><i class="bi bi-chevron-right"></i></button>
+                </div>
+            </div>
+            <div class="col-auto period-range {% if filters.mode == 'day' %}d-none{% endif %}">
+                <label class="form-label" for="registerFrom">From</label>
+                <input type="date" name="date_from" id="registerFrom" class="form-control form-control-sm" value="{{ filters.date_from|date:'Y-m-d' }}">
+            </div>
+            <div class="col-auto period-range {% if filters.mode == 'day' %}d-none{% endif %}">
+                <label class="form-label" for="registerTo">To</label>
+                <input type="date" name="date_to" id="registerTo" class="form-control form-control-sm" value="{{ filters.date_to|date:'Y-m-d' }}">
+            </div>
+            <div class="col-auto">
+                <label class="form-label" for="registerStatus">Status</label>
+                <select name="status" id="registerStatus" class="form-select form-select-sm">
+                    <option value="">All statuses</option>
+                    {% for key, label in status_options %}<option value="{{ key }}" {% if filters.status == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label" for="registerStore">Store</label>
+                <select name="store" id="registerStore" class="form-select form-select-sm">
+                    <option value="">All stores</option>
+                    {% for key, label in store_options %}<option value="{{ key }}" {% if filters.store == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col">
+                <label class="form-label" for="registerQ">Search</label>
+                <input type="search" name="q" id="registerQ" value="{{ filters.q }}" class="form-control form-control-sm" placeholder="Client, invoice, OLF/DC, serial, barcode, part no">
+            </div>
+            <div class="col-auto">
+                <div class="form-check mb-1">
+                    <input class="form-check-input" type="checkbox" name="main_only" value="1" id="registerMainOnly" {% if filters.main_only %}checked{% endif %}>
+                    <label class="form-check-label small" for="registerMainOnly" title="Hide the parts that went out inside a server or controller">Main items only</label>
+                </div>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Apply</button>
+                <a href="{% url 'stock_out_register' %}" class="btn btn-link btn-sm">Today</a>
+            </div>
+        </div>
+    </form>
+
+    <div class="dashboard-summary mb-2">
+        <div class="dash-card"><span>Stock Outs</span><strong>{{ total_count }}</strong></div>
+        <div class="dash-card"><span>Clients</span><strong>{{ unique_clients }}</strong></div>
+        <div class="dash-card"><span>Invoices</span><strong>{{ unique_invoices }}</strong></div>
+    </div>
+
+    {% if status_counts %}
+    <div class="d-flex flex-wrap gap-2 mb-3" aria-label="Stock outs by status">
+        <a class="status-chip {% if not filters.status %}active{% endif %}" href="?{{ export_query }}" data-status="">All <strong>{{ all_status_total }}</strong></a>
+        {% for key, label, n in status_counts %}
+        <a class="status-chip {% if filters.status == key %}active{% endif %}" href="#" data-status="{{ key }}">{{ label }} <strong>{{ n }}</strong></a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle inventory-list-table register-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Category</th>
+                    <th>Brand / Model</th>
+                    <th>Part No</th>
+                    <th>Serial No</th>
+                    <th>Barcode</th>
+                    <th>Client</th>
+                    <th>Invoice No</th>
+                    <th>OLF / DC No</th>
+                    <th>Store</th>
+                    <th>Part Of</th>
+                    <th>Exp. Return</th>
+                    <th>By</th>
+                    <th>Current State</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.out_date|date:"d-m-Y" }}</td>
+                    <td><span class="badge {% if r.status == 'SALE' %}bg-danger{% elif r.status == 'RENT' %}bg-primary{% elif r.status == 'SCRAP' %}bg-dark{% elif r.status == 'FAULTY' or r.status == 'DAMAGED' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ r.status_label }}</span></td>
+                    <td>{{ r.category }}</td>
+                    <td class="wrap">{{ r.brand }}{% if r.brand and r.model %} · {% endif %}{{ r.model }}</td>
+                    <td>{{ r.part_no }}</td>
+                    <td>{% if can_history %}<a href="{% url 'asset_movement_ledger' r.product_id %}" title="Full history">{{ r.serial_no|default:"—" }}</a>{% else %}{{ r.serial_no|default:"—" }}{% endif %}</td>
+                    <td><code>{{ r.barcode }}</code></td>
+                    <td class="wrap fw-semibold">{{ r.client|default:"—" }}</td>
+                    <td>{{ r.invoice|default:"—" }}</td>
+                    <td>{{ r.olf_dc|default:"—" }}</td>
+                    <td>{{ r.store }}</td>
+                    <td class="wrap small text-muted">{{ r.installed_in }}</td>
+                    <td>{{ r.expected_return|date:"d-m-Y" }}</td>
+                    <td>{{ r.performed_by }}</td>
+                    <td class="{% if r.still_out %}state-out{% else %}state-back{% endif %}">{{ r.current_state }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="15" class="text-center text-muted py-4">No stock outs for this period{% if filters.status or filters.store or filters.q %} with these filters{% endif %}.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% include "partials/list_pagination.html" %}
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const form = document.getElementById('registerFilters');
+    const show = function () {
+        const range = document.getElementById('modeRange').checked;
+        form.querySelectorAll('.period-day').forEach(el => el.classList.toggle('d-none', range));
+        form.querySelectorAll('.period-range').forEach(el => el.classList.toggle('d-none', !range));
+    };
+    form.querySelectorAll('input[name="mode"]').forEach(el => el.addEventListener('change', show));
+    // Only send the date fields of the chosen period.
+    form.addEventListener('submit', function () {
+        const range = document.getElementById('modeRange').checked;
+        form.querySelectorAll(range ? '.period-day input' : '.period-range input').forEach(el => { el.disabled = true; });
+    });
+    function shiftDay(step) {
+        const input = document.getElementById('registerDate');
+        const d = new Date((input.value || todayLocal()) + 'T00:00:00');
+        d.setDate(d.getDate() + step);
+        input.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        form.requestSubmit();
+    }
+    document.getElementById('prevDay').addEventListener('click', () => shiftDay(-1));
+    document.getElementById('nextDay').addEventListener('click', () => shiftDay(1));
+    document.getElementById('registerDate').addEventListener('change', () => form.requestSubmit());
+    document.querySelectorAll('.status-chip[data-status]').forEach(function (chip) {
+        chip.addEventListener('click', function (e) {
+            e.preventDefault();
+            document.getElementById('registerStatus').value = chip.dataset.status;
+            form.requestSubmit();
+        });
+    });
+})();
+</script>
+{% endblock %}
