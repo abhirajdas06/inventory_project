@@ -187,7 +187,7 @@ EMAIL_BACKEND = os.getenv(
 # Normal way to change who gets mail: Admin Panel -> Report recipients.
 DAILY_REPORT_RECIPIENTS = env_list(
     'DAILY_REPORT_RECIPIENTS',
-    ['abhiraj@zacocomputer.com', 'nazim@zacocomputer.com'],
+    ['nazim@zacoinfotech.com'],
 )
 FAILURE_ALERT_RECIPIENTS = env_list(
     'FAILURE_ALERT_RECIPIENTS', ['abhiraj@zacocomputer.com']
