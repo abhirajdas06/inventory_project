@@ -476,6 +476,9 @@ class ImportJob(models.Model):
     total_rows = models.PositiveIntegerField(default=0)
     processed_rows = models.PositiveIntegerField(default=0)
     success_count = models.PositiveIntegerField(default=0)
+    # Rows that matched an item already in the system and filled in its
+    # missing details (counted inside success_count too).
+    updated_count = models.PositiveIntegerField(default=0)
     error_count = models.PositiveIntegerField(default=0)
     errors = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')

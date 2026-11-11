@@ -1925,3 +1925,159 @@ class StockOutRegisterTests(TestCase):
             self.client.force_login(user)
             self.assertEqual(self.client.get(self.url).status_code, code, role)
             self.assertEqual(self.client.get(reverse('stock_out_register_export')).status_code, code, role)
+
+
+def _harddisk(barcode, size='2.5', **fields):
+    from apps.categories.models import HardDisk
+    cat = SpareCategory.objects.get_or_create(name='HARD DISK')[0]
+    product = Product.objects.create(category=cat, serial_no=f'SN-{barcode}', name=f'HDD {barcode}')
+    disk = HardDisk.objects.create(product=product, barcode=barcode, size=size, **fields)
+    InventoryTransaction.objects.create(product=product, transaction_type='IN', store_location='WH1', stock_status='LIVE')
+    return disk
+
+
+class HardDiskAllFieldsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='hd-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+
+    def test_list_shows_every_excel_column(self):
+        _harddisk('HD-COLS', alt_fru_1='FRU-ONE', alt_fru_2='FRU-TWO', alt_fru_3='FRU-THREE',
+                  retail_part_no='RETAIL-9', spare_part_tray='TRAY-PN-7', gpn_code='GPN-55')
+        html = self.client.get(reverse('harddisk_25_list')).content.decode()
+        for heading in ('Alt FRU 1', 'Alt FRU 2', 'Alt FRU 3', 'Retail Part No', 'Spare Part No-Tray', 'GPN Code'):
+            self.assertIn(f'<th>{heading}</th>', html)
+        for value in ('FRU-ONE', 'FRU-TWO', 'FRU-THREE', 'RETAIL-9', 'TRAY-PN-7', 'GPN-55'):
+            self.assertIn(value, html)
+
+    def test_sold_list_and_export_have_every_column(self):
+        from apps.categories.views import HARDDISK_FIELDS, LIST_MODELS
+        labels = [label for label, _ in HARDDISK_FIELDS]
+        for heading in ('Health', 'GB/S', 'Alt FRU 1', 'GPN Code', 'Brand Serial No', 'OEM Serial No', 'Firmware', 'Reference Location'):
+            self.assertIn(heading, labels)
+        for kind in ('harddisk', 'harddisk_25', 'harddisk_35'):
+            self.assertIs(LIST_MODELS[kind]['fields'], HARDDISK_FIELDS)
+
+
+class HardDiskReimportFillsMissingTests(TestCase):
+    HEADERS = ['Sr No', 'Product', 'Brand', 'OEM', 'Brand Model No', 'OEM Model No', 'Capacity', 'RPM',
+               'Interface(Sas/Sata/Fc)', 'Health', 'GB/S', 'Part No', 'Alt Part no',
+               'Alt Fru No / Alt Part No (1)', 'Alt Fru No / Alt Part No (2)', 'Alt Fru No / Alt Part No (3)',
+               'Retail Part No(Box Pack)', 'Spare Part No-Tray', 'GPN Code', 'Brand Serial no 1', 'Oem Serial no',
+               'Serial No', 'Firmware', 'Size(2.5/3.5)', 'Barcode', 'Tray -Barcode', 'Location',
+               'Reference Location', 'Remark']
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='hd-import', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+
+    def _row(self, barcode, **over):
+        values = dict(zip(self.HEADERS, [1, 'HARD DISK', 'DELL', 'SEAGATE', 'BM-1', 'ST600', '600GB', '10K', 'SAS', 1,
+                                          '6GBPS', '0TFDD', 'ALT-1', 'FRU-1', 'FRU-2', None, None, 'TRAY-PN', 'GPN-1',
+                                          f'BSN-{barcode}', f'OSN-{barcode}', None, 'DE09', 2.5, barcode, f'T-{barcode}',
+                                          'Mwh1/Rack 1', 'MUM DELL ST 1', 'from sheet']))
+        values.update(over)
+        return values
+
+    def _import(self, key, rows, headers=None):
+        headers = headers or self.HEADERS
+        book = Workbook()
+        book.active.append(headers)
+        for row in rows:
+            book.active.append([row.get(h) for h in headers])
+        stream = BytesIO()
+        book.save(stream)
+        job = start_import_job(key, SimpleUploadedFile('hd.xlsx', stream.getvalue()), self.user)
+        while job.status not in ('DONE', 'FAILED'):
+            job = process_import_chunk(job, chunk_size=100, user=self.user)
+        return job
+
+    def test_existing_disk_gets_only_its_blank_fields_filled(self):
+        disk = _harddisk('HD-OLD', capacity='600GB', location='Mwh1/Rack 9', firmware='')
+        transactions_before = InventoryTransaction.objects.filter(product=disk.product).count()
+        job = self._import('harddisk_25', [self._row('HD-OLD', **{'Location': 'SHOULD NOT REPLACE'}), self._row('HD-NEW')])
+        self.assertEqual((job.success_count, job.updated_count, job.error_count), (2, 1, 0), job.errors)
+        disk.refresh_from_db()
+        self.assertEqual(disk.location, 'Mwh1/Rack 9')            # already filled -> kept
+        self.assertEqual(disk.oem, 'SEAGATE')                     # blank -> filled
+        self.assertEqual(disk.alt_fru_1, 'FRU-1')
+        self.assertEqual(disk.gpn_code, 'GPN-1')
+        self.assertEqual(disk.firmware, 'DE09')
+        self.assertEqual(disk.oem_serial_no, 'OSN-HD-OLD')
+        self.assertEqual(disk.brand.name, 'DELL')
+        self.assertEqual(InventoryTransaction.objects.filter(product=disk.product).count(), transactions_before)
+        from apps.categories.models import HardDisk
+        self.assertTrue(HardDisk.objects.filter(barcode='HD-NEW', size='2.5').exists())
+
+    def test_older_sheet_headings_are_accepted(self):
+        _harddisk('HD-ALIAS')
+        headers = [('Brand Serial no' if h == 'Brand Serial no 1' else 'Size' if h == 'Size(2.5/3.5)' else
+                    ' Part No' if h == 'Part No' else 'capacity' if h == 'Capacity' else h) for h in self.HEADERS]
+        row = {h2: self._row('HD-ALIAS')[h1] for h1, h2 in zip(self.HEADERS, headers)}
+        job = self._import('harddisk', [row], headers=headers)
+        self.assertEqual((job.status, job.updated_count, job.error_count), ('DONE', 1, 0), job.errors)
+        from apps.categories.models import HardDisk
+        disk = HardDisk.objects.get(barcode='HD-ALIAS')
+        self.assertEqual(disk.brand_serial_no, 'BSN-HD-ALIAS')
+        self.assertEqual(disk.capacity, '600GB')
+        self.assertEqual(disk.part_no, '0TFDD')
+
+    def test_import_page_shows_existing_updated_count(self):
+        self.client.force_login(self.user)
+        html = self.client.get(reverse('inventory_import')).content.decode()
+        self.assertIn('id="updatedCount"', html)
+
+
+class SearchEveryColumnTests(TestCase):
+    """The search box on list pages looks in every column, word by word."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='search-all', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+
+    def _found(self, url_name, q, needle, args=(), **params):
+        return needle in self.client.get(reverse(url_name, args=args), {'q': q, **params}).content.decode()
+
+    def test_hard_disk_list_searches_every_column(self):
+        _harddisk('HD-S1', gpn_code='GPN-ZETA', alt_fru_2='FRU-OMEGA', firmware='FWX9', oem_serial_no='OEMSN-77',
+                  capacity='600GB', interface='SAS', reference_location='MUM DELL ST 999')
+        _harddisk('HD-S2', capacity='300GB', interface='SATA')
+        for q in ('GPN-ZETA', 'fru-omega', 'FWX9', 'OEMSN-77', 'MUM DELL ST 999', '600GB SAS'):
+            self.assertTrue(self._found('harddisk_25_list', q, 'HD-S1'), q)
+            self.assertFalse(self._found('harddisk_25_list', q, 'HD-S2'), q)
+
+    def test_store_and_status_columns_are_searchable(self):
+        from apps.categories.models import Spare
+        cat = SpareCategory.objects.get_or_create(name='CABLE')[0]
+        product = Product.objects.create(category=cat, serial_no='SN-WH2', name='Cable WH2')
+        Spare.objects.create(product=product, barcode='CBL-WH2', specs='FIBRE LC-LC 3M')
+        InventoryTransaction.objects.create(product=product, transaction_type='IN', store_location='WH2', stock_status='LIVE')
+        url_args = ['spare_cable']
+        self.assertTrue(self._found('spare_subcategory_list', 'WH2', 'CBL-WH2', url_args))
+        self.assertTrue(self._found('spare_subcategory_list', 'lc-lc', 'CBL-WH2', url_args))
+        self.assertFalse(self._found('spare_subcategory_list', 'WH3', 'CBL-WH2', url_args))
+
+    def test_server_list_searches_machine_type_and_remark(self):
+        cat = SpareCategory.objects.get_or_create(name='SERVER')[0]
+        product = Product.objects.create(category=cat, serial_no='SRCH-SRV', name='Server')
+        Server.objects.create(product=product, service_tag='SRCH-SRV', machine_no='MUM X 1', machine_type='RACK SERVER',
+                              group='rack_server', remark='needs rail kit', barcode='SRV-BC-1')
+        InventoryTransaction.objects.create(product=product, transaction_type='IN', store_location='WH1', stock_status='LIVE')
+        # No motherboard in it, so it sits on the Empty tab.
+        self.assertTrue(self._found('server_group_empty_list', 'rail kit', 'SRCH-SRV', ['rack_server']))
+        self.assertTrue(self._found('server_group_empty_list', 'SRV-BC-1', 'SRCH-SRV', ['rack_server']))
+        self.assertTrue(self._found('server_group_empty_list', 'rack server', 'SRCH-SRV', ['rack_server']))
+        self.assertFalse(self._found('server_group_empty_list', 'blade', 'SRCH-SRV', ['rack_server']))
+
+    def test_sold_and_stock_out_status_lists_search_barcode_and_client(self):
+        disk = _harddisk('HD-SOLD', gpn_code='GPN-SOLD')
+        InventoryTransaction.objects.create(product=disk.product, transaction_type='OUT', store_location='WH1',
+                                            stock_status='RENT', client_name='Delta Corp', invoice_no='INV-9')
+        self.assertTrue(self._found('inventory_sold', 'GPN-SOLD', 'SN-HD-SOLD', ['harddisk_25'], status=''))
+        self.assertTrue(self._found('inventory_sold', 'delta corp', 'SN-HD-SOLD', ['harddisk_25'], status=''))
+        self.assertFalse(self._found('inventory_sold', 'GPN-OTHER', 'SN-HD-SOLD', ['harddisk_25'], status=''))
+        self.assertTrue(self._found('stock_out_status_list', 'HD-SOLD', 'SN-HD-SOLD', ['RENT']))
+        self.assertTrue(self._found('stock_out_status_list', 'delta', 'SN-HD-SOLD', ['RENT']))
+        self.assertFalse(self._found('stock_out_status_list', 'nobody', 'SN-HD-SOLD', ['RENT']))

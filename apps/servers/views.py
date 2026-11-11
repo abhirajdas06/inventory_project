@@ -3,6 +3,7 @@ import traceback
 from datetime import date
  
 from django.utils import timezone
+from apps.core.search import apply_search, item_lookups
 from django.contrib import messages
 from django.http import JsonResponse
 from django.http import HttpResponse
@@ -206,13 +207,7 @@ def _search_in_stock_servers(q, group=None):
     if group:
         servers = servers.filter(group=group)
     if q:
-        server_filter = (
-            Q(machine_no__icontains=q) | Q(service_tag__icontains=q) |
-            Q(model__icontains=q) | Q(part_no__icontains=q) |
-            Q(barcode__icontains=q) | Q(location__icontains=q) |
-            Q(component_search__icontains=q)
-        )
-        servers = servers.filter(server_filter)
+        servers = apply_search(servers, q, item_lookups(Server) + ['component_search'])
     return _exclude_out_or_frozen(servers)
 
 
@@ -257,13 +252,7 @@ def server_empty_list(request, group=None):
 
 
 def _server_sold_search(qs, q):
-    if not q:
-        return qs
-    return qs.filter(
-        Q(service_tag__icontains=q) | Q(machine_no__icontains=q) | Q(model__icontains=q) |
-        Q(machine_type__icontains=q) | Q(product__serial_no__icontains=q) |
-        Q(latest_client__icontains=q) | Q(latest_invoice__icontains=q) | Q(latest_olf_dc__icontains=q)
-    )
+    return apply_search(qs, q, item_lookups(Server))
 
 
 def server_out_list(request, group=None):

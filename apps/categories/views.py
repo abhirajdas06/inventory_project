@@ -5,6 +5,7 @@ from django.db.models import OuterRef, Q, Subquery
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from apps.categories.models import CPU, Spare, Card, Controller, NetworkingSpare, Memory, SFP, RailKit, HardDisk
+from apps.core.search import apply_search, item_lookups
 from apps.categories.spare_subcategories import SPARE_KIND_KEYS, SPARE_SUBCATEGORIES, spare_kind_key, spare_subcategory_q
 from apps.core.services import create_product_and_railkit, create_controller_with_components, create_product_and_card, create_product_and_cpu, create_product_and_memory, create_product_and_sfp, create_product_and_spare, create_product_and_harddisk
 from apps.core.models import Product, SpareCategory, Brand
@@ -38,15 +39,9 @@ def _exclude_out_or_frozen(qs):
 
 
 def _list_search(queryset, query, model_class):
-    """Apply indexed identity/location filters before the costly list annotations."""
-    if not query:
-        return queryset
-    model_fields = {field.name for field in model_class._meta.get_fields()}
-    filters = Q(product__name__icontains=query) | Q(product__serial_no__icontains=query) | Q(product__part_no__icontains=query)
-    for field in ('barcode', 'part_no', 'alt_part_no', 'location', 'reference_location', 'remark', 'model'):
-        if field in model_fields:
-            filters |= Q(**{f'{field}__icontains': query})
-    return queryset.filter(filters)
+    """Search every column of the list (all text fields of the model, its
+    brand and product) — see apps.core.search."""
+    return apply_search(queryset, query, item_lookups(model_class))
 
 
 def _mark_latest_stock_in_user(product, user):
@@ -275,17 +270,7 @@ def spare_out_report(request):
         latest_type='OUT'   # ONLY STOCKED OUT
     )
 
-    spares = all_out_spares
-    if q:
-        spares = spares.filter(
-            Q(product__name__icontains=q) |
-            Q(product__serial_no__icontains=q) |
-            Q(part_no__icontains=q) |
-            Q(barcode__icontains=q) |
-            Q(latest_client__icontains=q) |
-            Q(latest_invoice__icontains=q) |
-            Q(latest_olf_dc__icontains=q)
-        )
+    spares = apply_search(all_out_spares, q, item_lookups(all_out_spares.model))
 
     # Status / store / brand / out-date filters are applied by the shared helper.
     context = paginated_list_context(request, spares.order_by('-latest_out_date', '-id'), 'spares')
@@ -519,11 +504,7 @@ def controller_list(request):
             delimiter=' ',
             distinct=True,
         ))
-        controllers = controllers.filter(
-            Q(product__name__icontains=q) | Q(product__serial_no__icontains=q) |
-            Q(part_no__icontains=q) | Q(barcode__icontains=q) |
-            Q(location__icontains=q) | Q(component_search__icontains=q)
-        )
+        controllers = apply_search(controllers, q, item_lookups(controllers.model) + ['component_search'])
     controllers = _exclude_out_or_frozen(controllers)
  
     return render(request, 'controller/controller_list.html', paginated_list_context(
@@ -1354,6 +1335,19 @@ def _annotated_category_queryset(model_class, sold=False, include_stocked_out=Fa
     return qs if include_stocked_out else _exclude_out_or_frozen(qs)
 
 
+# Every Hard Disk column, in the order of the HARDDISK 2.5 / 3.5 Excel sheets.
+HARDDISK_FIELDS = [
+    ('Product', 'product.name'), ('Brand', 'brand.name'), ('OEM', 'oem'),
+    ('Brand Model No', 'brand_model_no'), ('OEM Model No', 'oem_model_no'), ('Model', 'model'),
+    ('Capacity', 'capacity'), ('RPM', 'rpm'), ('Interface', 'interface'), ('Health', 'health'), ('GB/S', 'gb_s'),
+    ('Part No', 'part_no'), ('Alt Part No', 'alt_part_no'),
+    ('Alt FRU 1', 'alt_fru_1'), ('Alt FRU 2', 'alt_fru_2'), ('Alt FRU 3', 'alt_fru_3'),
+    ('Retail Part No', 'retail_part_no'), ('Spare Part No-Tray', 'spare_part_tray'), ('GPN Code', 'gpn_code'),
+    ('Brand Serial No', 'brand_serial_no'), ('OEM Serial No', 'oem_serial_no'), ('Serial No', 'product.serial_no'),
+    ('Firmware', 'firmware'), ('Size', 'size'), ('Barcode', 'barcode'), ('Tray Barcode', 'tray_barcode'),
+    ('Location', 'location'), ('Reference Location', 'reference_location'), ('Remark', 'remark'),
+]
+
 LIST_MODELS = {
     'spare': {
         'label': 'Spare',
@@ -1425,7 +1419,7 @@ LIST_MODELS = {
         'model': HardDisk,
         'add_url': 'add_harddisk',
         'list_url': 'harddisk_list',
-        'fields': [('Product', 'product.name'), ('Brand', 'brand.name'), ('OEM', 'oem'), ('Brand Model', 'brand_model_no'), ('OEM Model', 'oem_model_no'), ('Model', 'model'), ('Capacity', 'capacity'), ('RPM', 'rpm'), ('Interface', 'interface'), ('Size', 'size'), ('Part No', 'part_no'), ('Serial', 'product.serial_no'), ('Barcode', 'barcode'), ('Tray Barcode', 'tray_barcode'), ('Location', 'location'), ('Remark', 'remark')],
+        'fields': HARDDISK_FIELDS,
     },
     'harddisk_25': {
         'label': '2.5" Hard Disk',
@@ -1433,7 +1427,7 @@ LIST_MODELS = {
         'add_url': 'add_harddisk',
         'list_url': 'harddisk_25_list',
         'category_q': Q(size='2.5'),
-        'fields': [('Product', 'product.name'), ('Brand', 'brand.name'), ('OEM', 'oem'), ('Brand Model', 'brand_model_no'), ('OEM Model', 'oem_model_no'), ('Model', 'model'), ('Capacity', 'capacity'), ('RPM', 'rpm'), ('Interface', 'interface'), ('Size', 'size'), ('Part No', 'part_no'), ('Serial', 'product.serial_no'), ('Barcode', 'barcode'), ('Tray Barcode', 'tray_barcode'), ('Location', 'location'), ('Remark', 'remark')],
+        'fields': HARDDISK_FIELDS,
     },
     'harddisk_35': {
         'label': '3.5" Hard Disk',
@@ -1441,7 +1435,7 @@ LIST_MODELS = {
         'add_url': 'add_harddisk',
         'list_url': 'harddisk_35_list',
         'category_q': Q(size='3.5'),
-        'fields': [('Product', 'product.name'), ('Brand', 'brand.name'), ('OEM', 'oem'), ('Brand Model', 'brand_model_no'), ('OEM Model', 'oem_model_no'), ('Model', 'model'), ('Capacity', 'capacity'), ('RPM', 'rpm'), ('Interface', 'interface'), ('Size', 'size'), ('Part No', 'part_no'), ('Serial', 'product.serial_no'), ('Barcode', 'barcode'), ('Tray Barcode', 'tray_barcode'), ('Location', 'location'), ('Remark', 'remark')],
+        'fields': HARDDISK_FIELDS,
     },
     'networking_spare': {
         'label': 'Networking Spare',
@@ -1526,20 +1520,7 @@ def _generic_list_context(kind, sold=False, status=None, filters=None, request=N
         items = items.filter(latest_out_date__gte=date_from)
     if sold and date_to:
         items = items.filter(latest_out_date__lte=date_to)
-    if q:
-        q_obj = (
-            Q(product__name__icontains=q) |
-            Q(product__serial_no__icontains=q) |
-            Q(product__part_no__icontains=q) |
-            Q(barcode__icontains=q)
-        )
-        if sold:
-            q_obj |= (
-                Q(latest_client__icontains=q) |
-                Q(latest_invoice__icontains=q) |
-                Q(latest_olf_dc__icontains=q)
-            )
-        items = items.filter(q_obj)
+    items = apply_search(items, q, item_lookups(items.model))
 
     page_context = paginated_list_context(request, items.order_by('-id'), 'items') if request else None
     page_items = page_context['items'] if page_context else items
@@ -1604,8 +1585,7 @@ def inventory_faulty_list(request, kind):
     config = LIST_MODELS[kind]
     items = _scoped_queryset(config, include_stocked_out=True).filter(latest_status__in=('FAULTY', 'DAMAGED'))
     q = request.GET.get('q', '').strip()
-    if q:
-        items = items.filter(Q(product__name__icontains=q) | Q(product__serial_no__icontains=q) | Q(barcode__icontains=q))
+    items = apply_search(items, q, item_lookups(items.model))
     page_context = paginated_list_context(
         request, items.order_by('-id'), 'items',
         status_options=[('FAULTY', 'Faulty'), ('DAMAGED', 'Damaged')], sold=False,
@@ -1875,6 +1855,7 @@ def process_import(request, job_id):
             'processed_rows': job.processed_rows,
             'total_rows': job.total_rows,
             'success_count': job.success_count,
+            'updated_count': job.updated_count,
             'error_count': job.error_count,
             'errors': job.errors[-50:],
             'percent': round((job.processed_rows / job.total_rows) * 100, 2) if job.total_rows else 100,

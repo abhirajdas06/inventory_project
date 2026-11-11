@@ -105,6 +105,7 @@
 
     <div class="mt-3 small">
         <span class="badge text-bg-success">Success <span id="successCount">0</span></span>
+        <span class="badge text-bg-info" title="Rows that matched an item already in the system and filled in its missing details">Existing updated <span id="updatedCount">0</span></span>
         <span class="badge text-bg-danger">Errors <span id="errorCount">0</span></span>
     </div>
 
@@ -197,6 +198,7 @@
         bar.style.width = pct + '%';
         percent.textContent = pct + '%';
         success.textContent = data.success_count || 0;
+        document.getElementById('updatedCount').textContent = data.updated_count || 0;
         errors.textContent = data.error_count || 0;
         status.textContent = `${data.processed_rows || 0} of ${data.total_rows || 0} rows processed`;
         errorBox.innerHTML = '';

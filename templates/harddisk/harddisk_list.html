@@ -47,6 +47,12 @@
                         <th>Size</th>
                         <th>Part No</th>
                         <th>Alt Part</th>
+                        <th>Alt FRU 1</th>
+                        <th>Alt FRU 2</th>
+                        <th>Alt FRU 3</th>
+                        <th>Retail Part No</th>
+                        <th>Spare Part No-Tray</th>
+                        <th>GPN Code</th>
                         <th>Brand Serial</th>
                         <th>OEM Serial</th>
                         <th>Serial</th>
@@ -104,6 +110,12 @@
 
                         <td>{{ hd.part_no }}</td>
                         <td>{{ hd.alt_part_no }}</td>
+                        <td>{{ hd.alt_fru_1|default:"" }}</td>
+                        <td>{{ hd.alt_fru_2|default:"" }}</td>
+                        <td>{{ hd.alt_fru_3|default:"" }}</td>
+                        <td>{{ hd.retail_part_no|default:"" }}</td>
+                        <td>{{ hd.spare_part_tray|default:"" }}</td>
+                        <td>{{ hd.gpn_code|default:"" }}</td>
                         <td class="truncate">{{ hd.brand_serial_no }}</td>
                         <td class="truncate">{{ hd.oem_serial_no }}</td>
                         <td><code>{{ hd.product.serial_no }}</code></td>
@@ -175,7 +187,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="28" class="text-center text-muted py-4">
+                        <td colspan="34" class="text-center text-muted py-4">
                             No hard disk records found.
                         </td>
                     </tr>

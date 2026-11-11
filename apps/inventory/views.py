@@ -25,6 +25,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from apps.core.permissions import has_permission
 from apps.core.pagination import paginated_list_context
+from apps.core.search import apply_search, product_lookups, text_fields
 from openpyxl import load_workbook
 
 
@@ -608,8 +609,7 @@ def _apply_status_update(product, user, new_status, remarks):
 def sales_return_history(request):
     records = SalesReturn.objects.select_related('product', 'returned_by').all()
     q = request.GET.get('q', '').strip()
-    if q:
-        records = records.filter(Q(product__name__icontains=q) | Q(product__serial_no__icontains=q) | Q(remarks__icontains=q))
+    records = apply_search(records, q, text_fields(SalesReturn) + product_lookups('product__'), distinct=True)
     context = paginated_list_context(request, records.order_by('-returned_on', '-id'), 'records')
     return render(request, 'inventory/sales_return_list.html', context)
 
@@ -634,15 +634,7 @@ def stock_out_status_list(request, status):
     ).filter(latest_type='OUT', latest_status=status)
 
     q = request.GET.get('q', '').strip()
-    if q:
-        products = products.filter(
-            Q(name__icontains=q) |
-            Q(serial_no__icontains=q) |
-            Q(part_no__icontains=q) |
-            Q(latest_client__icontains=q) |
-            Q(latest_invoice__icontains=q) |
-            Q(latest_olf_dc__icontains=q)
-        )
+    products = apply_search(products, q, product_lookups(), distinct=True)
 
     # The status is fixed by the page itself, so the Status filter is not offered.
     page_context = paginated_list_context(request, products.order_by('-id'), 'products', filter_hide=('status',))
@@ -771,13 +763,8 @@ def audit_report(request):
     date_to = request.GET.get('date_to', '').strip()
 
     if q:
-        audits = audits.filter(
-            Q(product__name__icontains=q) |
-            Q(product__serial_no__icontains=q) |
-            Q(product__part_no__icontains=q) |
-            Q(audit_remark__icontains=q) |
-            Q(store_location__icontains=q)
-        )
+        audits = apply_search(audits, q, text_fields(InventoryTransaction) + ['audited_by__username']
+                              + product_lookups('product__'), distinct=True)
     if user_id:
         audits = audits.filter(audited_by_id=user_id)
     if result:
@@ -1208,14 +1195,8 @@ def transfer_history(request):
     date_from = request.GET.get('date_from', '').strip()
     date_to = request.GET.get('date_to', '').strip()
     if q:
-        transfers = transfers.filter(
-            Q(product__name__icontains=q) |
-            Q(product__serial_no__icontains=q) |
-            Q(source_warehouse__icontains=q) |
-            Q(destination_warehouse__icontains=q) |
-            Q(destination_location__icontains=q) |
-            Q(remarks__icontains=q)
-        )
+        transfers = apply_search(transfers, q, text_fields(InventoryTransfer) + ['transferred_by__username']
+                                 + product_lookups('product__'), distinct=True)
     if date_from:
         transfers = transfers.filter(created_at__date__gte=date_from)
     if date_to:
@@ -1388,12 +1369,7 @@ def frozen_inventory_list(request):
 
     q = request.GET.get('q', '').strip()
     if q:
-        products = products.filter(
-            Q(name__icontains=q) |
-            Q(serial_no__icontains=q) |
-            Q(part_no__icontains=q) |
-            Q(freeze_reason__icontains=q)
-        )
+        products = apply_search(products, q, product_lookups() + ['freeze_reason', 'frozen_by_name'], distinct=True)
 
     total_frozen = Product.objects.annotate(
         freeze_status=Subquery(latest.values('status')[:1]),
@@ -1417,9 +1393,7 @@ def audit_finding_list(request):
     date_from = request.GET.get('date_from', '').strip()
     date_to = request.GET.get('date_to', '').strip()
     if q:
-        findings = findings.filter(
-            Q(remarks__icontains=q) | Q(person_involved__icontains=q)
-        )
+        findings = apply_search(findings, q, text_fields(AuditFinding) + ['created_by__username'])
     if date_from:
         findings = findings.filter(audit_date__gte=date_from)
     if date_to:
@@ -1474,9 +1448,8 @@ def general_audit_finding_list(request):
     date_from = request.GET.get('date_from', '').strip()
     date_to = request.GET.get('date_to', '').strip()
     if q:
-        findings = findings.filter(
-            Q(title__icontains=q) | Q(remarks__icontains=q) | Q(person__icontains=q)
-        )
+        findings = apply_search(findings, q, text_fields(GeneralAuditFinding)
+                                + ['created_by__username', 'attended_by__username'])
     if status:
         findings = findings.filter(status=status)
     if date_from:
@@ -1555,14 +1528,7 @@ def activity_trail(request):
     date_from = request.GET.get('date_from', '').strip()
     date_to = request.GET.get('date_to', '').strip()
     if q:
-        logs = logs.filter(
-            Q(barcode__icontains=q) |
-            Q(entity__icontains=q) |
-            Q(action__icontains=q) |
-            Q(remarks__icontains=q) |
-            Q(location__icontains=q) |
-            Q(warehouse__icontains=q)
-        )
+        logs = apply_search(logs, q, text_fields(ActivityLog) + ['user__username'])
     if action:
         logs = logs.filter(action=action)
     if user_id:
@@ -1952,13 +1918,8 @@ def rental_list(request):
     if status in ('ON_RENT', 'RETURNED'):
         records = records.filter(status=status)
     if q:
-        records = records.filter(
-            Q(product__name__icontains=q) |
-            Q(product__serial_no__icontains=q) |
-            Q(client_name__icontains=q) |
-            Q(invoice_no__icontains=q) |
-            Q(olf_dc_number__icontains=q)
-        )
+        records = apply_search(records, q, text_fields(RentalRecord) + ['rented_out_by__username', 'returned_by__username']
+                               + product_lookups('product__'), distinct=True)
     if date_from:
         records = records.filter(rent_out_date__gte=date_from)
     if date_to:
@@ -1982,7 +1943,7 @@ def mapping_history(request):
     date_from = request.GET.get('date_from', '').strip()
     date_to = request.GET.get('date_to', '').strip()
     if q:
-        logs = logs.filter(Q(entity__icontains=q) | Q(barcode__icontains=q) | Q(remarks__icontains=q))
+        logs = apply_search(logs, q, text_fields(ActivityLog) + ['user__username'])
     if date_from:
         logs = logs.filter(timestamp__date__gte=date_from)
     if date_to:

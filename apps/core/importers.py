@@ -329,6 +329,107 @@ for _hdd_key, _hdd_size in HARDDISK_SIZE_IMPORTS.items():
 
 
 # ════════════════════════════════════════════════════════════
+#  HARD DISK — fill missing details on disks that already exist
+# ════════════════════════════════════════════════════════════
+# Re-importing a Hard Disk sheet doesn't reject barcodes that are already in
+# the system: it fills in the details those disks are missing (blank fields
+# only — nothing already filled in is overwritten) and leaves their stock
+# status alone. New barcodes are stocked in as usual.
+HARDDISK_IMPORT_KEYS = {'harddisk', 'harddisk_25', 'harddisk_35'}
+
+# Older sheets (Sold / Rent / Open tabs) title some columns differently.
+HEADER_ALIASES = {
+    'harddisk': {
+        'BRAND SERIAL NO': 'BRAND SERIAL NO 1',
+        'SIZE': 'SIZE(2.5/3.5)',
+        'SIZE (2.5/3.5)': 'SIZE(2.5/3.5)',
+        'INTERFACE (SAS/SATA/FC)': 'INTERFACE(SAS/SATA/FC)',
+    },
+}
+
+
+def _alias_family(model_key):
+    base = _base_key(model_key or '')
+    return 'harddisk' if base in HARDDISK_IMPORT_KEYS else base
+
+
+def _sheet_header(header, model_key):
+    """Normalised sheet header, with known spelling variants mapped to the
+    header the import expects."""
+    key = _normalize_header(header)
+    return HEADER_ALIASES.get(_alias_family(model_key), {}).get(key, key)
+
+
+_HARDDISK_FILL_FIELDS = (
+    'oem', 'brand_model_no', 'oem_model_no', 'capacity', 'rpm', 'interface', 'size',
+    'part_no', 'alt_part_no', 'alt_fru_1', 'alt_fru_2', 'alt_fru_3', 'retail_part_no',
+    'spare_part_tray', 'gpn_code', 'brand_serial_no', 'oem_serial_no', 'firmware',
+    'health', 'gb_s', 'tray_barcode', 'location', 'reference_location', 'remark',
+)
+
+
+def _blank(value):
+    return value is None or str(value).strip() == ''
+
+
+def fill_missing_harddisk_fields(harddisk, data):
+    """Copy values from an import row into the disk's BLANK fields only.
+    Returns the list of fields that were filled."""
+    filled = []
+    for field in _HARDDISK_FILL_FIELDS:
+        new = data.get(field)
+        if not _blank(new) and _blank(getattr(harddisk, field)):
+            setattr(harddisk, field, str(new).strip())
+            filled.append(field)
+    brand_name = (data.get('brand') or '').strip().upper()
+    if brand_name and harddisk.brand_id is None:
+        harddisk.brand, _ = Brand.objects.get_or_create(name=brand_name)
+        filled.append('brand')
+    if filled:
+        harddisk.save(update_fields=filled)
+
+    product = harddisk.product
+    product_filled = []
+    for field, value in (('serial_no', (data.get('serial_no') or '').strip().upper()),
+                         ('part_no', data.get('part_no')),
+                         ('model', data.get('oem_model_no') or data.get('brand_model_no'))):
+        if not _blank(value) and _blank(getattr(product, field)):
+            setattr(product, field, value)
+            product_filled.append(field)
+    if product_filled:
+        product.save(update_fields=product_filled)
+    return filled + [f'product.{f}' for f in product_filled]
+
+
+def _existing_harddisk(data):
+    from apps.categories.models import HardDisk
+    barcode = (data.get('barcode') or '').strip()
+    if not barcode:
+        return None
+    return HardDisk.objects.select_related('product').filter(barcode__iexact=barcode).first()
+
+
+def _harddisk_fill_or_create(create, model_key):
+    """Wrap a Hard Disk creator: an existing barcode gets its blanks filled
+    instead of failing as a duplicate."""
+    def _run(data):
+        existing = _existing_harddisk(data)
+        if existing is None:
+            return create(data)
+        size = HARDDISK_SIZE_IMPORTS.get(model_key)
+        filled = fill_missing_harddisk_fields(existing, {**data, 'size': size} if size else data)
+        product = existing.product
+        product._import_updated = True
+        product._import_filled = filled
+        return product
+    return _run
+
+
+for _hdd_key in HARDDISK_IMPORT_KEYS:
+    CREATE_BY_KEY[_hdd_key] = _harddisk_fill_or_create(CREATE_BY_KEY[_hdd_key], _hdd_key)
+
+
+# ════════════════════════════════════════════════════════════
 #  STOCK OUT IMPORT — per category
 #
 #  Every inventory category gets a "<key>_stock_out" import that
@@ -460,7 +561,7 @@ def start_import_job(model_key, upload, user, store_location=None):
     expected = REQUIRED_HEADERS.get(model_key, set(HEADER_MAPS[model_key]))
     if model_key == 'stock_out':
         expected = {'Barcode No'}  # the other five columns are optional (blank -> Sale / today)
-    present = {_normalize_header(h) for h in headers}
+    present = {_sheet_header(h, model_key) for h in headers}
     missing = sorted(h for h in expected if _normalize_header(h) not in present)
     if missing:
         job.status = 'FAILED'
@@ -484,7 +585,7 @@ def process_import_chunk(job, chunk_size=100, user=None):
     wb = load_workbook(job.upload.path, read_only=True, data_only=True)
     ws = select_sheet(wb, job.model_key)
     headers = [clean_value(c.value) for c in next(ws.iter_rows(min_row=1, max_row=1))]
-    normalized_headers = [_normalize_header(h) for h in headers]
+    normalized_headers = [_sheet_header(h, job.model_key) for h in headers]
     field_map = HEADER_MAPS[job.model_key]
     processed_this_call = 0
     seen_data_rows = 0
@@ -533,7 +634,10 @@ def process_import_chunk(job, chunk_size=100, user=None):
         try:
             with transaction.atomic():
                 product = import_row(job.model_key, row, user=user)
-                mark_latest_stock_user(product, user)
+                if getattr(product, '_import_updated', False):
+                    job.updated_count += 1
+                else:
+                    mark_latest_stock_user(product, user)
             job.success_count += 1
         except Exception as exc:
             job.error_count += 1
@@ -549,7 +653,7 @@ def process_import_chunk(job, chunk_size=100, user=None):
         job.status = 'DONE'
 
     job.save(update_fields=[
-        'processed_rows', 'success_count', 'error_count', 'errors', 'status', 'updated_at'
+        'processed_rows', 'success_count', 'updated_count', 'error_count', 'errors', 'status', 'updated_at'
     ])
     if just_finished and job.error_count:
         _notify_import_failure(job)
@@ -646,6 +750,11 @@ def import_combined_stock_out_row(base_key, row, user=None):
         product = _product_from_stock_out_row(row)
     except ValueError:
         product = import_row(base_key, row, user=user)
+    else:
+        harddisk = getattr(product, 'harddisk', None) if base_key in HARDDISK_IMPORT_KEYS else None
+        if harddisk is not None:
+            size = HARDDISK_SIZE_IMPORTS.get(base_key)
+            fill_missing_harddisk_fields(harddisk, {**row, 'size': size} if size else row)
 
     # No stock-out details on this row → stock in only.
     if not _row_has_stock_out_details(row):
