@@ -19,13 +19,14 @@ from apps.core.services import (
     create_product_and_spare,
     create_server_with_components,
 )
-from apps.inventory.models import InventoryTransaction
+from apps.inventory.models import NAME_ONLY_STOCK_OUT, STOCK_OUT_ONLY_STATUSES, InventoryTransaction, normalize_stock_status
 from apps.servers.models import Server
 
 
 DEFAULT_STORE = 'WH1'
 DEFAULT_STATUS = 'LIVE'
-VALID_STOCK_STATUSES = {value for value, _ in InventoryTransaction.STOCK_STATUS}
+# Statuses a row can be STOCKED IN with (In-House Use / Return to Vendor are stock-out only).
+VALID_STOCK_STATUSES = {value for value, _ in InventoryTransaction.STOCK_STATUS} - STOCK_OUT_ONLY_STATUSES
 
 
 IMPORT_LABELS = {
@@ -868,10 +869,10 @@ def _apply_stock_out(product, row, user=None):
         create_rental_record,
     )
 
-    stock_status = (row.get('stock_status') or 'SALE').strip().upper()
-    valid_statuses = {value for value, _ in InventoryTransaction.STOCK_STATUS}
-    if stock_status not in valid_statuses:
-        raise ValueError(f'Invalid stock status: {stock_status}')
+    raw_status = (row.get('stock_status') or 'SALE').strip()
+    stock_status = normalize_stock_status(raw_status)
+    if not stock_status:
+        raise ValueError(f'Invalid stock status: {raw_status}')
 
     raw_date = row.get('stock_out_date')
     stock_out_date = date.today()
@@ -890,6 +891,12 @@ def _apply_stock_out(product, row, user=None):
     client_name = row.get('client_name') or ''
     invoice_no = row.get('invoice_no') or ''
     olf_dc_number = row.get('olf_dc_number') or ''
+    if stock_status in NAME_ONLY_STOCK_OUT:
+        # In-house use / return to vendor: the Client column holds the employee / vendor.
+        invoice_no = olf_dc_number = ''
+        if not client_name.strip():
+            who = 'employee (in the Client column)' if stock_status == 'IN_HOUSE' else 'vendor (in the Client column)'
+            raise ValueError(f'{dict(InventoryTransaction.STOCK_STATUS)[stock_status]} needs the {who}')
 
     with transaction.atomic():
         _create_stock_out_transaction(

@@ -4,6 +4,9 @@ from datetime import date, datetime
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from apps.inventory.models import (
+    NAME_ONLY_STOCK_OUT,
+    STOCK_OUT_ONLY_STATUSES,
+    normalize_stock_status,
     AuditFinding,
     GeneralAuditFinding,
     InventoryFreezeRecord,
@@ -170,7 +173,7 @@ _RELATED_ATTRS = (
 
 OPERATIONAL_STOCK_OUT_STATUSES = (
     'TESTING', 'RENT', 'REPLACEMENT', 'ADV_REPLACEMENT',
-    'ON_APPROVAL', 'EMPTY', 'REFILL', 'SCRAP',
+    'ON_APPROVAL', 'EMPTY', 'REFILL', 'SCRAP', 'IN_HOUSE', 'RETURN_TO_VENDOR',
 )
 
 
@@ -321,6 +324,15 @@ def stock_out(request):
         # Frozen stock can only be disposed when explicitly stocked out from
         # the Frozen Stock page (Freeze module → "Mark Sold / Stock Out").
         allow_frozen = request.POST.get('allow_frozen') in ('1', 'true', 'True', 'on')
+
+        stock_status = normalize_stock_status(stock_status) or stock_status
+        if stock_status in NAME_ONLY_STOCK_OUT:
+            # In-house use / return to vendor: a name, never an invoice or DC.
+            client_name = ' '.join((client_name or '').split())
+            invoice_no = olf_dc_number = ''
+            if not client_name:
+                who = 'employee the item is given to' if stock_status == 'IN_HOUSE' else 'vendor'
+                return JsonResponse({'success': False, 'error': f'Please enter the {who}'})
 
         try:
             product = Product.objects.get(id=product_id)
@@ -546,7 +558,7 @@ def update_inventory_status(request):
 # in-stock statuses, so they cannot be set with Update Status.
 UPDATABLE_STATUSES = {value for value, _ in InventoryTransaction.STOCK_STATUS} - {
     'SALE', 'RENT', 'REPLACEMENT', 'ADV_REPLACEMENT',
-}
+} - STOCK_OUT_ONLY_STATUSES
 
 
 def _apply_status_update(product, user, new_status, remarks):
@@ -653,6 +665,8 @@ def stock_out_status_list(request, status):
         'q': q,
         'status': status,
         'status_label': status_labels.get(status, status),
+        # In-House Use / Return to Vendor: one "Given to" / "Vendor" column, no invoice or DC.
+        'name_only_label': {'IN_HOUSE': 'Given To (Employee)', 'RETURN_TO_VENDOR': 'Vendor'}.get(status, ''),
         'statuses': [(value, status_labels.get(value, value)) for value in OPERATIONAL_STOCK_OUT_STATUSES],
         'result_count': page_context['total_count'],
         'total_count': page_context['total_count'],

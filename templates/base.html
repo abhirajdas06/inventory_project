@@ -1103,6 +1103,14 @@
             <a href="{% url 'stock_out_status_list' 'REFILL' %}" class="nav-subitem-link {% nav_active 'stock_out_status_list:REFILL' %}">Refill</a>
             <a href="{% url 'stock_out_status_list' 'SCRAP' %}" class="nav-subitem-link {% nav_active 'stock_out_status_list:SCRAP' %}">Scrap</a>
         </div>
+        <a href="{% url 'stock_out_status_list' 'IN_HOUSE' %}" class="nav-item-link {% nav_active 'stock_out_status_list:IN_HOUSE' %}" data-sb-tip="In-House Use">
+            <i class="bi bi-person-badge"></i>
+            <span class="nav-label">In-House Use</span>
+        </a>
+        <a href="{% url 'stock_out_status_list' 'RETURN_TO_VENDOR' %}" class="nav-item-link {% nav_active 'stock_out_status_list:RETURN_TO_VENDOR' %}" data-sb-tip="Return to Vendor">
+            <i class="bi bi-arrow-return-left"></i>
+            <span class="nav-label">Return to Vendor</span>
+        </a>
         {% endif %}
         {% if can.freeze %}
         <a href="{% url 'frozen_inventory_list' %}" class="nav-item-link {% nav_active 'frozen_inventory_list' %}" data-sb-tip="Frozen Stock">
@@ -1376,6 +1384,8 @@
           <option value="EMPTY">Empty</option>
           <option value="REFILL">Refill</option>
           <option value="SCRAP">Scrap</option>
+          <option value="IN_HOUSE">In-House Use (give to employee)</option>
+          <option value="RETURN_TO_VENDOR">Return to Vendor</option>
         </select>
       </div>
       <div class="mb-2">
@@ -2305,6 +2315,56 @@
             })
             .catch(() => { msgEl.className = 'mt-2 small text-danger'; msgEl.textContent = 'Server error.'; });
     });
+
+    // ── In-House Use / Return to Vendor: a name instead of client + invoice + DC ──
+    // Every stock-out dialog: [status select, name input, invoice input, OLF/DC input, save button].
+    const STOCK_OUT_FORMS = [
+        ['stockOutStatus', 'stockOutClient', 'stockOutInvoice', 'stockOutOlfDc', 'saveStockOut'],
+        ['globalStockOutStatus', 'globalStockOutClient', 'globalStockOutInvoice', 'globalStockOutOlfDc', 'globalSaveStockOut'],
+        ['frozenStockOutStatus', 'frozenStockOutClient', 'frozenStockOutInvoice', 'frozenStockOutOlfDc', 'frozenSaveStockOut'],
+    ];
+    const NAME_ONLY_STATUSES = {
+        IN_HOUSE: { label: 'Given to (employee name) *', placeholder: 'Employee the item is given to', missing: 'Please enter the employee the item is given to.' },
+        RETURN_TO_VENDOR: { label: 'Vendor name *', placeholder: 'Vendor the item is returned to', missing: 'Please enter the vendor name.' },
+    };
+    function applyStockOutMode(form) {
+        const status = document.getElementById(form[0]);
+        const client = document.getElementById(form[1]);
+        if (!status || !client) return;
+        const mode = NAME_ONLY_STATUSES[status.value];
+        const label = client.closest('.mb-2') && client.closest('.mb-2').querySelector('label');
+        if (label) {
+            if (!label.dataset.defaultText) label.dataset.defaultText = label.textContent;
+            label.textContent = mode ? mode.label : label.dataset.defaultText;
+        }
+        client.placeholder = mode ? mode.placeholder : '';
+        [form[2], form[3]].forEach(function (id) {
+            const input = document.getElementById(id);
+            if (!input) return;
+            const wrap = input.closest('.mb-2') || input;
+            wrap.style.display = mode ? 'none' : '';
+            if (mode) input.value = '';
+        });
+    }
+    document.addEventListener('change', function (e) {
+        STOCK_OUT_FORMS.forEach(function (form) { if (e.target && e.target.id === form[0]) applyStockOutMode(form); });
+    });
+    document.addEventListener('shown.bs.modal', function () { STOCK_OUT_FORMS.forEach(applyStockOutMode); });
+    // Block saving without the employee / vendor name (capture phase: runs before each page's own save handler).
+    document.addEventListener('click', function (e) {
+        STOCK_OUT_FORMS.forEach(function (form) {
+            if (!e.target.closest || !e.target.closest('#' + form[4])) return;
+            const status = document.getElementById(form[0]);
+            const client = document.getElementById(form[1]);
+            const mode = status && NAME_ONLY_STATUSES[status.value];
+            if (mode && client && !client.value.trim()) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                alert(mode.missing);
+                client.focus();
+            }
+        });
+    }, true);
 
     // ── Rentals: show "Expected Return Date" only when status is RENT ──
     document.addEventListener('change', function (e) {

@@ -7,18 +7,26 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/inventory-list.css' %}">
+<style>
+  .status-list-tabs { padding: 12px 18px 0; }
+  /* Actions pinned to the right edge while the columns scroll sideways. */
+  .status-actions-col { position: sticky; right: 0; z-index: 2; background: #fff; box-shadow: -8px 0 14px rgba(15, 23, 42, 0.08); white-space: nowrap; }
+  thead .status-actions-col { z-index: 4; background: #eef3fb; }
+  tbody tr:hover .status-actions-col { background: #eef5ff; }
+</style>
 {% endblock %}
 
 {% block content %}
+<div class="container-fluid px-3">
 <div class="inventory-list-shell">
   <div class="inventory-list-toolbar">
     <div>
       <h1 class="inventory-list-title">{{ status_label }} Stock</h1>
-      <div class="inventory-list-subtitle">{{ result_count }} current {{ status_label|lower }} item{{ result_count|pluralize }} across all models</div>
+      <div class="inventory-list-subtitle">{{ result_count }} current {{ status_label|lower }} item{{ result_count|pluralize }} across all models{% if status == 'IN_HOUSE' %} — given to employees; use Return to Stock when an item comes back{% endif %}</div>
     </div>
   </div>
 
-  <div class="mb-2">
+  <div class="status-list-tabs">
     <label class="form-label small mb-1 text-muted">Status lists</label>
     <div class="d-flex flex-wrap gap-1">
       {% for value, label in statuses %}
@@ -28,8 +36,8 @@
   </div>
   {% include "partials/list_filters.html" with search_placeholder="Product, serial, part, client, invoice, OLF/DC" %}
 
-  <div class="table-container">
-    <table class="table table-sm align-middle inventory-list-table" id="stockOutStatusTable">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle inventory-list-table" id="stockOutStatusTable">
       <thead>
         <tr>
           <th>Model</th>
@@ -38,12 +46,15 @@
           <th>Part No</th>
           <th>Barcode</th>
           <th>Store</th>
+          {% if name_only_label %}
+          <th>{{ name_only_label }}</th>
+          {% else %}
           <th>Client</th>
           <th>Invoice</th>
           <th>OLF / DC No</th>
-          <th>Out Date</th>
-          <th>Return</th>
-          <th>Ledger</th>
+          {% endif %}
+          <th>{% if status == 'IN_HOUSE' %}Given On{% elif status == 'RETURN_TO_VENDOR' %}Returned On{% else %}Out Date{% endif %}</th>
+          <th class="status-actions-col">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -55,41 +66,36 @@
           <td>{{ row.part_no|default:"-" }}</td>
           <td><code>{{ row.barcode|default:"-" }}</code></td>
           <td>{{ row.product.latest_store|default:"-" }}</td>
+          {% if name_only_label %}
+          <td class="fw-semibold">{{ row.product.latest_client|default:"" }}</td>
+          {% else %}
           <td>{{ row.product.latest_client|default:"" }}</td>
           <td>{{ row.product.latest_invoice|default:"" }}</td>
           <td>{{ row.product.latest_olf_dc|default:"" }}</td>
-          <td>{{ row.product.latest_out_date|default:"" }}</td>
-          <td>
+          {% endif %}
+          <td>{{ row.product.latest_out_date|date:"d-m-Y"|default:"" }}</td>
+          <td class="status-actions-col">
             {% if can_stock_return %}
-              <button class="btn btn-sm btn-outline-success sales-return-btn" data-product-id="{{ row.product.id }}" title="Stock return">
-                <i class="bi bi-box-arrow-in-down"></i>
+              <button class="btn btn-sm btn-outline-success sales-return-btn" data-product-id="{{ row.product.id }}" title="{% if status == 'IN_HOUSE' %}Return to stock (back from the employee){% else %}Stock return{% endif %}">
+                <i class="bi bi-box-arrow-in-down"></i>{% if status == 'IN_HOUSE' %} Return to Stock{% endif %}
               </button>
-            {% else %}
-              <span class="text-muted">-</span>
             {% endif %}
-          </td>
-          <td>
             <a href="{% url 'asset_movement_ledger' row.product.id %}" class="btn btn-sm btn-outline-secondary" title="Movement ledger">
               <i class="bi bi-clock-history"></i>
             </a>
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="12" class="text-center text-muted py-4">No {{ status_label|lower }} stock found.</td></tr>
+        <tr><td colspan="{% if name_only_label %}9{% else %}11{% endif %}" class="text-center text-muted py-4">No {{ status_label|lower }} stock found.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% include "partials/list_pagination.html" %}
 </div>
+</div>
 {% include "inventory/sales_return_modal.html" %}
 {% include "inventory/scrap_modal.html" %}
 {% endblock %}
 
-{% block extra_js %}
-<script>
-$(function () {
-  $('#stockOutStatusTable').DataTable({scrollX: true, deferRender: true, paging: false, searching: false, info: false});
-});
-</script>
-{% endblock %}
+

@@ -4,6 +4,28 @@ from apps.core.models import Product
 from django.utils import timezone
 
 
+# Stock-out statuses that carry no invoice / OLF-DC: the item goes to an
+# employee (in-house use) or back to a vendor. Value = what the "name" field
+# (stored in client_name) means for that status.
+NAME_ONLY_STOCK_OUT = {
+    'IN_HOUSE': 'Given to (employee)',
+    'RETURN_TO_VENDOR': 'Vendor',
+}
+# Only ever a stock OUT — never a stock-in or in-stock status update.
+STOCK_OUT_ONLY_STATUSES = set(NAME_ONLY_STOCK_OUT)
+
+
+def normalize_stock_status(value):
+    """'In-House Use', 'in house', 'Return to vendor', 'SALE' ... -> the status key ('' if unknown)."""
+    text = '_'.join(str(value or '').strip().upper().replace('-', ' ').split())
+    keys = {key for key, _ in InventoryTransaction.STOCK_STATUS}
+    if text in keys:
+        return text
+    labels = {'_'.join(label.upper().replace('-', ' ').split()): key for key, label in InventoryTransaction.STOCK_STATUS}
+    aliases = {'IN_HOUSE_USE': 'IN_HOUSE', 'INHOUSE': 'IN_HOUSE', 'RTV': 'RETURN_TO_VENDOR', 'RETURNED_TO_VENDOR': 'RETURN_TO_VENDOR'}
+    return labels.get(text) or aliases.get(text, '')
+
+
 class InventoryTransaction(models.Model):
 
     TRANSACTION_TYPE = (
@@ -39,6 +61,8 @@ class InventoryTransaction(models.Model):
         ('EMPTY', 'Empty'),
         ('REFILL', 'Refill'),
         ('SCRAP', 'Scrap'),
+        ('IN_HOUSE', 'In-House Use'),
+        ('RETURN_TO_VENDOR', 'Return to Vendor'),
         ('LIVE', 'Live'),
     )
 

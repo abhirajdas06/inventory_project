@@ -1906,7 +1906,7 @@ class StockOutRegisterTests(TestCase):
         sheet = book['Stock Out Register']
         header = [c.value for c in sheet[1]]
         self.assertEqual(header[:3], ['Stock Out Date', 'Status', 'Category'])
-        for col in ('Client', 'Invoice No', 'OLF / DC No', 'Barcode No', 'Current State'):
+        for col in ('Client / Given To', 'Invoice No', 'OLF / DC No', 'Barcode No', 'Current State'):
             self.assertIn(col, header)
         data = [dict(zip(header, [c.value for c in row])) for row in sheet.iter_rows(min_row=2)]
         self.assertEqual({d['Barcode No'] for d in data}, {'REG-SALE', 'REG-BACK'})
@@ -2081,3 +2081,118 @@ class SearchEveryColumnTests(TestCase):
         self.assertTrue(self._found('stock_out_status_list', 'HD-SOLD', 'SN-HD-SOLD', ['RENT']))
         self.assertTrue(self._found('stock_out_status_list', 'delta', 'SN-HD-SOLD', ['RENT']))
         self.assertFalse(self._found('stock_out_status_list', 'nobody', 'SN-HD-SOLD', ['RENT']))
+
+
+class BlankBarcodeImportTests(TestCase):
+    """Several rows with no barcode must all import (blank is stored as NULL,
+    not as an empty string that collides on the unique barcode column)."""
+
+    def test_rows_without_barcode_do_not_collide(self):
+        from apps.categories.models import HardDisk
+        user = User.objects.create_user(username='blank-bc', password='x')
+        UserProfile.objects.create(user=user, role='ADMIN')
+        headers = list(HEADER_MAPS['harddisk_25'].keys())
+        book = Workbook()
+        book.active.append(headers)
+        for serial in ('NOBC-1', 'NOBC-2', 'NOBC-3'):
+            book.active.append([serial if h == 'Serial No' else '600GB' if h == 'Capacity' else None for h in headers])
+        stream = BytesIO()
+        book.save(stream)
+        job = start_import_job('harddisk_25', SimpleUploadedFile('nobc.xlsx', stream.getvalue()), user)
+        while job.status not in ('DONE', 'FAILED'):
+            job = process_import_chunk(job, chunk_size=100, user=user)
+        self.assertEqual((job.success_count, job.error_count), (3, 0), job.errors)
+        self.assertEqual(HardDisk.objects.filter(product__serial_no__startswith='NOBC-', barcode__isnull=True).count(), 3)
+
+
+class InHouseAndReturnToVendorTests(TestCase):
+    """Two stock-out options with a name instead of client / invoice / DC,
+    each with its own list; in-house items can be returned to stock."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='ih-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+
+    def _out(self, product, status, name, **extra):
+        return self.client.post(reverse('stock_out'), {
+            'product_id': product.id, 'stock_status': status, 'client_name': name,
+            'invoice_no': 'INV-SHOULD-DROP', 'olf_dc_number': 'DC-SHOULD-DROP', **extra}).json()
+
+    def test_in_house_use_records_employee_without_invoice_and_returns_to_stock(self):
+        item = _barcoded_item('IH-1')
+        res = self._out(item, 'IN_HOUSE', '  Ravi   Kumar ')
+        self.assertTrue(res['success'], res)
+        out = item.transactions.get(transaction_type='OUT')
+        self.assertEqual((out.stock_status, out.client_name, out.invoice_no, out.olf_dc_number), ('IN_HOUSE', 'Ravi Kumar', '', ''))
+
+        html = self.client.get(reverse('stock_out_status_list', args=['IN_HOUSE'])).content.decode()
+        self.assertIn('IH-1', html)
+        self.assertIn('Given To (Employee)', html)
+        self.assertIn('Ravi Kumar', html)
+        self.assertNotIn('<th>Invoice</th>', html)
+        self.assertIn('sales-return-btn', html)
+
+        back = self.client.post(reverse('sales_return'), {'product_id': item.id, 'reason': 'NORMAL'}).json()
+        self.assertTrue(back['success'], back)
+        latest = item.transactions.order_by('-created_at', '-id').first()
+        self.assertEqual((latest.transaction_type, latest.stock_status), ('IN', 'LIVE'))
+        self.assertNotIn('IH-1', self.client.get(reverse('stock_out_status_list', args=['IN_HOUSE'])).content.decode())
+
+    def test_return_to_vendor_has_its_own_list(self):
+        item = _barcoded_item('RTV-1')
+        self.assertTrue(self._out(item, 'RETURN_TO_VENDOR', 'Acme Supplies')['success'])
+        rtv = self.client.get(reverse('stock_out_status_list', args=['RETURN_TO_VENDOR'])).content.decode()
+        self.assertIn('RTV-1', rtv)
+        self.assertIn('<th>Vendor</th>', rtv)
+        self.assertNotIn('RTV-1', self.client.get(reverse('stock_out_status_list', args=['IN_HOUSE'])).content.decode())
+        out = item.transactions.get(transaction_type='OUT')
+        self.assertEqual((out.invoice_no, out.olf_dc_number), ('', ''))
+
+    def test_name_is_required(self):
+        item = _barcoded_item('IH-NONAME')
+        for status in ('IN_HOUSE', 'RETURN_TO_VENDOR'):
+            res = self._out(item, status, '   ')
+            self.assertFalse(res['success'])
+        self.assertFalse(item.transactions.filter(transaction_type='OUT').exists())
+
+    def test_works_for_servers_and_their_parts(self):
+        from apps.servers.models import ServerComponent
+        cat = SpareCategory.objects.get_or_create(name='SERVER')[0]
+        product = Product.objects.create(category=cat, serial_no='IH-SRV', name='Server')
+        server = Server.objects.create(product=product, service_tag='IH-SRV', machine_no='M1', group='rack_server')
+        InventoryTransaction.objects.create(product=product, transaction_type='IN', store_location='WH1', stock_status='LIVE')
+        part = _barcoded_item('IH-SRV-MB', category='MOTHERBOARD')
+        ServerComponent.objects.create(server=server, product=part, spare_type='MOTHERBOARD')
+        self.assertTrue(self._out(product, 'IN_HOUSE', 'Lab Team')['success'])
+        self.assertEqual(part.transactions.order_by('-created_at', '-id').first().stock_status, 'IN_HOUSE')
+
+    def test_options_shown_and_not_offered_for_stock_in_or_status_update(self):
+        from apps.core.importers import VALID_STOCK_STATUSES
+        from apps.inventory.views import UPDATABLE_STATUSES
+        html = self.client.get(reverse('card_list')).content.decode()
+        self.assertIn('<option value="IN_HOUSE">', html)
+        self.assertIn('<option value="RETURN_TO_VENDOR">', html)
+        self.assertIn(reverse('stock_out_status_list', args=['IN_HOUSE']), html)
+        self.assertIn(reverse('stock_out_status_list', args=['RETURN_TO_VENDOR']), html)
+        for status in ('IN_HOUSE', 'RETURN_TO_VENDOR'):
+            self.assertNotIn(status, VALID_STOCK_STATUSES)
+            self.assertNotIn(status, UPDATABLE_STATUSES)
+
+    def test_stock_out_import_accepts_the_new_statuses(self):
+        item = _barcoded_item('IH-IMP')
+        rtv = _barcoded_item('RTV-IMP')
+        bad = _barcoded_item('IH-IMP-BAD')
+        rows = [
+            {'barcode': 'IH-IMP', 'stock_status': 'In-House Use', 'client_name': 'Priya', 'invoice_no': 'X'},
+            {'barcode': 'RTV-IMP', 'stock_status': 'return to vendor', 'client_name': 'Acme'},
+        ]
+        from apps.core.importers import import_stock_out_row
+        for row in rows:
+            import_stock_out_row(row, user=self.user)
+        self.assertEqual(item.transactions.get(transaction_type='OUT').stock_status, 'IN_HOUSE')
+        self.assertEqual(item.transactions.get(transaction_type='OUT').invoice_no, '')
+        self.assertEqual(rtv.transactions.get(transaction_type='OUT').stock_status, 'RETURN_TO_VENDOR')
+        with self.assertRaises(ValueError):
+            import_stock_out_row({'barcode': 'IH-IMP-BAD', 'stock_status': 'IN_HOUSE', 'client_name': ''}, user=self.user)
+        self.assertFalse(bad.transactions.filter(transaction_type='OUT').exists())

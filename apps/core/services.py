@@ -75,7 +75,7 @@ def create_product_and_spare(data):
         alt_serial_no=data.get('alt_serial_no'),
         specs=data.get('specs'),
         qty=data.get('qty') or 1,
-        barcode=data.get('barcode'),
+        barcode=data.get('barcode') or None,  # blank -> NULL (unique column)
         location=data.get('location'),
         reference_location=data.get('reference_location'),
         remark=data.get('remark')
@@ -131,7 +131,7 @@ def create_product_and_card(data):
         brand_serial_no_1=data.get('brand_serial_no_1'),
         capacity=data.get('capacity'),
         port=data.get('port'),
-        barcode=data.get('barcode'),
+        barcode=data.get('barcode') or None,  # blank -> NULL (unique column)
         location=data.get('location'),
         reference_location=data.get('reference_location'),
         remark=data.get('remark')
@@ -180,7 +180,7 @@ def create_product_and_cpu(data):
         ghz=data.get('ghz'),
         frequency=data.get('frequency'),
         cache=data.get('cache'),
-        barcode=data.get('barcode'),
+        barcode=data.get('barcode') or None,  # blank -> NULL (unique column)
         location=data.get('location'),
         reference_location=data.get('reference_location'),
         remark=data.get('remark')
@@ -242,7 +242,7 @@ def create_controller_with_components(controller_data, components):
         alt_serial_no=controller_data.get('alt_serial_no'),
         specs=controller_data.get('specs'),
         qty=controller_data.get('qty') or 1,
-        barcode=controller_data.get('barcode'),
+        barcode=controller_data.get('barcode') or None,
         location=controller_data.get('location'),
         reference_location=controller_data.get('reference_location'),
         parent_child_location=controller_data.get('parent_child_location'),
@@ -300,7 +300,7 @@ def create_controller_with_components(controller_data, components):
             alt_serial_no=comp.get('alt_serial_no'),
             specs=comp.get('specs'),
             qty=comp.get('qty') or 1,
-            barcode=comp.get('barcode'),
+            barcode=comp.get('barcode') or None,
             location=controller_data.get('location'),
             reference_location=controller_data.get('reference_location'),
             remark=comp.get('remark')
@@ -354,7 +354,7 @@ def create_product_and_memory(data):
         frequency  = data.get('frequency'),
         rank       = data.get('rank'),
         qty        = data.get('qty') or 1,
-        barcode    = data.get('barcode'),
+        barcode    = data.get('barcode') or None,  # blank -> NULL (unique column)
         location           = data.get('location'),
         reference_location = data.get('reference_location'),
         remark             = data.get('remark'),
@@ -402,7 +402,7 @@ def create_product_and_sfp(data):
         description = data.get('description'),
         fibre_type  = data.get('fibre_type'),
         data_rate   = data.get('data_rate'),
-        barcode            = data.get('barcode'),
+        barcode            = data.get('barcode') or None,  # blank -> NULL (unique column)
         location           = data.get('location'),
         reference_location = data.get('reference_location'),
         remark             = data.get('remark'),
@@ -451,7 +451,7 @@ def create_product_and_railkit(data):
         specs           = data.get('specs'),
         supported_model = supported_model,
         qty             = data.get('qty') or 1,
-        barcode         = data.get('barcode'),
+        barcode         = data.get('barcode') or None,  # blank -> NULL (unique column)
         location           = data.get('location'),
         reference_location = data.get('reference_location'),
         remark             = data.get('remark'),
@@ -522,7 +522,7 @@ def create_product_and_harddisk(data):
         firmware       = data.get('firmware'),
         health         = data.get('health'),
         gb_s           = data.get('gb_s'),
-        barcode        = data.get('barcode'),
+        barcode        = data.get('barcode') or None,  # blank -> NULL (unique column)
         tray_barcode   = data.get('tray_barcode'),
         location           = data.get('location'),
         reference_location = data.get('reference_location'),

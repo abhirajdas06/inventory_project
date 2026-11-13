@@ -14,7 +14,10 @@ from apps.core.permissions import has_permission
 from datetime import timedelta
 from django.utils import timezone
 
-TODAY = str(timezone.localdate())  # entry dates are always today
+def today():
+    # Entry dates are always today. Read it when asserting, not at import, so a
+    # run that crosses midnight still compares against the right day.
+    return str(timezone.localdate())
 IN_30_DAYS = str(timezone.localdate() + timedelta(days=30))
 
 
@@ -142,7 +145,7 @@ class StockOutTests(TestCase):
             self.assertEqual(latest.transaction_type, 'OUT')
             self.assertEqual(latest.store_location, 'WH2')
             self.assertEqual(latest.stock_status, 'SALE')
-            self.assertEqual(str(latest.stock_out_date), TODAY)
+            self.assertEqual(str(latest.stock_out_date), today())
             self.assertEqual(latest.client_name, 'Acme Corp')
             self.assertEqual(latest.invoice_no, 'INV-1001')
             self.assertEqual(latest.olf_dc_number, 'OLF-1001')
@@ -395,12 +398,12 @@ class StockOutTests(TestCase):
         self.assertTrue(resp.json()['success'])
         rental.refresh_from_db()
         self.assertEqual(rental.status, 'RETURNED')
-        self.assertEqual(str(rental.actual_return_date), TODAY)
+        self.assertEqual(str(rental.actual_return_date), today())
         latest = InventoryTransaction.objects.filter(product=product).latest('created_at')
         self.assertEqual(latest.transaction_type, 'IN')  # available again
         spare = Spare.objects.get(product=product)
         spare.refresh_from_db()
-        self.assertIn(f'{TODAY} - returned', spare.remark)
+        self.assertIn(f'{today()} - returned', spare.remark)
         self.assertTrue(ActivityLog.objects.filter(action='RENT_RETURN', entity_id=str(product.id)).exists())
 
     def test_frozen_product_cannot_be_stocked_out(self):
@@ -517,9 +520,9 @@ class StockOutTests(TestCase):
         })
         self.assertTrue(response.json()['success'])
         record = SalesReturn.objects.filter(product=self.server_product).latest('created_at')
-        self.assertIn(f'{TODAY} - Customer accepted replacement', record.remarks)
+        self.assertIn(f'{today()} - Customer accepted replacement', record.remarks)
         self.server.refresh_from_db()
-        self.assertIn(f'{TODAY} - Customer accepted replacement', self.server.remark)
+        self.assertIn(f'{today()} - Customer accepted replacement', self.server.remark)
 
     def test_sales_return_allows_warehouse_and_location_update(self):
         category = SpareCategory.objects.create(name='RETURN-SPARE')

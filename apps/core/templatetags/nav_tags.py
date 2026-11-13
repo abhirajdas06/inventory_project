@@ -15,7 +15,7 @@ def nav_active(context, *names):
         route, _, kind = str(name).partition(':')
         if current != route:
             continue
-        if kind and kwargs.get('kind') != kind:
+        if kind and (kwargs.get('kind') or kwargs.get('status')) != kind:
             continue
         return 'active'
     return ''
@@ -32,7 +32,7 @@ def nav_open(context, *names):
         route, _, kind = str(name).partition(':')
         if current != route:
             continue
-        if kind and kwargs.get('kind') != kind:
+        if kind and (kwargs.get('kind') or kwargs.get('status')) != kind:
             continue
         return 'show'
     return ''

@@ -42,7 +42,7 @@ COLUMNS = [
     ('Part No', 'part_no', 18),
     ('Serial No', 'serial_no', 22),
     ('Barcode No', 'barcode', 16),
-    ('Client', 'client', 26),
+    ('Client / Given To', 'client', 26),
     ('Invoice No', 'invoice', 16),
     ('OLF / DC No', 'olf_dc', 16),
     ('Store', 'store', 10),
