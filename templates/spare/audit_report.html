@@ -20,10 +20,13 @@
                 {{ total_count }} audit record{{ total_count|pluralize }}
             {% endif %}
         </div>
-    {% include "partials/list_pagination.html" %}
-</div>
+    </div>
+    <a href="{% url 'audit_report_export' %}{% if export_query %}?{{ export_query }}{% endif %}" class="btn btn-success btn-sm">
+        <i class="bi bi-file-earmark-excel me-1"></i>Export to Excel
+    </a>
 </div>
 
+<div class="px-3 pt-3">
 <div class="dashboard-summary mb-3">
     <div class="dash-card"><span>Total</span><strong>{{ total_count }}</strong></div>
     <div class="dash-card"><span>Showing</span><strong>{{ result_count }}</strong></div>
@@ -31,12 +34,12 @@
 </div>
 
 <form method="get" class="row g-2 align-items-end mb-3">
-    <div class="col-sm-3">
+    <div class="col-12 col-md-6 col-xl-4">
         <label class="form-label small mb-0">Search</label>
         <input type="search" name="q" value="{{ filters.q }}" class="form-control form-control-sm"
-               placeholder="Product, serial, part, remark">
+               placeholder="Product, serial, barcode, part, remark">
     </div>
-    <div class="col-sm-2">
+    <div class="col-6 col-md-3 col-xl-2">
         <label class="form-label small mb-0">User</label>
         <select name="user" class="form-select form-select-sm">
             <option value="">All</option>
@@ -45,7 +48,7 @@
             {% endfor %}
         </select>
     </div>
-    <div class="col-sm-2">
+    <div class="col-6 col-md-3 col-xl-2">
         <label class="form-label small mb-0">Result</label>
         <select name="result" class="form-select form-select-sm">
             <option value="">All</option>
@@ -54,7 +57,7 @@
             {% endfor %}
         </select>
     </div>
-    <div class="col-sm-2">
+    <div class="col-12 col-md-6 col-xl-4">
         <label class="form-label small mb-0">Product Type</label>
         <select name="category" class="form-select form-select-sm">
             <option value="">All</option>
@@ -63,29 +66,31 @@
             {% endfor %}
         </select>
     </div>
-    <div class="col-sm-1">
+    <div class="col-6 col-md-3 col-xl-2">
         <label class="form-label small mb-0">From</label>
         <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
     </div>
-    <div class="col-sm-1">
+    <div class="col-6 col-md-3 col-xl-2">
         <label class="form-label small mb-0">To</label>
         <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
     </div>
-    <div class="col-sm-1 d-grid gap-1">
+    <div class="col-12 col-xl-auto d-flex gap-2">
         <button class="btn btn-primary btn-sm">Filter</button>
         <a href="{% url 'audit_report' %}" class="btn btn-outline-secondary btn-sm">Reset</a>
     </div>
 </form>
+</div>
 
-<div class="table-container">
+<div class="table-responsive">
 
-<table class="table table-sm align-middle inventory-list-table" id="spareTable">
+<table class="table table-sm table-hover align-middle inventory-list-table" id="auditReportTable">
 
 <thead>
 <tr>
     <th>Sr.No</th>
     <th>Product</th>
     <th>Serial</th>
+    <th>Barcode</th>
     <th>Date</th>
     <th>User</th>
     <th>Location</th>
@@ -99,10 +104,11 @@
 
 {% for a in audits %}
 <tr>
-<td>{{ forloop.counter }}</td>
+<td>{{ page_obj.start_index|add:forloop.counter0 }}</td>
 <td>{{ a.product.name }}</td>
-<td>{{ a.product.serial_no }}</td>
-<td>{{ a.audited_on }}</td>
+<td>{{ a.product.serial_no|default:"" }}</td>
+<td><code>{{ a.barcode|default:"" }}</code></td>
+<td>{{ a.audited_on|date:"d-m-Y" }}</td>
 <td>{{ a.audited_by.username }}</td>
 <td>{{ a.store_location }}</td>
 <td>{{ a.stock_status }}</td>
@@ -111,7 +117,7 @@
 </tr>
 {% empty %}
 <tr>
-    <td colspan="9" class="text-center text-muted py-4">No audit records found.</td>
+    <td colspan="10" class="text-center text-muted py-4">No audit records found.</td>
 </tr>
 {% endfor %}
 
@@ -120,16 +126,9 @@
 </table>
 
 </div>
+<div class="px-3 pb-3">{% include "partials/list_pagination.html" %}</div>
 </div>
 </div>
 {% endblock %}
 
-{% block extra_js %}
-<script>
-$(function () {
-    if (!$.fn.DataTable.isDataTable('#spareTable')) {
-        $('#spareTable').DataTable({pageLength: 25, scrollX: true, deferRender: true});
-    }
-});
-</script>
-{% endblock %}
+

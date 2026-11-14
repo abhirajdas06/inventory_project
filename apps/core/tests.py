@@ -2196,3 +2196,43 @@ class InHouseAndReturnToVendorTests(TestCase):
         with self.assertRaises(ValueError):
             import_stock_out_row({'barcode': 'IH-IMP-BAD', 'stock_status': 'IN_HOUSE', 'client_name': ''}, user=self.user)
         self.assertFalse(bad.transactions.filter(transaction_type='OUT').exists())
+
+
+class AuditReportBarcodeExportTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='ar-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+        self.found = _barcoded_item('AR-BC-1')
+        self.missing = _barcoded_item('AR-BC-2')
+        for product, result in ((self.found, 'FOUND'), (self.missing, 'NOT_FOUND')):
+            self.client.post(reverse('audit_spare'), {'product_id': product.id, 'audit_result': result, 'audit_remark': f'note {result}'})
+
+    def test_list_shows_barcode_and_searches_it(self):
+        html = self.client.get(reverse('audit_report')).content.decode()
+        self.assertIn('<th>Barcode</th>', html)
+        self.assertIn('AR-BC-1', html)
+        self.assertIn('AR-BC-2', html)
+        self.assertIn(reverse('audit_report_export'), html)
+        filtered = self.client.get(reverse('audit_report'), {'q': 'AR-BC-2'}).content.decode()
+        self.assertIn('AR-BC-2', filtered)
+        self.assertNotIn('AR-BC-1', filtered)
+
+    def test_export_matches_filters(self):
+        res = self.client.get(reverse('audit_report_export'), {'result': 'NOT_FOUND'})
+        self.assertEqual(res.status_code, 200)
+        sheet = load_workbook(BytesIO(res.content))['Audit Report']
+        header = [c.value for c in sheet[1]]
+        self.assertEqual(header[:6], ['Sr No', 'Audit Date', 'Product', 'Category', 'Serial No', 'Barcode'])
+        rows = [dict(zip(header, [c.value for c in r])) for r in sheet.iter_rows(min_row=2)]
+        self.assertEqual([r['Barcode'] for r in rows], ['AR-BC-2'])
+        self.assertEqual(rows[0]['Result'], 'Not Found')
+        self.assertEqual(rows[0]['Remark'], 'note NOT_FOUND')
+        all_rows = load_workbook(BytesIO(self.client.get(reverse('audit_report_export')).content))['Audit Report']
+        self.assertEqual(all_rows.max_row, 3)
+
+    def test_export_needs_audit_view(self):
+        viewer = User.objects.create_user(username='ar-viewer', password='x')
+        UserProfile.objects.create(user=viewer, role='READONLY_LIVE')
+        self.client.force_login(viewer)
+        self.assertEqual(self.client.get(reverse('audit_report_export')).status_code, 403)

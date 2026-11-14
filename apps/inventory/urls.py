@@ -11,6 +11,7 @@ urlpatterns = [
     path('audit/', views.audit_spare, name='audit_spare'),
     path('audit-history/<int:product_id>/', views.audit_history, name='audit_history'),
     path('audit-report/', views.audit_report, name='audit_report'),
+    path('audit-report/export/', views.audit_report_export, name='audit_report_export'),
     path('check-membership/', views.check_product_membership, name='check_product_membership'),
     path('installed-in/', views.installed_in, name='installed_in'),
     path('transfer/', views.transfer_inventory, name='transfer_inventory'),

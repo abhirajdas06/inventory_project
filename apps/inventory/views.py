@@ -760,14 +760,24 @@ def audit_history(request, product_id):
     return JsonResponse({"data": data})
 
 
-@require_permission('audit_view')
-def audit_report(request):
+def _audit_report_queryset(request):
+    """(all audits, filtered audits, filters) — shared by the Audit Report
+    page and its Excel export, so the export matches what is on screen."""
+    from django.db.models.functions import Coalesce
+    from apps.servers.models import ServerComponent
+
+    # Barcode lives on whichever inventory table the product belongs to.
+    component_barcode = ServerComponent.objects.filter(product=OuterRef('product')).exclude(barcode__isnull=True).exclude(barcode='')
     base = InventoryTransaction.objects.filter(
         transaction_type='AUDIT'
-    ).select_related('product', 'product__category', 'audited_by')
-    total_count = base.count()
+    ).select_related('product', 'product__category', 'audited_by').annotate(
+        barcode=Coalesce(
+            *[f'product__{attr}__barcode' for attr in _RELATED_ATTRS],
+            Subquery(component_barcode.values('barcode')[:1]),
+        ),
+    )
 
-    audits = base.order_by('-created_at')
+    audits = base.order_by('-created_at', '-id')
 
     q = request.GET.get('q', '').strip()
     user_id = request.GET.get('user', '').strip()
@@ -789,7 +799,17 @@ def audit_report(request):
         audits = audits.filter(audited_on__gte=date_from)
     if date_to:
         audits = audits.filter(audited_on__lte=date_to)
+    filters = {
+        'q': q, 'user': user_id, 'result': result, 'category': category,
+        'date_from': date_from, 'date_to': date_to,
+    }
+    return base, audits, filters
 
+
+@require_permission('audit_view')
+def audit_report(request):
+    base, audits, filters = _audit_report_queryset(request)
+    total_count = base.count()
     audit_page = paginated_list_context(request, audits, 'audits')
 
     from apps.core.models import SpareCategory
@@ -803,12 +823,69 @@ def audit_report(request):
         'audit_users': audit_users,
         'categories': SpareCategory.objects.order_by('name'),
         'result_choices': InventoryTransaction.AUDIT_RESULT,
-        'filters': {
-            'q': q, 'user': user_id, 'result': result, 'category': category,
-            'date_from': date_from, 'date_to': date_to,
-        },
+        'filters': filters,
+        'export_query': request.GET.urlencode(),
     })
     return render(request, 'spare/audit_report.html', audit_page)
+
+
+@require_permission('audit_view')
+def audit_report_export(request):
+    """The Audit Report as Excel — same filters as the page, every matching
+    row (not just the current page), one header row so it pivots cleanly."""
+    from io import BytesIO
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    _, audits, filters = _audit_report_queryset(request)
+    columns = [
+        ('Sr No', 7), ('Audit Date', 12), ('Product', 34), ('Category', 18), ('Serial No', 22),
+        ('Barcode', 16), ('Part No', 16), ('Audited By', 14), ('Store', 9), ('Stock Status', 13),
+        ('Result', 11), ('Remark', 40), ('Recorded At', 18),
+    ]
+    book = Workbook(write_only=True)
+    sheet = book.create_sheet('Audit Report')
+    sheet.freeze_panes = 'A2'
+    for index, (_, width) in enumerate(columns, start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    header = []
+    for title, _ in columns:
+        cell = WriteOnlyCell(sheet, value=title)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(fill_type='solid', fgColor='DCEBFF')
+        header.append(cell)
+    sheet.append(header)
+
+    count = 0
+    for count, a in enumerate(audits.iterator(chunk_size=1000), start=1):
+        product = a.product
+        sheet.append([
+            count,
+            a.audited_on,
+            product.name,
+            product.category.name if product.category_id else '',
+            product.serial_no or '',
+            a.barcode or '',
+            product.part_no or '',
+            a.audited_by.get_username() if a.audited_by else '',
+            a.store_location or '',
+            a.stock_status or '',
+            a.get_audit_result_display() if a.audit_result else '',
+            a.audit_remark or '',
+            timezone.localtime(a.created_at).replace(tzinfo=None) if a.created_at else '',
+        ])
+    sheet.auto_filter.ref = f'A1:{get_column_letter(len(columns))}{count + 1}'
+
+    stream = BytesIO()
+    book.save(stream)
+    log_activity(action='AUDIT_REPORT_EXPORT', module='EXPORT', entity='Audit Report', user=request.user,
+                 new_values={**filters, 'rows': count}, remarks=f'Audit Report exported ({count} rows)')
+    response = HttpResponse(stream.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="audit-report_{timezone.localdate()}.xlsx"'
+    return response
     
     
 
