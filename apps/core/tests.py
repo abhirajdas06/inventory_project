@@ -2345,9 +2345,9 @@ class EmployeeActivityTests(TestCase):
         self.assertEqual(len(res.context['months']), 12)
         self.assertEqual(res.context['months'][1]['total'], 1)
         only_out = self.client.get(url, {'type': 'OUT'})
-        self.assertEqual(len(only_out.context['transactions']), 1)
+        self.assertEqual(len(only_out.context['rows']), 1)
         prev = self.client.get(url, {'month': self.last_month})
-        self.assertEqual([t.stock_status for t in prev.context['transactions']], ['RENT'])
+        self.assertEqual([r['status'] for r in prev.context['rows']], ['Rent'])
 
     def test_only_admin_sees_it(self):
         self.client.force_login(self.clerk)
@@ -2355,3 +2355,51 @@ class EmployeeActivityTests(TestCase):
         self.assertEqual(self.client.get(reverse('staff_activity_detail', args=[self.clerk.id])).status_code, 403)
         RolePermission.objects.create(role='STOCK_IN', permissions=['stock_in', 'staff_activity'])
         self.assertContains(self.client.get(reverse('dashboard')), 'Employee Activity')
+
+
+class EmployeeActivityTransferTests(TestCase):
+    """Transfers count for the requester (per item requested) and the receiver
+    (per item received); the receipt's stock-in is not counted twice."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(username='eat-admin', password='pass12345')
+        UserProfile.objects.create(user=self.admin, role='ADMIN')
+        self.requester = User.objects.create_user(username='eat-req', password='x')
+        UserProfile.objects.create(user=self.requester, role='STOCK_OUT')
+        self.receiver = User.objects.create_user(username='eat-rcv', password='x')
+        UserProfile.objects.create(user=self.receiver, role='STOCK_IN')
+        from apps.inventory.models import TransferRequestItem
+        self.items = []
+        for code in ('EAT-1', 'EAT-2'):
+            item = _barcoded_item(code)
+            self.client.force_login(self.requester)
+            res = self.client.post(reverse('transfer_inventory'), {'product_id': item.id, 'destination_warehouse': 'WH2', 'remarks': 'move'}).json()
+            self.assertTrue(res['success'], res)
+            self.items.append((res['transfer_request_id'], TransferRequestItem.objects.get(product=item)))
+        self.client.force_login(self.receiver)
+        tr_id, tr_item = self.items[0]
+        got = self.client.post(reverse('receive_transfer_item', args=[tr_id, tr_item.id]), {'destination_location': 'Mwh2/Rack 1'}).json()
+        self.assertTrue(got['success'], got)
+        self.client.force_login(self.admin)
+
+    def _row(self, ctx, user):
+        return next(r for r in ctx['staff']['rows'] if r['user'] == user)
+
+    def test_dashboard_counts_transfers_without_double_counting(self):
+        ctx = self.client.get(reverse('dashboard')).context
+        req = self._row(ctx, self.requester)
+        rcv = self._row(ctx, self.receiver)
+        self.assertEqual((req['n_transfer'], req['total']), (2, 2))
+        self.assertEqual((rcv['n_transfer'], rcv['n_in'], rcv['total']), (1, 0, 1))
+        self.assertEqual(ctx['staff']['totals']['n_transfer'], 3)
+        self.assertContains(self.client.get(reverse('dashboard')), 'Transfers')
+
+    def test_detail_page_lists_transfer_rows(self):
+        url = reverse('staff_activity_detail', args=[self.receiver.id])
+        res = self.client.get(url)
+        self.assertEqual(res.context['counts']['n_transfer'], 1)
+        self.assertEqual([r['kind_label'] for r in res.context['rows']], ['Transfer Received'])
+        self.assertEqual(res.context['rows'][0]['store'], 'WH1 → WH2')
+        req = self.client.get(reverse('staff_activity_detail', args=[self.requester.id]), {'type': 'TRANSFER'})
+        self.assertEqual([r['kind_label'] for r in req.context['rows']], ['Transfer Requested'] * 2)
+        self.assertEqual(req.context['months'][0]['n_transfer'], 2)

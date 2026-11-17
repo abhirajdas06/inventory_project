@@ -38,7 +38,7 @@
         <div class="col-lg-4">
             <div class="fw-semibold small text-muted mb-1">Month by month (last 12 months)</div>
             <table class="table table-sm activity-months mb-0">
-                <thead><tr><th>Month</th><th class="text-end">In</th><th class="text-end">Out</th><th class="text-end">Audit</th><th class="text-end">Total</th></tr></thead>
+                <thead><tr><th>Month</th><th class="text-end">In</th><th class="text-end">Out</th><th class="text-end">Audit</th><th class="text-end">Trf</th><th class="text-end">Total</th></tr></thead>
                 <tbody>
                     {% for m in months %}
                     <tr class="{% if m.value == month_value %}current{% endif %}">
@@ -46,6 +46,7 @@
                         <td class="text-end">{{ m.n_in }}</td>
                         <td class="text-end">{{ m.n_out }}</td>
                         <td class="text-end">{{ m.n_audit }}</td>
+                        <td class="text-end">{{ m.n_transfer }}</td>
                         <td class="text-end fw-semibold">{{ m.total }}</td>
                     </tr>
                     {% endfor %}
@@ -59,6 +60,7 @@
                 <a class="btn btn-sm {% if tx_type == 'IN' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?month={{ month_value }}&type=IN">Stock In <strong>{{ counts.n_in }}</strong></a>
                 <a class="btn btn-sm {% if tx_type == 'OUT' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?month={{ month_value }}&type=OUT">Stock Out <strong>{{ counts.n_out }}</strong></a>
                 <a class="btn btn-sm {% if tx_type == 'AUDIT' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?month={{ month_value }}&type=AUDIT">Audit <strong>{{ counts.n_audit }}</strong></a>
+                <a class="btn btn-sm {% if tx_type == 'TRANSFER' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?month={{ month_value }}&type=TRANSFER">Transfers <strong>{{ counts.n_transfer }}</strong></a>
             </div>
             <div class="table-responsive border rounded" style="max-height: calc(100vh - 290px);">
                 <table class="table table-sm table-hover align-middle mb-0 activity-table inventory-list-table">
@@ -66,7 +68,7 @@
                         <tr>
                             <th>Date &amp; Time</th>
                             <th>Type</th>
-                            <th>Status</th>
+                            <th>Status / TR</th>
                             <th>Category</th>
                             <th>Product</th>
                             <th>Serial</th>
@@ -75,24 +77,24 @@
                             <th>Client / Given To</th>
                             <th>Invoice</th>
                             <th>OLF / DC</th>
-                            <th>Remark</th>
+                            <th>Remark / Location</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for t in transactions %}
+                        {% for t in rows %}
                         <tr>
-                            <td>{{ t.created_at|date:"d-m-Y H:i" }}</td>
-                            <td><span class="badge {% if t.transaction_type == 'IN' %}bg-success{% elif t.transaction_type == 'OUT' %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ t.get_transaction_type_display }}</span></td>
-                            <td>{{ t.get_stock_status_display }}</td>
+                            <td>{{ t.when|date:"d-m-Y H:i" }}</td>
+                            <td><span class="badge {% if t.kind == 'IN' %}bg-success{% elif t.kind == 'OUT' %}bg-danger{% elif t.kind == 'TRANSFER' %}bg-primary{% else %}bg-warning text-dark{% endif %}">{{ t.kind_label }}</span></td>
+                            <td>{{ t.status }}</td>
                             <td>{{ t.product.category.name }}</td>
                             <td>{{ t.product.name }}</td>
                             <td><code>{{ t.product.serial_no|default:"" }}</code></td>
                             <td><code>{{ t.barcode|default:"" }}</code></td>
-                            <td>{{ t.store_location }}</td>
-                            <td>{{ t.client_name|default:"" }}</td>
-                            <td>{{ t.invoice_no|default:"" }}</td>
-                            <td>{{ t.olf_dc_number|default:"" }}</td>
-                            <td class="text-truncate" style="max-width: 260px;" title="{{ t.audit_remark|default:'' }}">{{ t.audit_remark|default:"" }}</td>
+                            <td>{{ t.store }}</td>
+                            <td>{{ t.client }}</td>
+                            <td>{{ t.invoice }}</td>
+                            <td>{{ t.olf_dc }}</td>
+                            <td class="text-truncate" style="max-width: 260px;" title="{{ t.remark }}">{{ t.remark }}</td>
                         </tr>
                         {% empty %}
                         <tr><td colspan="12" class="text-center text-muted py-4">No transactions in {{ month|date:"F Y" }}.</td></tr>
