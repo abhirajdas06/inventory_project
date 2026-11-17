@@ -178,7 +178,7 @@ def build_row(txn):
 
     if txn.latest_id == txn.id:
         current = 'Still out'
-    elif txn.latest_type == 'IN':
+    elif txn.latest_type != 'OUT':  # IN, or an audit / status update after coming back
         current = f"Back in stock ({txn.latest_status})"
     elif txn.latest_type == 'OUT':
         current = f"Stocked out again ({txn.latest_status})"

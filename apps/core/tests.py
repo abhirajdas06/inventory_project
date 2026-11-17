@@ -2236,3 +2236,122 @@ class AuditReportBarcodeExportTests(TestCase):
         UserProfile.objects.create(user=viewer, role='READONLY_LIVE')
         self.client.force_login(viewer)
         self.assertEqual(self.client.get(reverse('audit_report_export')).status_code, 403)
+
+
+class TransferAuditedAndSameStoreTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='trf-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+
+    def _audit(self, product):
+        self.client.post(reverse('audit_spare'), {'product_id': product.id, 'audit_result': 'FOUND'})
+        self.assertEqual(product.transactions.order_by('-created_at', '-id').first().transaction_type, 'AUDIT')
+
+    def _xlsx(self, barcodes):
+        book = Workbook()
+        book.active.append(['Barcode No'])
+        for b in barcodes:
+            book.active.append([b])
+        stream = BytesIO()
+        book.save(stream)
+        return SimpleUploadedFile('trf.xlsx', stream.getvalue())
+
+    def test_audited_item_can_be_transferred_to_the_same_store(self):
+        item = _barcoded_item('TRF-AUD')
+        self._audit(item)
+        res = self.client.post(reverse('transfer_inventory'), {
+            'product_id': item.id, 'destination_warehouse': 'WH1', 'remarks': 'Rack 1 to Rack 9'}).json()
+        self.assertTrue(res['success'], res)
+
+    def test_bulk_upload_allows_same_store_and_audited_items(self):
+        a = _barcoded_item('TRF-B1')
+        b = _barcoded_item('TRF-B2')
+        self._audit(b)
+        res = self.client.post(reverse('create_transfer_request'), {
+            'source_warehouse': 'WH1', 'destination_warehouse': 'WH1', 'remarks': 'reshuffle',
+            'file': self._xlsx(['TRF-B1', 'TRF-B2'])}).json()
+        self.assertTrue(res['success'], res)
+        self.assertEqual(res['accepted'], 2, res)
+        html = self.client.get(reverse('transfer_request_page')).content.decode()
+        self.assertNotIn('must be different', html)
+
+    def test_stocked_out_item_still_refused(self):
+        item = _barcoded_item('TRF-OUT')
+        InventoryTransaction.objects.create(product=item, transaction_type='OUT', store_location='WH1', stock_status='SALE')
+        res = self.client.post(reverse('transfer_inventory'), {
+            'product_id': item.id, 'destination_warehouse': 'WH2', 'remarks': 'x'}).json()
+        self.assertFalse(res['success'])
+        self.assertIn('stocked out', res['error'])
+
+    def test_receiving_keeps_the_item_status(self):
+        from apps.inventory.models import TransferRequestItem
+        item = _barcoded_item('TRF-FLT', status='FAULTY')
+        self._audit(item)
+        res = self.client.post(reverse('transfer_inventory'), {
+            'product_id': item.id, 'destination_warehouse': 'WH2', 'remarks': 'to WH2'}).json()
+        tr_item = TransferRequestItem.objects.get(product=item)
+        got = self.client.post(reverse('receive_transfer_item', args=[res['transfer_request_id'], tr_item.id]),
+                               {'destination_location': 'Mwh2/Rack 3'}).json()
+        self.assertTrue(got['success'], got)
+        latest = item.transactions.order_by('-created_at', '-id').first()
+        self.assertEqual((latest.transaction_type, latest.store_location, latest.stock_status), ('IN', 'WH2', 'FAULTY'))
+
+
+class EmployeeActivityTests(TestCase):
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        self.admin = User.objects.create_user(username='ea-admin', password='pass12345', first_name='Asha', last_name='Admin')
+        UserProfile.objects.create(user=self.admin, role='ADMIN')
+        self.clerk = User.objects.create_user(username='ea-clerk', password='x')
+        UserProfile.objects.create(user=self.clerk, role='STOCK_IN')
+        self.client.force_login(self.admin)
+        now = timezone.now()
+        last_month = (timezone.localdate().replace(day=1) - timedelta(days=1))
+        self.last_month = last_month.strftime('%Y-%m')
+        a = _barcoded_item('EA-1')
+        b = _barcoded_item('EA-2')
+        T = InventoryTransaction
+        T.objects.filter(product__in=[a, b]).update(performed_by=self.clerk)                       # 2 stock in, this month
+        T.objects.create(product=a, transaction_type='OUT', store_location='WH1', stock_status='SALE', performed_by=self.clerk, client_name='Acme')
+        T.objects.create(product=b, transaction_type='AUDIT', store_location='WH1', stock_status='LIVE', audited_by=self.clerk)  # auditor only
+        old = T.objects.create(product=b, transaction_type='OUT', store_location='WH1', stock_status='RENT', performed_by=self.clerk)
+        T.objects.filter(id=old.id).update(created_at=now.replace(day=1) - timedelta(days=3))       # last month
+        T.objects.create(product=a, transaction_type='IN', store_location='WH1', stock_status='LIVE')  # no user
+
+    def _row(self, html_ctx, user):
+        return next(r for r in html_ctx['staff']['rows'] if r['user'] == user)
+
+    def test_dashboard_counts_this_month_and_previous_month(self):
+        res = self.client.get(reverse('dashboard'))
+        self.assertContains(res, 'Employee Activity')
+        row = self._row(res.context, self.clerk)
+        self.assertEqual((row['n_in'], row['n_out'], row['n_audit'], row['total']), (2, 1, 1, 4))
+        self.assertEqual(res.context['staff']['unassigned'], 1)
+        self.assertEqual(self._row(res.context, self.admin)['total'], 0)
+        prev = self.client.get(reverse('dashboard'), {'staff_month': self.last_month})
+        row = self._row(prev.context, self.clerk)
+        self.assertEqual((row['n_out'], row['total']), (1, 1))
+        self.assertTrue(prev.context['staff_nav']['next_month'])
+        self.assertFalse(res.context['staff_nav']['next_month'])  # no future months
+
+    def test_employee_page_lists_transactions_month_wise(self):
+        url = reverse('staff_activity_detail', args=[self.clerk.id])
+        res = self.client.get(url)
+        self.assertEqual(res.context['counts']['total'], 4)
+        self.assertContains(res, 'EA-1')
+        self.assertContains(res, 'Acme')
+        self.assertEqual(len(res.context['months']), 12)
+        self.assertEqual(res.context['months'][1]['total'], 1)
+        only_out = self.client.get(url, {'type': 'OUT'})
+        self.assertEqual(len(only_out.context['transactions']), 1)
+        prev = self.client.get(url, {'month': self.last_month})
+        self.assertEqual([t.stock_status for t in prev.context['transactions']], ['RENT'])
+
+    def test_only_admin_sees_it(self):
+        self.client.force_login(self.clerk)
+        self.assertNotContains(self.client.get(reverse('dashboard')), 'Employee Activity')
+        self.assertEqual(self.client.get(reverse('staff_activity_detail', args=[self.clerk.id])).status_code, 403)
+        RolePermission.objects.create(role='STOCK_IN', permissions=['stock_in', 'staff_activity'])
+        self.assertContains(self.client.get(reverse('dashboard')), 'Employee Activity')

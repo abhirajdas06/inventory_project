@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 
 from apps.core.activity import log_activity
 from apps.core.models import RolePermission, UserProfile
-from apps.core.permissions import PERMISSION_LABELS, ROLE_PERMISSIONS, all_roles, require_permission
+from apps.core.permissions import PERMISSION_LABELS, ROLE_PERMISSIONS, all_roles, has_permission, require_permission
 from apps.inventory.models import InventoryTransaction
 
 
@@ -67,11 +67,19 @@ def dashboard(request):
     recent = InventoryTransaction.objects.select_related('product', 'performed_by', 'audited_by').order_by('-created_at')[:12]
     tx_counts = InventoryTransaction.objects.values('transaction_type').annotate(total=Count('id'))
 
+    staff = staff_nav = None
+    if has_permission(request.user, 'staff_activity'):
+        from apps.core.staff_activity import month_nav, month_summary, parse_month
+        staff_month = parse_month(request.GET.get('staff_month'))
+        staff, staff_nav = month_summary(staff_month), month_nav(staff_month)
+
     return render(request, 'dashboard.html', {
         'cards': cards,
         'portfolio': portfolio,
         'recent_transactions': recent,
         'tx_counts': list(tx_counts),
+        'staff': staff,
+        'staff_nav': staff_nav,
     })
 
 

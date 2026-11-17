@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ employee_name }} — Activity{% endblock %}
+{% block page_title %}Employee Activity{% endblock %}
+{% block breadcrumb %}Dashboard / Employee Activity{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/inventory-list.css' %}">
+<style>
+    .activity-months td, .activity-months th { font-size: 12.5px; white-space: nowrap; }
+    .activity-months tr.current td { background: #eef5ff; font-weight: 600; }
+    .activity-table td { font-size: 12.5px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3">
+<div class="inventory-list-shell">
+    <div class="inventory-list-toolbar d-flex flex-wrap justify-content-between align-items-end gap-2">
+        <div>
+            <h5 class="inventory-list-title mb-1">{{ employee_name }}</h5>
+            <div class="inventory-list-subtitle">Transactions in <strong>{{ month|date:"F Y" }}</strong>{% if employee.get_full_name %} · {{ employee.get_username }}{% endif %}</div>
+        </div>
+        <div class="d-flex align-items-center gap-1">
+            <a href="{% url 'dashboard' %}?staff_month={{ month_value }}#employeeActivity" class="btn btn-link btn-sm">Back to dashboard</a>
+            <a class="btn btn-outline-secondary btn-sm" href="?month={{ prev_month }}{% if tx_type %}&type={{ tx_type }}{% endif %}" title="Previous month"><i class="bi bi-chevron-left"></i></a>
+            <form method="get" class="d-inline">
+                {% if tx_type %}<input type="hidden" name="type" value="{{ tx_type }}">{% endif %}
+                <input type="month" name="month" value="{{ month_value }}" max="{{ max_month }}" class="form-control form-control-sm" style="width:auto" onchange="this.form.submit()" aria-label="Month">
+            </form>
+            {% if next_month %}<a class="btn btn-outline-secondary btn-sm" href="?month={{ next_month }}{% if tx_type %}&type={{ tx_type }}{% endif %}" title="Next month"><i class="bi bi-chevron-right"></i></a>
+            {% else %}<span class="btn btn-outline-secondary btn-sm disabled"><i class="bi bi-chevron-right"></i></span>{% endif %}
+        </div>
+    </div>
+
+    <div class="row g-3 p-3">
+        <div class="col-lg-4">
+            <div class="fw-semibold small text-muted mb-1">Month by month (last 12 months)</div>
+            <table class="table table-sm activity-months mb-0">
+                <thead><tr><th>Month</th><th class="text-end">In</th><th class="text-end">Out</th><th class="text-end">Audit</th><th class="text-end">Total</th></tr></thead>
+                <tbody>
+                    {% for m in months %}
+                    <tr class="{% if m.value == month_value %}current{% endif %}">
+                        <td><a href="?month={{ m.value }}">{{ m.month|date:"M Y" }}</a></td>
+                        <td class="text-end">{{ m.n_in }}</td>
+                        <td class="text-end">{{ m.n_out }}</td>
+                        <td class="text-end">{{ m.n_audit }}</td>
+                        <td class="text-end fw-semibold">{{ m.total }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <a class="btn btn-sm {% if not tx_type %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?month={{ month_value }}">All <strong>{{ counts.total }}</strong></a>
+                <a class="btn btn-sm {% if tx_type == 'IN' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?month={{ month_value }}&type=IN">Stock In <strong>{{ counts.n_in }}</strong></a>
+                <a class="btn btn-sm {% if tx_type == 'OUT' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?month={{ month_value }}&type=OUT">Stock Out <strong>{{ counts.n_out }}</strong></a>
+                <a class="btn btn-sm {% if tx_type == 'AUDIT' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?month={{ month_value }}&type=AUDIT">Audit <strong>{{ counts.n_audit }}</strong></a>
+            </div>
+            <div class="table-responsive border rounded" style="max-height: calc(100vh - 290px);">
+                <table class="table table-sm table-hover align-middle mb-0 activity-table inventory-list-table">
+                    <thead>
+                        <tr>
+                            <th>Date &amp; Time</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Category</th>
+                            <th>Product</th>
+                            <th>Serial</th>
+                            <th>Barcode</th>
+                            <th>Store</th>
+                            <th>Client / Given To</th>
+                            <th>Invoice</th>
+                            <th>OLF / DC</th>
+                            <th>Remark</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in transactions %}
+                        <tr>
+                            <td>{{ t.created_at|date:"d-m-Y H:i" }}</td>
+                            <td><span class="badge {% if t.transaction_type == 'IN' %}bg-success{% elif t.transaction_type == 'OUT' %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ t.get_transaction_type_display }}</span></td>
+                            <td>{{ t.get_stock_status_display }}</td>
+                            <td>{{ t.product.category.name }}</td>
+                            <td>{{ t.product.name }}</td>
+                            <td><code>{{ t.product.serial_no|default:"" }}</code></td>
+                            <td><code>{{ t.barcode|default:"" }}</code></td>
+                            <td>{{ t.store_location }}</td>
+                            <td>{{ t.client_name|default:"" }}</td>
+                            <td>{{ t.invoice_no|default:"" }}</td>
+                            <td>{{ t.olf_dc_number|default:"" }}</td>
+                            <td class="text-truncate" style="max-width: 260px;" title="{{ t.audit_remark|default:'' }}">{{ t.audit_remark|default:"" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="12" class="text-center text-muted py-4">No transactions in {{ month|date:"F Y" }}.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% include "partials/list_pagination.html" %}
+        </div>
+    </div>
+</div>
+</div>
+{% endblock %}

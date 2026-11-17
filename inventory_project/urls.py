@@ -18,6 +18,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
+from apps.core import staff_activity
 from apps.core import views as core_views
 
 urlpatterns = [
@@ -29,6 +30,7 @@ urlpatterns = [
     path('users/', core_views.user_list, name='user_list'),
     path('users/permissions/', core_views.role_permission_settings, name='role_permission_settings'),
     path('users/permissions/export/', core_views.role_permission_export, name='role_permission_export'),
+    path('staff-activity/<int:user_id>/', staff_activity.staff_activity_detail, name='staff_activity_detail'),
     path('users/create/', core_views.user_create, name='user_create'),
     path('users/<int:user_id>/edit/', core_views.user_edit, name='user_edit'),
     path('users/<int:user_id>/toggle-active/', core_views.user_toggle_active, name='user_toggle_active'),

@@ -228,6 +228,16 @@ def _has_pending_transfer(product):
     return product.transfer_request_items.filter(received_at__isnull=True).exists()
 
 
+def _in_stock_status(product):
+    """The item's current status if it is in stock, else None. In stock means
+    the latest transaction is not a stock out — an audit (or status update) after
+    the stock in doesn't take it out of stock."""
+    latest = product.transactions.order_by('-created_at', '-id').first()
+    if latest is None or latest.transaction_type == 'OUT':
+        return None
+    return latest.stock_status or 'LIVE'
+
+
 def _create_stock_out_transaction(product, store_location, stock_status,
                                   stock_out_date, client_name, invoice_no,
                                   user=None, olf_dc_number=''):
@@ -1004,9 +1014,10 @@ def transfer_inventory(request):
 
         source_warehouse = _latest_store_location(product)
         source_location = _latest_location(product)
-        latest = product.transactions.order_by('-created_at', '-id').first()
-        if _has_pending_transfer(product) or not latest or latest.transaction_type != 'IN':
-            return JsonResponse({'success': False, 'error': 'Product is not available for a new transfer request'})
+        if _has_pending_transfer(product):
+            return JsonResponse({'success': False, 'error': 'Product is already pending receipt in another transfer request'})
+        if _in_stock_status(product) is None:
+            return JsonResponse({'success': False, 'error': 'Product is stocked out, so it cannot be transferred'})
         with transaction.atomic():
             transfer_request = TransferRequest.objects.create(
                 source_warehouse=source_warehouse,
@@ -1146,8 +1157,6 @@ def create_transfer_request(request):
     upload = request.FILES.get('file')
     if source not in dict(InventoryTransaction.STORE_LOCATION) or destination not in dict(InventoryTransaction.STORE_LOCATION):
         return JsonResponse({'success': False, 'error': 'Select valid source and destination stores'})
-    if source == destination:
-        return JsonResponse({'success': False, 'error': 'Source and destination stores must differ'})
     if not upload:
         return JsonResponse({'success': False, 'error': 'Upload an Excel file containing barcodes'})
     errors, seen = [], set()
@@ -1171,7 +1180,7 @@ def create_transfer_request(request):
                     errors.append(f'Row {row_no}: product is frozen ({barcode})')
                 elif _has_pending_transfer(product):
                     errors.append(f'Row {row_no}: product is already pending transfer ({barcode})')
-                elif not latest or latest.transaction_type != 'IN':
+                elif not latest or latest.transaction_type == 'OUT':
                     errors.append(f'Row {row_no}: product is not currently in stock ({barcode})')
                 elif latest.store_location != source:
                     errors.append(f'Row {row_no}: product is not in source store {source} ({barcode})')
@@ -1216,8 +1225,9 @@ def receive_transfer_request(request, request_id):
                     destination_location=destination_location,
                     remarks=format_dated_remark(f'Transfer request TR-{transfer_request.id}', date.today()),
                     transferred_by=request.user)
+                # Keep the item's status (a Faulty item stays Faulty after moving).
                 InventoryTransaction.objects.create(product=product, transaction_type='IN', store_location=transfer_request.destination_warehouse,
-                    stock_status='LIVE', stock_in_date=date.today(), performed_by=request.user)
+                    stock_status=_in_stock_status(product) or 'LIVE', stock_in_date=date.today(), performed_by=request.user)
                 item.destination_location = destination_location
                 item.received_by = request.user
                 item.received_at = now()
@@ -1257,7 +1267,7 @@ def receive_transfer_item(request, request_id, item_id):
         )
         InventoryTransaction.objects.create(
             product=item.product, transaction_type='IN', store_location=transfer_request.destination_warehouse,
-            stock_status='LIVE', stock_in_date=date.today(), performed_by=request.user,
+            stock_status=_in_stock_status(item.product) or 'LIVE', stock_in_date=date.today(), performed_by=request.user,
         )
         item.destination_location = destination_location
         item.received_by = request.user

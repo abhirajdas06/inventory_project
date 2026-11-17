@@ -169,10 +169,7 @@ async function postTransfer(url, form) {
 document.getElementById('requestTransferForm')?.addEventListener('submit', event => {
   event.preventDefault();
   const form = event.currentTarget;
-  if (form.source_warehouse.value === form.destination_warehouse.value) {
-    alert('Source and destination stores must be different.');
-    return;
-  }
+  // Same store is allowed (moving between racks / locations inside one store).
   postTransfer('{% url "create_transfer_request" %}', form);
 });
 

@@ -95,6 +95,64 @@
             </div>
         </div>
     </section>
+
+    {% if staff %}
+    <section class="dash-panel mt-3" id="employeeActivity" aria-label="Employee activity">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <div class="dash-panel-head mb-0">
+                <h2 class="mb-0">Employee Activity</h2>
+                <div class="small text-muted">Stock in, stock out and audit transactions each user performed in {{ staff_nav.month|date:"F Y" }}. Click a name for the full list.</div>
+            </div>
+            <form method="get" class="d-flex align-items-center gap-1" action="#employeeActivity">
+                <a class="btn btn-outline-secondary btn-sm" href="?staff_month={{ staff_nav.prev_month }}#employeeActivity" title="Previous month"><i class="bi bi-chevron-left"></i></a>
+                <input type="month" name="staff_month" value="{{ staff_nav.month_value }}" max="{{ staff_nav.max_month }}" class="form-control form-control-sm" style="width:auto" onchange="this.form.submit()" aria-label="Month">
+                {% if staff_nav.next_month %}<a class="btn btn-outline-secondary btn-sm" href="?staff_month={{ staff_nav.next_month }}#employeeActivity" title="Next month"><i class="bi bi-chevron-right"></i></a>
+                {% else %}<span class="btn btn-outline-secondary btn-sm disabled"><i class="bi bi-chevron-right"></i></span>{% endif %}
+            </form>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Role</th>
+                        <th class="text-end">Stock In</th>
+                        <th class="text-end">Stock Out</th>
+                        <th class="text-end">Audit</th>
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in staff.rows %}
+                    <tr{% if not r.total %} class="text-muted"{% endif %}>
+                        <td><a href="{% url 'staff_activity_detail' r.user.id %}?month={{ staff_nav.month_value }}" class="fw-semibold">{{ r.name }}</a>{% if not r.user.is_active %} <span class="badge text-bg-light border">inactive</span>{% endif %}</td>
+                        <td class="small">{{ r.role }}</td>
+                        <td class="text-end">{{ r.n_in }}</td>
+                        <td class="text-end">{{ r.n_out }}</td>
+                        <td class="text-end">{{ r.n_audit }}</td>
+                        <td class="text-end fw-bold">{{ r.total }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if staff.unassigned %}
+                    <tr class="text-muted fst-italic">
+                        <td colspan="5">No user recorded (older or system entries)</td>
+                        <td class="text-end">{{ staff.unassigned }}</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td colspan="2">Total</td>
+                        <td class="text-end">{{ staff.totals.n_in }}</td>
+                        <td class="text-end">{{ staff.totals.n_out }}</td>
+                        <td class="text-end">{{ staff.totals.n_audit }}</td>
+                        <td class="text-end">{{ staff.totals.total }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </section>
+    {% endif %}
 </div>
 
 <!-- Card detail modal: filled via AJAX from /dashboard/card/<kind>/ -->

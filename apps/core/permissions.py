@@ -12,7 +12,7 @@ ROLE_PERMISSIONS = {
         'product_history', 'sales_return', 'sold_view', 'rent_return',
         'reconciliation', 'mapping', 'freeze', 'reports', 'audit_findings',
         'attend_audit_finding', 'stock_return', 'status_update', 'view_live',
-        'delete_inventory', 'stock_out_register',
+        'delete_inventory', 'stock_out_register', 'staff_activity',
     },
     'STOCK_IN': {
         'stock_in', 'sales_return', 'rent_return', 'transfer_receive',
@@ -41,6 +41,7 @@ PERMISSION_LABELS = {
     'view_live': 'Read-only: view live (in-stock) lists and search',
     'sold_view': 'Read-only: view out-stock lists (sold, faulty, stock status)',
     'stock_out_register': 'Stock Out Register: view and export every stock out by date (for auditors)',
+    'staff_activity': 'Employee Activity on the dashboard: transactions per employee by month',
     'user_management': 'Manage users and role settings',
     'stock_in': 'Add stock and components',
     'stock_out': 'Stock out products',
