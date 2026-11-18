@@ -8,7 +8,7 @@
       <div>
         <h5 class="inventory-list-title">Stock Transfer Requests</h5>
         <div class="inventory-list-subtitle">
-          Request transfer by barcode Excel, then receive one-by-one with location or upload a bulk receipt Excel.
+          Request a transfer with a barcode Excel (any size — it uploads in chunks with a progress bar). Open a request to see its items and approve them one by one, or receive the whole request with a bulk receipt Excel.
         </div>
       </div>
     </div>
@@ -43,6 +43,10 @@
             </div>
           </div>
           <button class="btn btn-primary btn-sm mt-3" type="submit">Create request</button>
+          <div class="transfer-progress mt-3 d-none">
+            <div class="progress" style="height: 18px;"><div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">0%</div></div>
+            <div class="small text-muted mt-1 transfer-progress-text"></div>
+          </div>
         </form>
       </div>
       {% endif %}
@@ -111,6 +115,10 @@
         </select>
         <input type="file" class="form-control" name="file" accept=".xlsx" required>
         <div class="form-text">Headings: Barcode/Barcode No and Location/Updated Location.</div>
+        <div class="transfer-progress mt-3 d-none">
+          <div class="progress" style="height: 18px;"><div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">0%</div></div>
+          <div class="small text-muted mt-1 transfer-progress-text"></div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-primary">Confirm receipt</button>
@@ -166,11 +174,85 @@ async function postTransfer(url, form) {
   location.reload();
 }
 
-document.getElementById('requestTransferForm')?.addEventListener('submit', event => {
+// ── Bulk Excel uploads, sent in chunks with a progress bar ────────────────
+// 1) the file is read once (/read-file/), 2) its rows go up 500 at a time,
+// so thousands of barcodes never hit a request timeout.
+function csrfToken() {
+  return (document.cookie.split('; ').find(r => r.startsWith('csrftoken=')) || '').split('=')[1] || '';
+}
+async function postJson(url, body, isForm) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: isForm ? {'X-CSRFToken': csrfToken()} : {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken()},
+    body: isForm ? body : JSON.stringify(body),
+  });
+  const text = await res.text();
+  try { return JSON.parse(text); } catch (err) { return {success: false, error: text ? 'Server error (' + res.status + ')' : 'No response'}; }
+}
+function progressUi(container) {
+  const box = container.querySelector('.transfer-progress');
+  const bar = box.querySelector('.progress-bar');
+  const text = box.querySelector('.transfer-progress-text');
+  box.classList.remove('d-none');
+  return function (done, total, message) {
+    const pct = total ? Math.round(done * 100 / total) : 100;
+    bar.style.width = pct + '%';
+    bar.textContent = pct + '%';
+    text.textContent = message || (done + ' of ' + total + ' rows processed');
+  };
+}
+function showNotes(title, notes) {
+  if (!notes.length) return;
+  const NL = String.fromCharCode(10);
+  const shown = notes.slice(0, 40).join(NL);
+  alert(title + ' (' + notes.length + '):' + NL + shown + (notes.length > 40 ? NL + '… and ' + (notes.length - 40) + ' more' : ''));
+}
+async function readTransferFile(form) {
+  const fd = new FormData();
+  fd.append('file', form.querySelector('input[type=file]').files[0]);
+  return postJson('{% url "transfer_read_file" %}', fd, true);
+}
+async function sendInChunks(url, rows, chunkSize, update, onResult) {
+  let done = 0;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    const data = await postJson(url, {rows: chunk});
+    if (!data.success) throw new Error(data.error || 'Upload failed');
+    onResult(data);
+    done += chunk.length;
+    update(done, rows.length);
+  }
+}
+
+document.getElementById('requestTransferForm')?.addEventListener('submit', async event => {
   event.preventDefault();
-  const form = event.currentTarget;
   // Same store is allowed (moving between racks / locations inside one store).
-  postTransfer('{% url "create_transfer_request" %}', form);
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type=submit]');
+  button.disabled = true;
+  const update = progressUi(form);
+  update(0, 1, 'Reading the Excel file…');
+  try {
+    const file = await readTransferFile(form);
+    if (!file.success) throw new Error(file.error || 'Could not read the file');
+    const notes = file.errors.slice();
+    const startFd = new FormData();
+    ['source_warehouse', 'destination_warehouse', 'remarks'].forEach(name => startFd.append(name, form.elements[name].value));
+    const started = await postJson('{% url "transfer_start" %}', startFd, true);
+    if (!started.success) throw new Error(started.error || 'Could not start the request');
+    let accepted = 0;
+    update(0, file.rows.length);
+    await sendInChunks('/inventory/transfer-requests/' + started.request_id + '/add-rows/', file.rows, file.chunk_size || 500, update,
+      data => { accepted += data.accepted; notes.push(...data.errors); });
+    const finished = await postJson('/inventory/transfer-requests/' + started.request_id + '/finish/', {});
+    if (!finished.success) { showNotes('Rows not added', notes); throw new Error(finished.error); }
+    update(file.rows.length, file.rows.length, 'TR-' + started.request_id + ' created with ' + accepted + ' item(s).');
+    showNotes('Rows not added', notes);
+    location.reload();
+  } catch (err) {
+    alert(err.message);
+    button.disabled = false;
+  }
 });
 
 document.addEventListener('click', event => {
@@ -196,11 +278,40 @@ document.addEventListener('click', event => {
   }
 });
 
-document.getElementById('receiveTransferForm')?.addEventListener('submit', event => {
+document.getElementById('receiveTransferForm')?.addEventListener('submit', async event => {
   event.preventDefault();
+  const form = event.currentTarget;
   activeTransferId = document.getElementById('receiveTransferRequestId').value;
-  postTransfer('/inventory/transfer-requests/' + activeTransferId + '/receive/', event.currentTarget);
+  const button = form.querySelector('button.btn-primary');
+  button.disabled = true;
+  const update = progressUi(form);
+  update(0, 1, 'Reading the Excel file…');
+  try {
+    const file = await readTransferFile(form);
+    if (!file.success) throw new Error(file.error || 'Could not read the file');
+    const notes = file.errors.slice();
+    let received = 0, pending = 0;
+    update(0, file.rows.length);
+    await sendInChunks('/inventory/transfer-requests/' + activeTransferId + '/receive-rows/', file.rows, file.chunk_size || 500, update,
+      data => { received += data.received; pending = data.pending; notes.push(...data.errors); });
+    update(file.rows.length, file.rows.length, received + ' item(s) received, ' + pending + ' still pending.');
+    showNotes('Rows not received', notes);
+    location.reload();
+  } catch (err) {
+    alert(err.message);
+    button.disabled = false;
+  }
 });
+
+// Opened from a request's page ("Bulk receipt upload"): preselect it.
+(function () {
+  const receiveId = new URLSearchParams(location.search).get('receive');
+  const select = document.getElementById('receiveTransferRequestId');
+  if (!receiveId || !select || !select.querySelector('option[value="' + receiveId + '"]')) return;
+  select.value = receiveId;
+  activeTransferId = receiveId;
+  new bootstrap.Modal(document.getElementById('receiveTransferModal')).show();
+})();
 
 document.getElementById('receiveSingleTransferForm')?.addEventListener('submit', event => {
   event.preventDefault();

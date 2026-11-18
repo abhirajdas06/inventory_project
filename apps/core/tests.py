@@ -2403,3 +2403,289 @@ class EmployeeActivityTransferTests(TestCase):
         req = self.client.get(reverse('staff_activity_detail', args=[self.requester.id]), {'type': 'TRANSFER'})
         self.assertEqual([r['kind_label'] for r in req.context['rows']], ['Transfer Requested'] * 2)
         self.assertEqual(req.context['months'][0]['n_transfer'], 2)
+
+
+class BulkTransferLargeFileTests(TestCase):
+    """A 3,000-barcode transfer request and its receipt run in a bounded number
+    of queries (no per-row lookups), so big files don't time out."""
+
+    def setUp(self):
+        from apps.categories.models import Spare
+        self.user = User.objects.create_user(username='bt-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+        cat = SpareCategory.objects.get_or_create(name='CABLE')[0]
+        Product.objects.bulk_create([Product(category=cat, serial_no=f'BT-SN-{i}', name=f'Cable {i}') for i in range(3000)])
+        products = list(Product.objects.filter(serial_no__startswith='BT-SN-').order_by('id'))
+        Spare.objects.bulk_create([Spare(product=p, barcode=f'BT-{i:05d}', location=f'Rack {i % 7}') for i, p in enumerate(products)])
+        InventoryTransaction.objects.bulk_create([
+            InventoryTransaction(product=p, transaction_type='IN', store_location='WH1', stock_status='FAULTY' if i == 0 else 'LIVE')
+            for i, p in enumerate(products)])
+        self.products = products
+
+    def _xlsx(self, rows):
+        book = Workbook()
+        book.active.append(['Barcode No', 'Location'])
+        for row in rows:
+            book.active.append(list(row))
+        stream = BytesIO()
+        book.save(stream)
+        return SimpleUploadedFile('bt.xlsx', stream.getvalue())
+
+    def test_3000_barcodes_request_and_receive(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.inventory.models import InventoryTransfer, TransferRequestItem
+        rows = [(f'BT-{i:05d}', '') for i in range(3000)] + [('NOPE-1', ''), ('BT-00001', '')]
+        with CaptureQueriesContext(connection) as q:
+            res = self.client.post(reverse('create_transfer_request'), {
+                'source_warehouse': 'WH1', 'destination_warehouse': 'WH2', 'remarks': 'big move', 'file': self._xlsx(rows)}).json()
+        self.assertTrue(res['success'], res.get('error'))
+        self.assertEqual(res['accepted'], 3000)
+        self.assertEqual(len(res['errors']), 2)
+        self.assertLess(len(q), 80, 'request creation must not query per barcode')
+        self.assertEqual(TransferRequestItem.objects.filter(product__serial_no__startswith='BT-SN-').count(), 3000)
+        self.assertEqual(TransferRequestItem.objects.get(barcode='BT-00003').source_location, 'Rack 3')
+
+        receipt = [(f'BT-{i:05d}', f'Mwh2/Rack {i % 5}') for i in range(3000)]
+        with CaptureQueriesContext(connection) as q:
+            got = self.client.post(reverse('receive_transfer_request', args=[res['request_id']]), {'file': self._xlsx(receipt)}).json()
+        self.assertTrue(got['success'], got)
+        self.assertEqual((got['received'], got['pending']), (3000, 0))
+        self.assertLess(len(q), 120, 'receiving must not query per barcode')
+        first = self.products[0]
+        latest = first.transactions.order_by('-created_at', '-id').first()
+        self.assertEqual((latest.transaction_type, latest.store_location, latest.stock_status), ('IN', 'WH2', 'FAULTY'))
+        first.spare.refresh_from_db()
+        self.assertEqual(first.spare.location, 'Mwh2/Rack 0')
+        self.assertEqual(InventoryTransfer.objects.filter(product__in=self.products).count(), 3000)
+
+
+class ReimportUpdatesExistingTests(TestCase):
+    """Importing a barcode that already exists updates that item's details —
+    everything except store, location, barcode and stock status."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='ri-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+
+    def _import(self, key, rows):
+        headers = list(HEADER_MAPS[key].keys())
+        book = Workbook()
+        book.active.append(headers)
+        for row in rows:
+            book.active.append([row.get(h) for h in headers])
+        stream = BytesIO()
+        book.save(stream)
+        job = start_import_job(key, SimpleUploadedFile('ri.xlsx', stream.getvalue()), self.user, store_location='WH2')
+        while job.status not in ('DONE', 'FAILED'):
+            job = process_import_chunk(job, chunk_size=100, user=self.user)
+        return job
+
+    def test_spare_reimport_updates_details_not_location_or_store(self):
+        from apps.categories.models import Spare
+        product = _barcoded_item('RI-CBL', category='CABLE')
+        spare = Spare.objects.get(product=product)
+        spare.location, spare.part_no, spare.specs = 'Mwh1/Rack 1', 'OLD-PN', 'old specs'
+        spare.save()
+        before = InventoryTransaction.objects.filter(product=product).count()
+        job = self._import('spare_cable', [{
+            'Barcode No': 'RI-CBL', 'Brand': 'hp', 'Model': 'D2600', 'Part No': 'NEW-PN', 'Specs': '',
+            'Serial No': 'new-serial', 'Location': 'SHOULD NOT MOVE', 'QTY': 2, 'Remark(describe exact issue)': 'refreshed',
+        }])
+        self.assertEqual((job.success_count, job.updated_count, job.error_count), (1, 1, 0), job.errors)
+        spare.refresh_from_db()
+        product.refresh_from_db()
+        self.assertEqual((spare.part_no, spare.model, spare.brand.name, spare.qty, spare.remark), ('NEW-PN', 'D2600', 'HP', 2, 'refreshed'))
+        self.assertEqual(spare.specs, 'old specs')             # blank cell keeps the old value
+        self.assertEqual(spare.location, 'Mwh1/Rack 1')        # location never changed
+        self.assertEqual(product.serial_no, 'NEW-SERIAL')
+        txns = InventoryTransaction.objects.filter(product=product)
+        self.assertEqual(txns.count(), before)                 # no new stock in
+        self.assertEqual(txns.order_by('-id').first().store_location, 'WH1')  # store unchanged (import was WH2)
+
+    def test_hard_disk_reimport_overwrites_details(self):
+        disk = _harddisk('RI-HD', capacity='300GB', firmware='OLD1', location='Mwh1/Rack 2')
+        job = self._import('harddisk_35', [{'Barcode': 'RI-HD', 'Capacity': '600GB', 'Firmware': 'NEW2', 'GPN Code': 'G-1', 'Location': 'X'}])
+        self.assertEqual((job.updated_count, job.error_count), (1, 0), job.errors)
+        disk.refresh_from_db()
+        self.assertEqual((disk.capacity, disk.firmware, disk.gpn_code, disk.size, disk.location), ('600GB', 'NEW2', 'G-1', '3.5', 'Mwh1/Rack 2'))
+
+    def test_memory_and_card_reimport(self):
+        from apps.categories.models import Card, Memory
+        cat = SpareCategory.objects.get_or_create(name='MEMORY')[0]
+        p = Product.objects.create(category=cat, serial_no='RI-MEM-SN', name='Mem')
+        mem = Memory.objects.create(product=p, barcode='RI-MEM', size='8GB', location='Box 1')
+        InventoryTransaction.objects.create(product=p, transaction_type='IN', store_location='WH1', stock_status='LIVE')
+        job = self._import('memory', [{'Barcode': 'ri-mem', 'Size': '16GB', 'Part No 1': 'M393'}])
+        self.assertEqual((job.updated_count, job.error_count), (1, 0), job.errors)
+        mem.refresh_from_db()
+        self.assertEqual((mem.size, mem.part_no_1, mem.location), ('16GB', 'M393', 'Box 1'))
+
+    def test_new_barcodes_still_stock_in_alongside_updates(self):
+        _barcoded_item('RI-OLD', category='CABLE')
+        job = self._import('spare_cable', [{'Barcode No': 'RI-OLD', 'Remark(describe exact issue)': 'x'}, {'Barcode No': 'RI-NEW', 'Serial No': 'RI-NEW-SN'}])
+        self.assertEqual((job.success_count, job.updated_count, job.error_count), (2, 1, 0), job.errors)
+        from apps.categories.models import Spare
+        new = Spare.objects.get(barcode='RI-NEW')
+        self.assertEqual(new.product.transactions.get().store_location, 'WH2')
+
+    def test_server_component_reimport_updates_component(self):
+        from apps.servers.models import ServerComponent
+        cat = SpareCategory.objects.get_or_create(name='SERVER')[0]
+        sp = Product.objects.create(category=cat, serial_no='RI-SRV', name='Server')
+        server = Server.objects.create(product=sp, service_tag='RI-SRV', machine_no='M1', machine_type='RACK SERVER', group='rack_server')
+        part = _barcoded_item('RI-SRV-MB', category='MOTHER BOARD')
+        comp = ServerComponent.objects.create(server=server, product=part, spare_type='MOTHER BOARD', barcode='RI-SRV-MB', location='Rack 5')
+        job = self._import('server_rack_server', [{
+            'System Service Tag No': 'RI-SRV', 'Machine no': 'M1-NEW', 'Spares Type': 'MOTHER BOARD',
+            'Part No': 'MB-PN-2', 'Barcode No': 'RI-SRV-MB', 'Location': 'elsewhere'}])
+        self.assertEqual((job.updated_count, job.error_count), (1, 0), job.errors)
+        comp.refresh_from_db()
+        server.refresh_from_db()
+        self.assertEqual((comp.part_no, comp.location, server.machine_no), ('MB-PN-2', 'Rack 5', 'M1-NEW'))
+
+
+class ReimportEveryImportTypeTests(TestCase):
+    """Every stock-in import option (all spare categories, LTO, hard disks,
+    memory, cards, CPU, SFP, rail kits, networking, controller, servers)
+    updates an existing barcode instead of failing — and never changes its
+    store, location or reference location."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='rie-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+
+    def _run(self, key, rows):
+        headers = list(HEADER_MAPS[key].keys())
+        book = Workbook()
+        book.active.append(headers)
+        for row in rows:
+            book.active.append([row.get(h) for h in headers])
+        stream = BytesIO()
+        book.save(stream)
+        job = start_import_job(key, SimpleUploadedFile('rie.xlsx', stream.getvalue()), self.user, store_location='WH1')
+        while job.status not in ('DONE', 'FAILED'):
+            job = process_import_chunk(job, chunk_size=100, user=self.user)
+        return job
+
+    def _records(self, barcode):
+        from apps.core.importers import _inventory_records, existing_product_by_barcode
+        product = existing_product_by_barcode(barcode)
+        self.assertIsNotNone(product, barcode)
+        return product, _inventory_records(product)
+
+    def test_every_import_option(self):
+        from apps.core.importers import SERVER_GROUP_IMPORTS
+        keys = [k for k in HEADER_MAPS if k != 'stock_out' and not k.endswith('_stock_out') and k != 'controller'
+                and k not in SERVER_GROUP_IMPORTS]
+        checked = []
+        for n, key in enumerate(keys):
+            headers = HEADER_MAPS[key]
+            col = {v: k for k, v in headers.items()}
+            barcode = f'RIE-{n:03d}'
+            first = {col['barcode']: barcode, col.get('serial_no', 'x'): f'SN-RIE-{n}',
+                     col.get('location', 'x'): 'Rack 1', col.get('reference_location', 'x'): 'REF A'}
+            if 'service_tag' in col:
+                first.update({col['service_tag']: f'TAG-RIE-{n}', col['spare_type']: 'MOTHER BOARD', col['machine_no']: f'M-{n}'})
+            if 'category' in col:
+                first[col['category']] = 'FRONT BEZEL' if key != 'networking_spare' else 'ROUTER MODULE'
+            job = self._run(key, [first])
+            self.assertEqual((job.error_count, job.updated_count), (0, 0), (key, job.errors))
+
+            # Re-import the same barcode with a new remark, location and reference location.
+            remark_col = col.get('remark')
+            second = dict(first)
+            second[col.get('location', 'x')] = 'SHOULD NOT MOVE'
+            second[col.get('reference_location', 'x')] = 'SHOULD NOT CHANGE'
+            if remark_col:
+                second[remark_col] = f'updated {key}'
+            job = self._run(key, [second])
+            self.assertEqual((job.error_count, job.updated_count), (0, 1), (key, job.errors))
+            product, records = self._records(barcode)
+            for obj in records:
+                if hasattr(obj, 'location'):
+                    self.assertNotEqual(obj.location, 'SHOULD NOT MOVE', (key, type(obj).__name__))
+                if hasattr(obj, 'reference_location'):
+                    self.assertNotEqual(obj.reference_location, 'SHOULD NOT CHANGE', (key, type(obj).__name__))
+            if remark_col:
+                self.assertTrue(any(getattr(o, 'remark', None) == f'updated {key}' for o in records), key)
+            self.assertEqual(InventoryTransaction.objects.filter(product=product, transaction_type='IN').count(), 1, key)
+            checked.append(key)
+        self.assertGreaterEqual(len(checked), 25)
+
+    def test_controller_rows(self):
+        col = {v: k for k, v in HEADER_MAPS['controller'].items()}
+        parent = {col['spare_type']: 'CONTROLLER', col['serial_no']: 'RIE-CTRL-SN', col['barcode']: 'RIE-CTRL',
+                  col['location']: 'Rack 3', col.get('remark', 'x'): 'first'}
+        child = {col['spare_type']: 'CACHE MEMORY', col['serial_no']: 'RIE-CHILD-SN', col['barcode']: 'RIE-CHILD',
+                 col['parent_child_location']: 'RIE-CTRL-SN', col['location']: 'Rack 3', col.get('remark', 'x'): 'first'}
+        self.assertEqual(self._run('controller', [parent, child]).error_count, 0)
+        parent2 = {**parent, col['location']: 'MOVED', col.get('remark', 'x'): 'second'}
+        child2 = {**child, col['location']: 'MOVED', col.get('remark', 'x'): 'second'}
+        job = self._run('controller', [parent2, child2])
+        self.assertEqual((job.error_count, job.updated_count), (0, 2), job.errors)
+        _, records = self._records('RIE-CHILD')
+        spare = next(o for o in records if type(o).__name__ == 'Spare')
+        self.assertEqual((spare.remark, spare.location, spare.controller.barcode), ('second', 'Rack 3', 'RIE-CTRL'))
+
+
+class ChunkedTransferUploadTests(TestCase):
+    """The transfer page reads the file once, then sends rows in chunks."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='ct-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+        for i in range(6):
+            _barcoded_item(f'CT-{i}')
+
+    def _xlsx(self, rows):
+        book = Workbook()
+        book.active.append(['Barcode No', 'Location'])
+        for row in rows:
+            book.active.append(list(row))
+        stream = BytesIO()
+        book.save(stream)
+        return SimpleUploadedFile('ct.xlsx', stream.getvalue())
+
+    def _json(self, url, rows):
+        import json
+        return self.client.post(url, json.dumps({'rows': rows}), content_type='application/json').json()
+
+    def test_request_and_receive_in_chunks(self):
+        read = self.client.post(reverse('transfer_read_file'), {'file': self._xlsx(
+            [(f'CT-{i}', '') for i in range(6)] + [('CT-0', ''), ('NOPE', '')])}).json()
+        self.assertTrue(read['success'])
+        self.assertEqual(len(read['rows']), 7)
+        self.assertIn('duplicate', read['errors'][0])
+        started = self.client.post(reverse('transfer_start'), {'source_warehouse': 'WH1', 'destination_warehouse': 'WH1', 'remarks': 'shuffle'}).json()
+        tr = started['request_id']
+        a = self._json(reverse('transfer_add_rows', args=[tr]), read['rows'][:4])
+        b = self._json(reverse('transfer_add_rows', args=[tr]), read['rows'][4:])
+        self.assertEqual(a['accepted'] + b['accepted'], 6)
+        self.assertEqual(len(b['errors']), 1)  # NOPE
+        done = self.client.post(reverse('transfer_finish', args=[tr])).json()
+        self.assertEqual((done['success'], done['accepted']), (True, 6))
+
+        rows = [{'row': i + 2, 'barcode': f'CT-{i}', 'location': f'Rack {i}'} for i in range(6)]
+        r1 = self._json(reverse('transfer_receive_rows', args=[tr]), rows[:3])
+        self.assertEqual((r1['received'], r1['pending']), (3, 3))
+        from apps.inventory.models import TransferRequest
+        self.assertEqual(TransferRequest.objects.get(id=tr).status, 'PARTIAL')
+        r2 = self._json(reverse('transfer_receive_rows', args=[tr]), rows[3:] + [{'row': 99, 'barcode': 'CT-0', 'location': 'x'}])
+        self.assertEqual((r2['received'], r2['pending'], len(r2['errors'])), (3, 0, 1))
+        self.assertEqual(TransferRequest.objects.get(id=tr).status, 'COMPLETED')
+
+    def test_empty_request_is_removed(self):
+        from apps.inventory.models import TransferRequest
+        tr = self.client.post(reverse('transfer_start'), {'source_warehouse': 'WH2', 'destination_warehouse': 'WH1'}).json()['request_id']
+        res = self._json(reverse('transfer_add_rows', args=[tr]), [{'row': 2, 'barcode': 'CT-1'}])
+        self.assertEqual(res['accepted'], 0)   # CT-1 is in WH1, not WH2
+        self.assertFalse(self.client.post(reverse('transfer_finish', args=[tr])).json()['success'])
+        self.assertFalse(TransferRequest.objects.filter(id=tr).exists())
+
+    def test_page_uses_chunked_upload(self):
+        html = self.client.get(reverse('transfer_request_page')).content.decode()
+        self.assertIn(reverse('transfer_read_file'), html)
+        self.assertIn('transfer-progress', html)

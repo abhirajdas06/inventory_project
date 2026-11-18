@@ -330,12 +330,14 @@ for _hdd_key, _hdd_size in HARDDISK_SIZE_IMPORTS.items():
 
 
 # ════════════════════════════════════════════════════════════
-#  HARD DISK — fill missing details on disks that already exist
+#  RE-IMPORT — update items whose barcode already exists
 # ════════════════════════════════════════════════════════════
-# Re-importing a Hard Disk sheet doesn't reject barcodes that are already in
-# the system: it fills in the details those disks are missing (blank fields
-# only — nothing already filled in is overwritten) and leaves their stock
-# status alone. New barcodes are stocked in as usual.
+# Importing a stock-in sheet never fails on a barcode that is already in the
+# system: that item's details are updated from the row instead (every column
+# that has a value — a blank cell never wipes existing data). The store, the
+# location, the reference location, the barcode and the stock status / history
+# are left as they are; only a transfer or a stock movement changes those.
+# New barcodes are stocked in as usual.
 HARDDISK_IMPORT_KEYS = {'harddisk', 'harddisk_25', 'harddisk_35'}
 
 # Older sheets (Sold / Rent / Open tabs) title some columns differently.
@@ -347,6 +349,14 @@ HEADER_ALIASES = {
         'INTERFACE (SAS/SATA/FC)': 'INTERFACE(SAS/SATA/FC)',
     },
 }
+
+# Never changed by re-importing an existing barcode.
+KEEP_ON_UPDATE = {
+    'location', 'reference_location', 'parent_child_location', 'store_location', 'barcode', 'stock_status',
+    'id', 'product', 'created_at', 'controller', 'server',
+}
+# Imports whose sheet carries the item's category (Product column).
+CATEGORY_FROM_SHEET = {'spare_miscellaneous', 'networking_spare'}
 
 
 def _alias_family(model_key):
@@ -361,73 +371,113 @@ def _sheet_header(header, model_key):
     return HEADER_ALIASES.get(_alias_family(model_key), {}).get(key, key)
 
 
-_HARDDISK_FILL_FIELDS = (
-    'oem', 'brand_model_no', 'oem_model_no', 'capacity', 'rpm', 'interface', 'size',
-    'part_no', 'alt_part_no', 'alt_fru_1', 'alt_fru_2', 'alt_fru_3', 'retail_part_no',
-    'spare_part_tray', 'gpn_code', 'brand_serial_no', 'oem_serial_no', 'firmware',
-    'health', 'gb_s', 'tray_barcode', 'location', 'reference_location', 'remark',
-)
-
-
 def _blank(value):
     return value is None or str(value).strip() == ''
 
 
-def fill_missing_harddisk_fields(harddisk, data):
-    """Copy values from an import row into the disk's BLANK fields only.
-    Returns the list of fields that were filled."""
-    filled = []
-    for field in _HARDDISK_FILL_FIELDS:
-        new = data.get(field)
-        if not _blank(new) and _blank(getattr(harddisk, field)):
-            setattr(harddisk, field, str(new).strip())
-            filled.append(field)
-    brand_name = (data.get('brand') or '').strip().upper()
-    if brand_name and harddisk.brand_id is None:
-        harddisk.brand, _ = Brand.objects.get_or_create(name=brand_name)
-        filled.append('brand')
-    if filled:
-        harddisk.save(update_fields=filled)
-
-    product = harddisk.product
-    product_filled = []
-    for field, value in (('serial_no', (data.get('serial_no') or '').strip().upper()),
-                         ('part_no', data.get('part_no')),
-                         ('model', data.get('oem_model_no') or data.get('brand_model_no'))):
-        if not _blank(value) and _blank(getattr(product, field)):
-            setattr(product, field, value)
-            product_filled.append(field)
-    if product_filled:
-        product.save(update_fields=product_filled)
-    return filled + [f'product.{f}' for f in product_filled]
-
-
-def _existing_harddisk(data):
-    from apps.categories.models import HardDisk
-    barcode = (data.get('barcode') or '').strip()
+def existing_product_by_barcode(barcode):
+    """The Product whose inventory record (any category, or a server
+    component) carries this barcode, else None."""
+    from apps.categories.models import CPU, SFP, Card, Controller, HardDisk, Memory, NetworkingSpare, RailKit, Spare
+    from apps.servers.models import Server, ServerComponent
+    barcode = (barcode or '').strip()
     if not barcode:
         return None
-    return HardDisk.objects.select_related('product').filter(barcode__iexact=barcode).first()
+    for model in (Spare, Card, CPU, Memory, SFP, RailKit, HardDisk, NetworkingSpare, Controller, Server, ServerComponent):
+        obj = model.objects.filter(barcode__iexact=barcode).select_related('product').first()
+        if obj is not None and obj.product_id:
+            return obj.product
+    return None
 
 
-def _harddisk_fill_or_create(create, model_key):
-    """Wrap a Hard Disk creator: an existing barcode gets its blanks filled
-    instead of failing as a duplicate."""
-    def _run(data):
-        existing = _existing_harddisk(data)
-        if existing is None:
-            return create(data)
-        size = HARDDISK_SIZE_IMPORTS.get(model_key)
-        filled = fill_missing_harddisk_fields(existing, {**data, 'size': size} if size else data)
-        product = existing.product
-        product._import_updated = True
-        product._import_filled = filled
-        return product
-    return _run
+def _inventory_records(product):
+    from apps.servers.models import ServerComponent
+    records = []
+    for attr in ('spare', 'card', 'cpu', 'controller', 'memory', 'sfp', 'railkit', 'harddisk', 'networking_spare', 'server'):
+        try:
+            obj = getattr(product, attr)
+        except Exception:
+            obj = None
+        if obj is not None:
+            records.append(obj)
+    return records + list(ServerComponent.objects.filter(product=product))
 
 
-for _hdd_key in HARDDISK_IMPORT_KEYS:
-    CREATE_BY_KEY[_hdd_key] = _harddisk_fill_or_create(CREATE_BY_KEY[_hdd_key], _hdd_key)
+def update_existing_from_row(product, row, model_key):
+    """Update an existing item's details from an import row (non-blank cells
+    only; never store, location, reference location, barcode or stock status).
+    Returns the list of changed fields."""
+    from django.db import models as dj_models
+    base = _base_key(model_key)
+    data = dict(row)
+    if base in HARDDISK_SIZE_IMPORTS:
+        data['size'] = HARDDISK_SIZE_IMPORTS[base]
+    changed = []
+    for obj in _inventory_records(product):
+        fields = {f.name: f for f in obj._meta.concrete_fields}
+        update = []
+        for key, value in data.items():
+            if key in KEEP_ON_UPDATE or key not in fields or _blank(value):
+                continue
+            field = fields[key]
+            if field.is_relation:
+                if key == 'brand':
+                    brand, _ = Brand.objects.get_or_create(name=str(value).strip().upper())
+                    if obj.brand_id != brand.id:
+                        obj.brand = brand
+                        update.append(key)
+                continue
+            if isinstance(field, (dj_models.IntegerField, dj_models.DecimalField, dj_models.FloatField)):
+                try:
+                    value = int(float(value))
+                except (TypeError, ValueError):
+                    continue
+            elif isinstance(field, (dj_models.DateField, dj_models.BooleanField)):
+                continue
+            else:
+                value = str(value).strip()
+                if field.max_length:
+                    value = value[:field.max_length]
+            if getattr(obj, key) != value:
+                setattr(obj, key, value)
+                update.append(key)
+        if update:
+            obj.save(update_fields=update)
+            changed += [f'{type(obj).__name__}.{f}' for f in update]
+
+    product_update = []
+    serial = (data.get('serial_no') or '').strip().upper()
+    model_name = data.get('model') or data.get('oem_model_no') or data.get('brand_model_no')
+    for field, value in (('serial_no', serial), ('part_no', data.get('part_no')), ('model', model_name),
+                         ('brand', (data.get('brand') or '').strip().upper())):
+        if not _blank(value) and getattr(product, field) != str(value).strip():
+            setattr(product, field, str(value).strip()[:100])
+            product_update.append(field)
+    category = (data.get('category') or '').strip().upper()
+    if base in CATEGORY_FROM_SHEET and category and product.category.name != category:
+        product.category, _ = SpareCategory.objects.get_or_create(name=category)
+        product_update.append('category')
+    if product_update:
+        product.save(update_fields=product_update)
+        changed += [f'Product.{f}' for f in product_update]
+    return changed
+
+
+def _update_server_fields(row):
+    """Server import: the machine's own columns (type, machine no, model,
+    tested by) when its System Service Tag is already in the system."""
+    service_tag = (row.get('service_tag') or '').strip().upper()
+    server = Server.objects.filter(service_tag=service_tag).first() if service_tag else None
+    if server is None:
+        return
+    update = []
+    for field, value in (('machine_type', row.get('machine_type')), ('machine_no', row.get('machine_no')),
+                         ('model', row.get('server_model')), ('tested_by', row.get('tested_by'))):
+        if not _blank(value) and getattr(server, field) != str(value).strip():
+            setattr(server, field, str(value).strip())
+            update.append(field)
+    if update:
+        server.save(update_fields=update)
 
 
 # ════════════════════════════════════════════════════════════
@@ -707,6 +757,19 @@ def mark_latest_stock_user(product, user):
 
 
 def import_row(model_key, row, user=None):
+    # Stock-in imports: a barcode that is already in the system updates that
+    # item instead of failing as a duplicate (see update_existing_from_row).
+    if model_key != 'stock_out' and not model_key.endswith('_stock_out'):
+        existing = existing_product_by_barcode(row.get('barcode'))
+        if existing is not None:
+            existing._import_changes = update_existing_from_row(existing, row, model_key)
+            existing._import_updated = True
+            if model_key == 'server' or model_key in SERVER_GROUP_IMPORTS:
+                _update_server_fields(row)
+            elif model_key == 'controller' and not _is_controller_parent_row(row):
+                # A component row may also (re)attach the item to the parent controller.
+                import_controller_row(row, user=user)
+            return existing
     if model_key == 'networking_spare':
         return create_product_and_networking_spare(row, user=user)
     if model_key == 'controller':
@@ -752,10 +815,8 @@ def import_combined_stock_out_row(base_key, row, user=None):
     except ValueError:
         product = import_row(base_key, row, user=user)
     else:
-        harddisk = getattr(product, 'harddisk', None) if base_key in HARDDISK_IMPORT_KEYS else None
-        if harddisk is not None:
-            size = HARDDISK_SIZE_IMPORTS.get(base_key)
-            fill_missing_harddisk_fields(harddisk, {**row, 'size': size} if size else row)
+        # Already in the system: refresh its details from the row, then stock it out.
+        update_existing_from_row(product, row, base_key)
 
     # No stock-out details on this row → stock in only.
     if not _row_has_stock_out_details(row):
@@ -1002,6 +1063,12 @@ def create_product_and_networking_spare(data, user=None):
     return product
 
 
+def _is_controller_parent_row(row):
+    spare_type = (row.get('spare_type') or row.get('product_category') or '').strip().upper()
+    product_name = (row.get('product_name') or row.get('product_type') or '').strip().upper()
+    return spare_type == 'CONTROLLER' or product_name == 'CABINET'
+
+
 def import_controller_row(row, user=None):
     from apps.categories.models import Controller, Spare
     from apps.core.services import create_controller_with_components
@@ -1083,8 +1150,8 @@ def import_controller_row(row, user=None):
             spare_record.specs = row.get('specs')
             spare_record.qty = row.get('qty') or 1
             spare_record.barcode = barcode or None
-            spare_record.location = row.get('location') or controller.location
-            spare_record.reference_location = row.get('reference_location') or controller.reference_location
+            spare_record.location = spare_record.location or row.get('location') or controller.location  # never moved by an import
+            spare_record.reference_location = spare_record.reference_location or row.get('reference_location') or controller.reference_location
             spare_record.remark = row.get('remark')
             spare_record.save()
         else:

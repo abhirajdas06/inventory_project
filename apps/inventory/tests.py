@@ -635,7 +635,11 @@ class StockOutTests(TestCase):
             source_location='Rack 1',
         )
 
-        response = self.client.get(reverse('transfer_request_page'))
+        summary = self.client.get(reverse('transfer_request_page'))
+        self.assertContains(summary, f'TR-{transfer_request.id}')
+        self.assertContains(summary, reverse('transfer_request_detail', args=[transfer_request.id]))
+
+        response = self.client.get(reverse('transfer_request_detail', args=[transfer_request.id]))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Listed transfer item')

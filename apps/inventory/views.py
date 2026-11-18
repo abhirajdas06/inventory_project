@@ -1128,22 +1128,55 @@ def _transfer_sheet_rows(upload):
 def transfer_request_page(request):
     if not (has_permission(request.user, 'transfer_request') or has_permission(request.user, 'transfer_receive')):
         return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
-    requests = list(TransferRequest.objects.select_related('requested_by').prefetch_related('items__product').annotate(
-        received_count=Count('items', filter=Q(items__received_at__isnull=False))
-    )[:500])
+    # One summary row per request (item lines are on the request's own page),
+    # so a request with thousands of barcodes doesn't slow this page down.
+    requests = list(TransferRequest.objects.select_related('requested_by').annotate(
+        item_count=Count('items'),
+        received_count=Count('items', filter=Q(items__received_at__isnull=False)),
+    ).order_by('-created_at')[:500])
     for transfer_request in requests:
-        for item in transfer_request.items.all():
-            detail = _inventory_detail(item.product)
-            item.display_part_no = detail.get('part_no') or item.product.part_no or ''
-            item.display_barcode = item.barcode or detail.get('barcode') or item.product.serial_no or ''
-    pending_requests = [req for req in requests if req.status == 'PENDING']
-    completed_requests = [req for req in requests if req.status in ('PARTIAL', 'COMPLETED')]
+        transfer_request.pending_count = transfer_request.item_count - transfer_request.received_count
+    pending_requests = [req for req in requests if req.status in ('PENDING', 'PARTIAL')]
+    completed_requests = [req for req in requests if req.status == 'COMPLETED']
     return render(request, 'inventory/transfer_requests.html', {
         'pending_requests': pending_requests,
         'completed_requests': completed_requests,
         'receivable_requests': [req for req in requests if req.status in ('PENDING', 'PARTIAL')],
         'warehouses': InventoryTransaction.STORE_LOCATION,
     })
+
+
+@login_required
+def transfer_request_detail(request, request_id):
+    """The items of one transfer request, 100 per page, searchable."""
+    if not (has_permission(request.user, 'transfer_request') or has_permission(request.user, 'transfer_receive')):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+    transfer_request = get_object_or_404(TransferRequest.objects.select_related('requested_by'), id=request_id)
+    items = transfer_request.items.select_related(
+        'product', 'product__category', 'received_by', *[f'product__{attr}' for attr in _RELATED_ATTRS]
+    ).order_by('received_at', 'id')
+    q = request.GET.get('q', '').strip()
+    if q:
+        items = apply_search(items, q, ['barcode', 'source_location', 'destination_location']
+                             + product_lookups('product__'), distinct=True)
+    state = request.GET.get('state', '')
+    if state == 'pending':
+        items = items.filter(received_at__isnull=True)
+    elif state == 'received':
+        items = items.filter(received_at__isnull=False)
+    context = paginated_list_context(request, items, 'items')
+    for item in context['items']:
+        detail = _inventory_detail(item.product)  # no queries: the records are select_related above
+        item.display_part_no = detail.get('part_no') or item.product.part_no or ''
+        item.display_barcode = item.barcode or detail.get('barcode') or item.product.serial_no or ''
+    counts = transfer_request.items.aggregate(total=Count('id'), received=Count('id', filter=Q(received_at__isnull=False)))
+    context.update({
+        'transfer_request': transfer_request,
+        'counts': {**counts, 'pending': counts['total'] - counts['received']},
+        'state': state,
+        'can_receive': has_permission(request.user, 'transfer_receive') and transfer_request.status != 'COMPLETED',
+    })
+    return render(request, 'inventory/transfer_request_detail.html', context)
 
 
 @login_required
@@ -1159,40 +1192,215 @@ def create_transfer_request(request):
         return JsonResponse({'success': False, 'error': 'Select valid source and destination stores'})
     if not upload:
         return JsonResponse({'success': False, 'error': 'Upload an Excel file containing barcodes'})
-    errors, seen = [], set()
+    try:
+        rows = list(_transfer_sheet_rows(upload))
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)})
+
+    accepted, errors = _eligible_transfer_rows(rows, source)
+    if not accepted:
+        return JsonResponse({'success': False, 'error': 'No eligible barcodes found', 'errors': errors})
+
     with transaction.atomic():
         formatted_remarks = format_dated_remark(request.POST.get('remarks', '').strip())
         transfer_request = TransferRequest.objects.create(source_warehouse=source, destination_warehouse=destination,
             remarks=formatted_remarks, requested_by=request.user)
-        try:
-            rows = _transfer_sheet_rows(upload)
-            for row_no, barcode, _ in rows:
-                barcode_key = barcode.upper()
-                if barcode_key in seen:
-                    errors.append(f'Row {row_no}: duplicate barcode')
-                    continue
-                seen.add(barcode_key)
-                product = _product_for_barcode(barcode)
-                latest = product.transactions.order_by('-created_at', '-id').first() if product else None
-                if not product:
-                    errors.append(f'Row {row_no}: barcode not found ({barcode})')
-                elif _is_frozen(product):
-                    errors.append(f'Row {row_no}: product is frozen ({barcode})')
-                elif _has_pending_transfer(product):
-                    errors.append(f'Row {row_no}: product is already pending transfer ({barcode})')
-                elif not latest or latest.transaction_type == 'OUT':
-                    errors.append(f'Row {row_no}: product is not currently in stock ({barcode})')
-                elif latest.store_location != source:
-                    errors.append(f'Row {row_no}: product is not in source store {source} ({barcode})')
-                else:
-                    TransferRequestItem.objects.create(request=transfer_request, product=product, barcode=barcode, source_location=_latest_location(product))
-        except ValueError as exc:
-            transfer_request.delete()
-            return JsonResponse({'success': False, 'error': str(exc)})
-        if not transfer_request.items.exists():
-            transfer_request.delete()
-            return JsonResponse({'success': False, 'error': 'No eligible barcodes found', 'errors': errors})
-    return JsonResponse({'success': True, 'request_id': transfer_request.id, 'accepted': transfer_request.items.count(), 'errors': errors})
+        TransferRequestItem.objects.bulk_create([
+            TransferRequestItem(request=transfer_request, product=product, barcode=barcode, source_location=location)
+            for product, barcode, location in accepted
+        ], batch_size=1000)
+    log_activity(action='TRANSFER_REQUEST', module='INVENTORY', entity=f'TR-{transfer_request.id}', user=request.user,
+                 warehouse=source, new_values={'destination_warehouse': destination, 'items': len(accepted), 'rejected': len(errors)},
+                 remarks=f'Bulk transfer request: {len(accepted)} item(s) from {source} to {destination}')
+    return JsonResponse({'success': True, 'request_id': transfer_request.id, 'accepted': len(accepted), 'errors': errors})
+
+
+def _eligible_transfer_rows(rows, source):
+    """[(row_no, barcode, _)] -> ([(product, barcode, location)], [error lines]).
+    Everything is looked up in a few batched queries (not ~15 per barcode), so
+    thousands of barcodes are fine."""
+    products = _bulk_products_by_barcode(barcode for _, barcode, _ in rows)
+    states = _bulk_transfer_states([p.id for p in products.values()])
+    errors, seen, accepted = [], set(), []
+    for row_no, barcode, _ in rows:
+        barcode_key = barcode.upper()
+        if barcode_key in seen:
+            errors.append(f'Row {row_no}: duplicate barcode')
+            continue
+        seen.add(barcode_key)
+        product = products.get(barcode_key)
+        state = states.get(product.id) if product else None
+        if not product or state is None:
+            errors.append(f'Row {row_no}: barcode not found ({barcode})')
+        elif state['frozen']:
+            errors.append(f'Row {row_no}: product is frozen ({barcode})')
+        elif state['pending']:
+            errors.append(f'Row {row_no}: product is already pending transfer ({barcode})')
+        elif not state['latest_type'] or state['latest_type'] == 'OUT':
+            errors.append(f'Row {row_no}: product is not currently in stock ({barcode})')
+        elif state['store'] != source:
+            errors.append(f'Row {row_no}: product is not in source store {source} ({barcode})')
+        else:
+            accepted.append((state['product'], barcode, state['location']))
+    return accepted, errors
+
+
+# ── Chunked bulk transfer (the page sends the file's rows in chunks so any
+#    size uploads with a progress bar and no request runs long) ────────────
+TRANSFER_CHUNK_LIMIT = 1000
+
+
+def _json_rows(request):
+    import json
+    try:
+        rows = json.loads(request.body or b'{}').get('rows') or []
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(rows, list) or len(rows) > TRANSFER_CHUNK_LIMIT:
+        return None
+    clean = []
+    for r in rows:
+        if isinstance(r, dict) and str(r.get('barcode') or '').strip():
+            clean.append((r.get('row'), str(r['barcode']).strip(), str(r.get('location') or '').strip()))
+    return clean
+
+
+@login_required
+@require_POST
+def transfer_read_file(request):
+    """Parse a transfer Excel and return its rows; nothing is changed yet."""
+    if not (has_permission(request.user, 'transfer_request') or has_permission(request.user, 'transfer_receive')):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+    upload = request.FILES.get('file')
+    if not upload:
+        return JsonResponse({'success': False, 'error': 'Upload an Excel file containing barcodes'})
+    try:
+        rows = list(_transfer_sheet_rows(upload))
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)})
+    out, errors, seen = [], [], set()
+    for row_no, barcode, location in rows:
+        if barcode.upper() in seen:
+            errors.append(f'Row {row_no}: duplicate barcode ({barcode})')
+            continue
+        seen.add(barcode.upper())
+        out.append({'row': row_no, 'barcode': barcode, 'location': location})
+    if not out:
+        return JsonResponse({'success': False, 'error': 'No barcodes found in the file', 'errors': errors})
+    return JsonResponse({'success': True, 'rows': out, 'errors': errors, 'chunk_size': 500})
+
+
+@login_required
+@require_POST
+def transfer_start(request):
+    """Create an empty transfer request; rows are added with transfer_add_rows."""
+    if not has_permission(request.user, 'transfer_request'):
+        return JsonResponse({'success': False, 'error': 'Only Stock Out users or Admin can request a transfer'}, status=403)
+    source = request.POST.get('source_warehouse', '').strip().upper()
+    destination = request.POST.get('destination_warehouse', '').strip().upper()
+    if source not in dict(InventoryTransaction.STORE_LOCATION) or destination not in dict(InventoryTransaction.STORE_LOCATION):
+        return JsonResponse({'success': False, 'error': 'Select valid source and destination stores'})
+    transfer_request = TransferRequest.objects.create(
+        source_warehouse=source, destination_warehouse=destination, requested_by=request.user,
+        remarks=format_dated_remark(request.POST.get('remarks', '').strip()))
+    return JsonResponse({'success': True, 'request_id': transfer_request.id})
+
+
+@login_required
+@require_POST
+def transfer_add_rows(request, request_id):
+    if not has_permission(request.user, 'transfer_request'):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+    transfer_request = get_object_or_404(TransferRequest, id=request_id, requested_by=request.user, status='PENDING')
+    rows = _json_rows(request)
+    if rows is None:
+        return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
+    accepted, errors = _eligible_transfer_rows(rows, transfer_request.source_warehouse)
+    TransferRequestItem.objects.bulk_create([
+        TransferRequestItem(request=transfer_request, product=product, barcode=barcode, source_location=location)
+        for product, barcode, location in accepted
+    ], batch_size=1000)
+    return JsonResponse({'success': True, 'accepted': len(accepted), 'errors': errors})
+
+
+@login_required
+@require_POST
+def transfer_finish(request, request_id):
+    """After the last chunk: drop the request if nothing was accepted, else log it."""
+    if not has_permission(request.user, 'transfer_request'):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+    transfer_request = get_object_or_404(TransferRequest, id=request_id, requested_by=request.user)
+    count = transfer_request.items.count()
+    if not count:
+        transfer_request.delete()
+        return JsonResponse({'success': False, 'error': 'No eligible barcodes found'})
+    log_activity(action='TRANSFER_REQUEST', module='INVENTORY', entity=f'TR-{transfer_request.id}', user=request.user,
+                 warehouse=transfer_request.source_warehouse,
+                 new_values={'destination_warehouse': transfer_request.destination_warehouse, 'items': count},
+                 remarks=f'Bulk transfer request: {count} item(s) from {transfer_request.source_warehouse} to {transfer_request.destination_warehouse}')
+    return JsonResponse({'success': True, 'request_id': transfer_request.id, 'accepted': count})
+
+
+@login_required
+@require_POST
+def transfer_receive_rows(request, request_id):
+    """Receive one chunk of [{row, barcode, location}] against a transfer request."""
+    if not has_permission(request.user, 'transfer_receive'):
+        return JsonResponse({'success': False, 'error': 'Only Stock In users or Admin can receive a transfer'}, status=403)
+    transfer_request = get_object_or_404(TransferRequest, id=request_id)
+    rows = _json_rows(request)
+    if rows is None:
+        return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
+    pending = {item.barcode.upper(): item for item in transfer_request.items.filter(received_at__isnull=True)}
+    errors, to_receive, seen = [], [], set()
+    for row_no, barcode, location in rows:
+        item = pending.get(barcode.upper())
+        if not item or barcode.upper() in seen:
+            errors.append(f'Row {row_no}: barcode is not pending on this transfer request ({barcode})')
+            continue
+        if not location:
+            errors.append(f'Row {row_no}: updated location is required ({barcode})')
+            continue
+        seen.add(barcode.upper())
+        to_receive.append((item, location))
+    received = _receive_transfer_items(transfer_request, to_receive, request.user)
+    pending_count = transfer_request.items.filter(received_at__isnull=True).count()
+    received_any = transfer_request.items.filter(received_at__isnull=False).exists()
+    transfer_request.status = 'COMPLETED' if not pending_count else ('PARTIAL' if received_any else 'PENDING')
+    transfer_request.completed_at = now() if not pending_count else None
+    transfer_request.save(update_fields=['status', 'completed_at'])
+    return JsonResponse({'success': True, 'received': received, 'pending': pending_count, 'errors': errors})
+
+
+def _bulk_transfer_states(product_ids):
+    """{product_id: {latest_type, status, store, frozen, pending, location}} in
+    a handful of queries for any number of products (1,000 at a time)."""
+    latest = InventoryTransaction.objects.filter(product=OuterRef('pk')).order_by('-created_at', '-id')
+    latest_freeze = InventoryFreezeRecord.objects.filter(product=OuterRef('pk')).order_by('-frozen_at', '-id')
+    states = {}
+    ids = list(product_ids)
+    for start in range(0, len(ids), 1000):
+        chunk = (Product.objects.filter(id__in=ids[start:start + 1000])
+                 .select_related(*_RELATED_ATTRS)
+                 .annotate(
+                     latest_type=Subquery(latest.values('transaction_type')[:1]),
+                     latest_status=Subquery(latest.values('stock_status')[:1]),
+                     latest_store=Subquery(latest.values('store_location')[:1]),
+                     freeze_status=Subquery(latest_freeze.values('status')[:1]),
+                 ))
+        pending = set(TransferRequestItem.objects.filter(product_id__in=ids[start:start + 1000], received_at__isnull=True)
+                      .values_list('product_id', flat=True))
+        for product in chunk:
+            states[product.id] = {
+                'product': product,
+                'latest_type': product.latest_type,
+                'status': product.latest_status,
+                'store': product.latest_store or 'WH1',
+                'frozen': product.freeze_status == 'FROZEN',
+                'pending': product.id in pending,
+                'location': _latest_location(product),
+            }
+    return states
 
 
 @login_required
@@ -1205,43 +1413,79 @@ def receive_transfer_request(request, request_id):
     if not upload:
         return JsonResponse({'success': False, 'error': 'Upload an Excel file with Barcode and updated Location columns'})
     transfer_request = get_object_or_404(TransferRequest, id=request_id)
-    pending = {item.barcode.upper(): item for item in transfer_request.items.select_related('product').filter(received_at__isnull=True)}
-    errors, received = [], 0
+    try:
+        rows = list(_transfer_sheet_rows(upload))
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)})
+    pending = {item.barcode.upper(): item for item in transfer_request.items.filter(received_at__isnull=True)}
+    errors, to_receive, seen = [], [], set()
+    for row_no, barcode, destination_location in rows:
+        item = pending.get(barcode.upper())
+        if not item or barcode.upper() in seen:
+            errors.append(f'Row {row_no}: barcode is not pending on this transfer request ({barcode})')
+            continue
+        if not destination_location:
+            errors.append(f'Row {row_no}: updated location is required ({barcode})')
+            continue
+        seen.add(barcode.upper())
+        to_receive.append((item, destination_location))
+    received = _receive_transfer_items(transfer_request, to_receive, request.user)
     with transaction.atomic():
-        try:
-            rows = _transfer_sheet_rows(upload)
-            for row_no, barcode, destination_location in rows:
-                item = pending.get(barcode.upper())
-                if not item:
-                    errors.append(f'Row {row_no}: barcode is not pending on this transfer request ({barcode})')
-                    continue
-                if not destination_location:
-                    errors.append(f'Row {row_no}: updated location is required ({barcode})')
-                    continue
-                product = item.product
-                _set_product_location(product, destination_location)
-                InventoryTransfer.objects.create(product=product, source_warehouse=transfer_request.source_warehouse,
-                    destination_warehouse=transfer_request.destination_warehouse, source_location=item.source_location,
-                    destination_location=destination_location,
-                    remarks=format_dated_remark(f'Transfer request TR-{transfer_request.id}', date.today()),
-                    transferred_by=request.user)
-                # Keep the item's status (a Faulty item stays Faulty after moving).
-                InventoryTransaction.objects.create(product=product, transaction_type='IN', store_location=transfer_request.destination_warehouse,
-                    stock_status=_in_stock_status(product) or 'LIVE', stock_in_date=date.today(), performed_by=request.user)
-                item.destination_location = destination_location
-                item.received_by = request.user
-                item.received_at = now()
-                item.save(update_fields=['destination_location', 'received_by', 'received_at'])
-                log_timeline(product=product, event_type='TRANSFER', user=request.user, warehouse=transfer_request.destination_warehouse,
-                             location=destination_location, remarks=f'Received against TR-{transfer_request.id}')
-                received += 1
-        except ValueError as exc:
-            return JsonResponse({'success': False, 'error': str(exc)})
         pending_count = transfer_request.items.filter(received_at__isnull=True).count()
         transfer_request.status = 'COMPLETED' if not pending_count else ('PARTIAL' if received else 'PENDING')
         transfer_request.completed_at = now() if not pending_count else None
         transfer_request.save(update_fields=['status', 'completed_at'])
     return JsonResponse({'success': True, 'received': received, 'pending': pending_count, 'errors': errors})
+
+
+def _receive_transfer_items(transfer_request, to_receive, user):
+    """Receive [(TransferRequestItem, new location)] in bulk: move the location
+    on each item's inventory record, write the transfer + stock-in + timeline
+    records, mark the items received. Batched, so thousands of rows are fine.
+    Each item keeps its status (a Faulty item stays Faulty after moving)."""
+    from apps.core.models import AssetTimelineEvent
+    if not to_receive:
+        return 0
+    states = _bulk_transfer_states([item.product_id for item, _ in to_receive])
+    today, stamp = date.today(), now()
+    remarks = format_dated_remark(f'Transfer request TR-{transfer_request.id}', today)
+    actor = user if getattr(user, 'is_authenticated', False) else None
+    location_updates = {}
+    transfers, transactions_, events = [], [], []
+    for item, location in to_receive:
+        state = states.get(item.product_id)
+        if state is None:
+            continue
+        product = state['product']
+        for obj in _related_inventory_objects(product):
+            if hasattr(obj, 'location'):
+                obj.location = location
+                location_updates.setdefault(type(obj), []).append(obj)
+        transfers.append(InventoryTransfer(
+            product=product, source_warehouse=transfer_request.source_warehouse,
+            destination_warehouse=transfer_request.destination_warehouse, source_location=item.source_location,
+            destination_location=location, remarks=remarks, transferred_by=actor, created_at=stamp))
+        status = state['status'] if state['latest_type'] and state['latest_type'] != 'OUT' else None
+        transactions_.append(InventoryTransaction(
+            product=product, transaction_type='IN', store_location=transfer_request.destination_warehouse,
+            stock_status=status or 'LIVE', stock_in_date=today, performed_by=actor))
+        events.append(AssetTimelineEvent(
+            product=product, event_type='TRANSFER', performed_by=actor,
+            warehouse=transfer_request.destination_warehouse, location=location,
+            remarks=f'Received against TR-{transfer_request.id}', details={}))
+        item.destination_location = location
+        item.received_by = actor
+        item.received_at = stamp
+    received_items = [item for item, _ in to_receive if item.received_at == stamp]
+    with transaction.atomic():
+        for model, objs in location_updates.items():
+            model.objects.bulk_update(objs, ['location'], batch_size=1000)
+        InventoryTransfer.objects.bulk_create(transfers, batch_size=1000)
+        InventoryTransaction.objects.bulk_create(transactions_, batch_size=1000)
+        AssetTimelineEvent.objects.bulk_create(events, batch_size=1000)
+        TransferRequestItem.objects.bulk_update(received_items, ['destination_location', 'received_by', 'received_at'], batch_size=1000)
+    return len(received_items)
+
 
 @login_required
 def receive_transfer_item(request, request_id, item_id):
