@@ -175,7 +175,10 @@ class SalesReturn(models.Model):
 
 
 class TransferRequest(models.Model):
-    STATUS_CHOICES = (('PENDING', 'Pending receipt'), ('PARTIAL', 'Partially received'), ('COMPLETED', 'Completed'))
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending receipt'), ('PARTIAL', 'Partially received'),
+        ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled'),
+    )
     source_warehouse = models.CharField(max_length=50, choices=InventoryTransaction.STORE_LOCATION)
     destination_warehouse = models.CharField(max_length=50, choices=InventoryTransaction.STORE_LOCATION)
     remarks = models.TextField(blank=True)
@@ -183,6 +186,10 @@ class TransferRequest(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING', db_index=True)
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     completed_at = models.DateTimeField(null=True, blank=True)
+    # Set when the whole request is cancelled (individual items carry their own).
+    cancelled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='cancelled_transfer_requests')
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancel_reason = models.TextField(blank=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -199,6 +206,9 @@ class TransferRequestItem(models.Model):
     destination_location = models.CharField(max_length=255, blank=True)
     received_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_transfer_items')
     received_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='cancelled_transfer_items')
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancel_reason = models.TextField(blank=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=('request', 'product'), name='unique_transfer_request_product')]

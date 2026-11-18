@@ -8,6 +8,7 @@
         <th class="text-end">Items</th>
         <th class="text-end">Received</th>
         <th class="text-end">Pending</th>
+        <th class="text-end">Cancelled</th>
         <th>Status</th>
         <th>Requested By</th>
         <th>Created</th>
@@ -24,8 +25,11 @@
         <td class="text-end">{{ request.item_count }}</td>
         <td class="text-end">{{ request.received_count }}</td>
         <td class="text-end">{{ request.pending_count }}</td>
+        <td class="text-end">{{ request.cancelled_count }}</td>
         <td>
-          {% if request.status == 'COMPLETED' %}<span class="badge bg-success">Completed</span>
+          {% if request.status == 'CANCELLED' %}<span class="badge bg-danger">Cancelled</span>
+          {% if request.cancel_reason %}<div class="text-muted small text-truncate" style="max-width: 200px;" title="{{ request.cancel_reason }}">{{ request.cancel_reason }}</div>{% endif %}
+          {% elif request.status == 'COMPLETED' %}<span class="badge bg-success">Completed</span>{% if request.cancelled_count %}<div class="text-muted small">{{ request.cancelled_count }} cancelled</div>{% endif %}
           {% elif request.status == 'PARTIAL' %}<span class="badge bg-warning text-dark">Partly received</span>
           {% else %}<span class="badge bg-secondary">Pending</span>{% endif %}
         </td>
@@ -37,10 +41,14 @@
           {% if show_actions and can.transfer_receive %}
           <button type="button" class="btn btn-sm btn-outline-primary receive-transfer-btn" data-id="{{ request.id }}">Bulk receipt</button>
           {% endif %}
+          {% if show_actions %}{% if can.transfer_request or can.transfer_receive %}
+          <button type="button" class="btn btn-sm btn-outline-danger cancel-transfer-btn" data-request-id="{{ request.id }}"
+                  data-label="{{ request.source_warehouse }} → {{ request.destination_warehouse }} · {{ request.pending_count }} item(s) still pending">Cancel</button>
+          {% endif %}{% endif %}
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="11" class="text-center text-muted py-4">No transfer requests yet.</td></tr>
+      <tr><td colspan="12" class="text-center text-muted py-4">No transfer requests here.</td></tr>
       {% endfor %}
     </tbody>
   </table>

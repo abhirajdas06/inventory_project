@@ -224,8 +224,31 @@ def _is_frozen(product):
     return bool(latest and latest.status == 'FROZEN')
 
 
+# A transfer item is still pending until it is received or cancelled.
+PENDING_TRANSFER_ITEM = Q(received_at__isnull=True, cancelled_at__isnull=True)
+
+
 def _has_pending_transfer(product):
-    return product.transfer_request_items.filter(received_at__isnull=True).exists()
+    return product.transfer_request_items.filter(PENDING_TRANSFER_ITEM).exists()
+
+
+def _refresh_transfer_status(transfer_request):
+    """Set a request's status from its items: Pending / Partly received while
+    anything is still pending, then Completed (something was received) or
+    Cancelled (everything was cancelled)."""
+    counts = transfer_request.items.aggregate(
+        total=Count('id'),
+        received=Count('id', filter=Q(received_at__isnull=False)),
+        pending=Count('id', filter=PENDING_TRANSFER_ITEM),
+    )
+    if counts['pending']:
+        status = 'PARTIAL' if counts['received'] else 'PENDING'
+    else:
+        status = 'COMPLETED' if counts['received'] else 'CANCELLED'
+    transfer_request.status = status
+    transfer_request.completed_at = None if counts['pending'] else (transfer_request.completed_at or now())
+    transfer_request.save(update_fields=['status', 'completed_at'])
+    return counts['pending']
 
 
 def _in_stock_status(product):
@@ -1133,14 +1156,18 @@ def transfer_request_page(request):
     requests = list(TransferRequest.objects.select_related('requested_by').annotate(
         item_count=Count('items'),
         received_count=Count('items', filter=Q(items__received_at__isnull=False)),
+        cancelled_count=Count('items', filter=Q(items__cancelled_at__isnull=False)),
     ).order_by('-created_at')[:500])
     for transfer_request in requests:
-        transfer_request.pending_count = transfer_request.item_count - transfer_request.received_count
+        transfer_request.pending_count = (transfer_request.item_count - transfer_request.received_count
+                                          - transfer_request.cancelled_count)
     pending_requests = [req for req in requests if req.status in ('PENDING', 'PARTIAL')]
     completed_requests = [req for req in requests if req.status == 'COMPLETED']
+    cancelled_requests = [req for req in requests if req.status == 'CANCELLED']
     return render(request, 'inventory/transfer_requests.html', {
         'pending_requests': pending_requests,
         'completed_requests': completed_requests,
+        'cancelled_requests': cancelled_requests,
         'receivable_requests': [req for req in requests if req.status in ('PENDING', 'PARTIAL')],
         'warehouses': InventoryTransaction.STORE_LOCATION,
     })
@@ -1151,9 +1178,9 @@ def transfer_request_detail(request, request_id):
     """The items of one transfer request, 100 per page, searchable."""
     if not (has_permission(request.user, 'transfer_request') or has_permission(request.user, 'transfer_receive')):
         return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
-    transfer_request = get_object_or_404(TransferRequest.objects.select_related('requested_by'), id=request_id)
+    transfer_request = get_object_or_404(TransferRequest.objects.select_related('requested_by', 'cancelled_by'), id=request_id)
     items = transfer_request.items.select_related(
-        'product', 'product__category', 'received_by', *[f'product__{attr}' for attr in _RELATED_ATTRS]
+        'product', 'product__category', 'received_by', 'cancelled_by', *[f'product__{attr}' for attr in _RELATED_ATTRS]
     ).order_by('received_at', 'id')
     q = request.GET.get('q', '').strip()
     if q:
@@ -1161,20 +1188,29 @@ def transfer_request_detail(request, request_id):
                              + product_lookups('product__'), distinct=True)
     state = request.GET.get('state', '')
     if state == 'pending':
-        items = items.filter(received_at__isnull=True)
+        items = items.filter(PENDING_TRANSFER_ITEM)
     elif state == 'received':
         items = items.filter(received_at__isnull=False)
+    elif state == 'cancelled':
+        items = items.filter(cancelled_at__isnull=False)
     context = paginated_list_context(request, items, 'items')
     for item in context['items']:
         detail = _inventory_detail(item.product)  # no queries: the records are select_related above
         item.display_part_no = detail.get('part_no') or item.product.part_no or ''
         item.display_barcode = item.barcode or detail.get('barcode') or item.product.serial_no or ''
-    counts = transfer_request.items.aggregate(total=Count('id'), received=Count('id', filter=Q(received_at__isnull=False)))
+    counts = transfer_request.items.aggregate(
+        total=Count('id'),
+        received=Count('id', filter=Q(received_at__isnull=False)),
+        cancelled=Count('id', filter=Q(cancelled_at__isnull=False)),
+        pending=Count('id', filter=PENDING_TRANSFER_ITEM),
+    )
+    is_open = transfer_request.status in ('PENDING', 'PARTIAL')
     context.update({
         'transfer_request': transfer_request,
-        'counts': {**counts, 'pending': counts['total'] - counts['received']},
+        'counts': counts,
         'state': state,
-        'can_receive': has_permission(request.user, 'transfer_receive') and transfer_request.status != 'COMPLETED',
+        'can_receive': has_permission(request.user, 'transfer_receive') and is_open,
+        'can_cancel': _can_cancel_transfer(request.user) and is_open,
     })
     return render(request, 'inventory/transfer_request_detail.html', context)
 
@@ -1311,7 +1347,8 @@ def transfer_start(request):
 def transfer_add_rows(request, request_id):
     if not has_permission(request.user, 'transfer_request'):
         return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
-    transfer_request = get_object_or_404(TransferRequest, id=request_id, requested_by=request.user, status='PENDING')
+    transfer_request = get_object_or_404(TransferRequest, id=request_id, requested_by=request.user, status='PENDING',
+                                         cancelled_at__isnull=True)
     rows = _json_rows(request)
     if rows is None:
         return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
@@ -1351,7 +1388,7 @@ def transfer_receive_rows(request, request_id):
     rows = _json_rows(request)
     if rows is None:
         return JsonResponse({'success': False, 'error': 'Invalid request'}, status=400)
-    pending = {item.barcode.upper(): item for item in transfer_request.items.filter(received_at__isnull=True)}
+    pending = {item.barcode.upper(): item for item in transfer_request.items.filter(PENDING_TRANSFER_ITEM)}
     errors, to_receive, seen = [], [], set()
     for row_no, barcode, location in rows:
         item = pending.get(barcode.upper())
@@ -1364,11 +1401,7 @@ def transfer_receive_rows(request, request_id):
         seen.add(barcode.upper())
         to_receive.append((item, location))
     received = _receive_transfer_items(transfer_request, to_receive, request.user)
-    pending_count = transfer_request.items.filter(received_at__isnull=True).count()
-    received_any = transfer_request.items.filter(received_at__isnull=False).exists()
-    transfer_request.status = 'COMPLETED' if not pending_count else ('PARTIAL' if received_any else 'PENDING')
-    transfer_request.completed_at = now() if not pending_count else None
-    transfer_request.save(update_fields=['status', 'completed_at'])
+    pending_count = _refresh_transfer_status(transfer_request)
     return JsonResponse({'success': True, 'received': received, 'pending': pending_count, 'errors': errors})
 
 
@@ -1388,7 +1421,7 @@ def _bulk_transfer_states(product_ids):
                      latest_store=Subquery(latest.values('store_location')[:1]),
                      freeze_status=Subquery(latest_freeze.values('status')[:1]),
                  ))
-        pending = set(TransferRequestItem.objects.filter(product_id__in=ids[start:start + 1000], received_at__isnull=True)
+        pending = set(TransferRequestItem.objects.filter(PENDING_TRANSFER_ITEM, product_id__in=ids[start:start + 1000])
                       .values_list('product_id', flat=True))
         for product in chunk:
             states[product.id] = {
@@ -1417,7 +1450,7 @@ def receive_transfer_request(request, request_id):
         rows = list(_transfer_sheet_rows(upload))
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)})
-    pending = {item.barcode.upper(): item for item in transfer_request.items.filter(received_at__isnull=True)}
+    pending = {item.barcode.upper(): item for item in transfer_request.items.filter(PENDING_TRANSFER_ITEM)}
     errors, to_receive, seen = [], [], set()
     for row_no, barcode, destination_location in rows:
         item = pending.get(barcode.upper())
@@ -1430,11 +1463,7 @@ def receive_transfer_request(request, request_id):
         seen.add(barcode.upper())
         to_receive.append((item, destination_location))
     received = _receive_transfer_items(transfer_request, to_receive, request.user)
-    with transaction.atomic():
-        pending_count = transfer_request.items.filter(received_at__isnull=True).count()
-        transfer_request.status = 'COMPLETED' if not pending_count else ('PARTIAL' if received else 'PENDING')
-        transfer_request.completed_at = now() if not pending_count else None
-        transfer_request.save(update_fields=['status', 'completed_at'])
+    pending_count = _refresh_transfer_status(transfer_request)
     return JsonResponse({'success': True, 'received': received, 'pending': pending_count, 'errors': errors})
 
 
@@ -1487,6 +1516,84 @@ def _receive_transfer_items(transfer_request, to_receive, user):
     return len(received_items)
 
 
+# ── Cancel a transfer request (whole request or single items) ──────────────
+
+def _can_cancel_transfer(user):
+    return has_permission(user, 'transfer_request') or has_permission(user, 'transfer_receive')
+
+
+def _cancel_transfer_items(transfer_request, items, user, reason):
+    """Cancel still-pending items: record who / when / why on each item, add a
+    line to each item's history, log it in the Activity Trail, and update the
+    request's status. Returns how many items were cancelled."""
+    from apps.core.models import AssetTimelineEvent
+    items = [item for item in items if item.received_at is None and item.cancelled_at is None]
+    if not items:
+        return 0
+    stamp, actor = now(), user if getattr(user, 'is_authenticated', False) else None
+    note = f'Transfer TR-{transfer_request.id} cancelled: {reason}'
+    for item in items:
+        item.cancelled_at, item.cancelled_by, item.cancel_reason = stamp, actor, reason
+    with transaction.atomic():
+        TransferRequestItem.objects.bulk_update(items, ['cancelled_at', 'cancelled_by', 'cancel_reason'], batch_size=1000)
+        AssetTimelineEvent.objects.bulk_create([
+            AssetTimelineEvent(product_id=item.product_id, event_type='TRANSFER', performed_by=actor,
+                               warehouse=transfer_request.source_warehouse, location=item.source_location,
+                               remarks=note, details={'transfer_request_id': transfer_request.id, 'cancelled': True})
+            for item in items
+        ], batch_size=1000)
+        _refresh_transfer_status(transfer_request)
+    single = items[0] if len(items) == 1 else None
+    log_activity(
+        action='TRANSFER_CANCELLED', module='INVENTORY',
+        entity=(single.product.name if single else f'TR-{transfer_request.id}')[:100],
+        entity_id=single.product_id if single else transfer_request.id,
+        barcode=single.barcode if single else '',
+        user=user, warehouse=transfer_request.source_warehouse,
+        new_values={'transfer_request_id': transfer_request.id, 'items_cancelled': len(items),
+                    'destination_warehouse': transfer_request.destination_warehouse},
+        remarks=format_dated_remark(note) or note,
+    )
+    return len(items)
+
+
+@login_required
+@require_POST
+def cancel_transfer_request(request, request_id):
+    """Cancel every item of a request that is still pending (received items stay received)."""
+    if not _can_cancel_transfer(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+    reason = ' '.join((request.POST.get('reason') or '').split())
+    if not reason:
+        return JsonResponse({'success': False, 'error': 'Please give a reason for cancelling'})
+    transfer_request = get_object_or_404(TransferRequest, id=request_id)
+    if transfer_request.status not in ('PENDING', 'PARTIAL'):
+        return JsonResponse({'success': False, 'error': f'TR-{transfer_request.id} is already {transfer_request.get_status_display().lower()}'})
+    items = list(transfer_request.items.filter(PENDING_TRANSFER_ITEM).select_related('product'))
+    cancelled = _cancel_transfer_items(transfer_request, items, request.user, reason)
+    transfer_request.cancelled_at, transfer_request.cancelled_by, transfer_request.cancel_reason = now(), request.user, reason
+    transfer_request.save(update_fields=['cancelled_at', 'cancelled_by', 'cancel_reason'])
+    return JsonResponse({'success': True, 'cancelled': cancelled, 'status': transfer_request.status})
+
+
+@login_required
+@require_POST
+def cancel_transfer_item(request, request_id, item_id):
+    """Cancel one item of a request; the rest of the request is unaffected."""
+    if not _can_cancel_transfer(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+    reason = ' '.join((request.POST.get('reason') or '').split())
+    if not reason:
+        return JsonResponse({'success': False, 'error': 'Please give a reason for cancelling'})
+    item = get_object_or_404(TransferRequestItem.objects.select_related('request', 'product'), id=item_id, request_id=request_id)
+    if item.received_at:
+        return JsonResponse({'success': False, 'error': 'This item has already been received'})
+    if item.cancelled_at:
+        return JsonResponse({'success': False, 'error': 'This item is already cancelled'})
+    _cancel_transfer_items(item.request, [item], request.user, reason)
+    return JsonResponse({'success': True, 'cancelled': 1, 'status': item.request.status})
+
+
 @login_required
 def receive_transfer_item(request, request_id, item_id):
     """Approve one requested item without an Excel upload."""
@@ -1500,6 +1607,8 @@ def receive_transfer_item(request, request_id, item_id):
     item = get_object_or_404(TransferRequestItem.objects.select_related('request', 'product'), id=item_id, request_id=request_id)
     if item.received_at:
         return JsonResponse({'success': False, 'error': 'This item has already been received'})
+    if item.cancelled_at:
+        return JsonResponse({'success': False, 'error': 'This item was cancelled from the transfer request'})
     transfer_request = item.request
     with transaction.atomic():
         _set_product_location(item.product, destination_location)
@@ -1517,10 +1626,7 @@ def receive_transfer_item(request, request_id, item_id):
         item.received_by = request.user
         item.received_at = now()
         item.save(update_fields=['destination_location', 'received_by', 'received_at'])
-        pending_count = transfer_request.items.filter(received_at__isnull=True).count()
-        transfer_request.status = 'COMPLETED' if not pending_count else 'PARTIAL'
-        transfer_request.completed_at = now() if not pending_count else None
-        transfer_request.save(update_fields=['status', 'completed_at'])
+        pending_count = _refresh_transfer_status(transfer_request)
     log_activity(action='TRANSFER_RECEIVED', module='INVENTORY', entity=item.product.name, entity_id=item.product.id,
                  user=request.user, warehouse=transfer_request.destination_warehouse, location=destination_location,
                  new_values={'transfer_request_id': transfer_request.id}, remarks='Single-item transfer receipt')

@@ -76,6 +76,11 @@
           Completed ({{ completed_requests|length }})
         </button>
       </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#cancelledPane" type="button" role="tab">
+          Cancelled ({{ cancelled_requests|length }})
+        </button>
+      </li>
     </ul>
 
     <div class="tab-content">
@@ -93,9 +98,18 @@
           <div class="text-center text-muted py-5 border rounded bg-white">No completed transfer requests yet.</div>
         {% endif %}
       </div>
+      <div class="tab-pane fade" id="cancelledPane" role="tabpanel">
+        {% if cancelled_requests %}
+          {% include "inventory/transfer_request_table.html" with requests=cancelled_requests show_actions=False %}
+        {% else %}
+          <div class="text-center text-muted py-5 border rounded bg-white">No cancelled transfer requests.</div>
+        {% endif %}
+      </div>
     </div>
   </div>
 </div>
+
+{% include "inventory/partials/transfer_cancel_modal.html" %}
 
 <div class="modal fade" id="receiveTransferModal" tabindex="-1">
   <div class="modal-dialog">

@@ -1,0 +1,61 @@
+<!-- Cancel a whole transfer request or one item of it (buttons: .cancel-transfer-btn
+     with data-request-id, optional data-item-id, data-label). -->
+<div class="modal fade" id="cancelTransferModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" id="cancelTransferForm">
+      {% csrf_token %}
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title text-danger" id="cancelTransferTitle">Cancel transfer</h5>
+          <p class="text-muted small mb-0" id="cancelTransferLabel"></p>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-2" id="cancelTransferNote"></p>
+        <label class="form-label" for="cancelTransferReason">Reason <span class="text-danger">*</span></label>
+        <textarea class="form-control" name="reason" id="cancelTransferReason" rows="2" required placeholder="Why is this transfer being cancelled?"></textarea>
+        <div class="small text-danger mt-2" id="cancelTransferMsg"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Keep it</button>
+        <button class="btn btn-danger" id="cancelTransferSubmit">Cancel transfer</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  let target = null;
+  document.addEventListener('click', function (event) {
+    const button = event.target.closest('.cancel-transfer-btn');
+    if (!button) return;
+    target = {requestId: button.dataset.requestId, itemId: button.dataset.itemId || ''};
+    const single = !!target.itemId;
+    document.getElementById('cancelTransferTitle').textContent = single ? 'Cancel this item' : 'Cancel transfer request TR-' + target.requestId;
+    document.getElementById('cancelTransferLabel').textContent = button.dataset.label || '';
+    document.getElementById('cancelTransferNote').textContent = single
+      ? 'Only this item is taken off the request; it stays in its current store and location. The rest of the request is not affected.'
+      : 'Every item of this request that has not been received yet is cancelled and stays where it is. Items already received stay received.';
+    document.getElementById('cancelTransferReason').value = '';
+    document.getElementById('cancelTransferMsg').textContent = '';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('cancelTransferModal')).show();
+  });
+  document.getElementById('cancelTransferForm').addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if (!target) return;
+    const url = '/inventory/transfer-requests/' + target.requestId + '/'
+      + (target.itemId ? 'items/' + target.itemId + '/' : '') + 'cancel/';
+    const submit = document.getElementById('cancelTransferSubmit');
+    submit.disabled = true;
+    const res = await fetch(url, {method: 'POST', body: new FormData(event.currentTarget)});
+    const data = await res.json().catch(function () { return {success: false, error: 'Server error'}; });
+    submit.disabled = false;
+    if (!data.success) {
+      document.getElementById('cancelTransferMsg').textContent = data.error || 'Could not cancel';
+      return;
+    }
+    location.reload();
+  });
+})();
+</script>

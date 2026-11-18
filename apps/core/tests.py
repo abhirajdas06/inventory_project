@@ -2689,3 +2689,82 @@ class ChunkedTransferUploadTests(TestCase):
         html = self.client.get(reverse('transfer_request_page')).content.decode()
         self.assertIn(reverse('transfer_read_file'), html)
         self.assertIn('transfer-progress', html)
+
+
+class TransferCancelTests(TestCase):
+    """Cancel a whole transfer request or one item; it is recorded on the
+    request / item, in each item's history and in the Activity Trail."""
+
+    def setUp(self):
+        from apps.core.models import ActivityLog
+        from apps.inventory.models import TransferRequest, TransferRequestItem
+        self.ActivityLog, self.TR, self.TRI = ActivityLog, TransferRequest, TransferRequestItem
+        self.user = User.objects.create_user(username='tc-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+        self.client.force_login(self.user)
+        self.items = [_barcoded_item(f'TC-{i}') for i in range(3)]
+        tr = self.TR.objects.create(source_warehouse='WH1', destination_warehouse='WH2', requested_by=self.user)
+        for p in self.items:
+            self.TRI.objects.create(request=tr, product=p, barcode=p.spare.barcode, source_location='Rack 1')
+        self.tr = tr
+
+    def _cancel(self, reason='Wrong store chosen', item=None):
+        url = (reverse('cancel_transfer_item', args=[self.tr.id, item.id]) if item
+               else reverse('cancel_transfer_request', args=[self.tr.id]))
+        return self.client.post(url, {'reason': reason}).json()
+
+    def test_cancel_whole_request(self):
+        res = self._cancel()
+        self.assertEqual((res['success'], res['cancelled'], res['status']), (True, 3, 'CANCELLED'))
+        self.tr.refresh_from_db()
+        self.assertEqual((self.tr.status, self.tr.cancel_reason, self.tr.cancelled_by), ('CANCELLED', 'Wrong store chosen', self.user))
+        self.assertEqual(self.TRI.objects.filter(request=self.tr, cancelled_at__isnull=False).count(), 3)
+        log = self.ActivityLog.objects.get(action='TRANSFER_CANCELLED')
+        self.assertIn('Wrong store chosen', log.remarks)
+        self.assertEqual(log.new_values['items_cancelled'], 3)
+        from apps.core.models import AssetTimelineEvent
+        self.assertEqual(AssetTimelineEvent.objects.filter(product__in=self.items, remarks__contains='cancelled').count(), 3)
+        # The items are free again: a new transfer of the same item works.
+        again = self.client.post(reverse('transfer_inventory'), {'product_id': self.items[0].id, 'destination_warehouse': 'WH2', 'remarks': 'retry'}).json()
+        self.assertTrue(again['success'], again)
+        # Nothing left to cancel / receive.
+        self.assertFalse(self._cancel()['success'])
+        tri = self.TRI.objects.filter(request=self.tr).first()
+        got = self.client.post(reverse('receive_transfer_item', args=[self.tr.id, tri.id]), {'destination_location': 'x'}).json()
+        self.assertFalse(got['success'])
+
+    def test_cancel_one_item_keeps_the_rest(self):
+        first = self.TRI.objects.filter(request=self.tr).order_by('id').first()
+        res = self._cancel('Item damaged', item=first)
+        self.assertEqual((res['success'], res['status']), (True, 'PENDING'))
+        first.refresh_from_db()
+        self.assertEqual((first.cancel_reason, first.cancelled_by), ('Item damaged', self.user))
+        log = self.ActivityLog.objects.get(action='TRANSFER_CANCELLED')
+        self.assertEqual((log.barcode, log.entity_id), (first.barcode, str(first.product_id)))
+        # Receive the other two -> request completes (with one cancelled).
+        rows = [{'row': 2, 'barcode': 'TC-1', 'location': 'R1'}, {'row': 3, 'barcode': 'TC-2', 'location': 'R2'},
+                {'row': 4, 'barcode': 'TC-0', 'location': 'R0'}]
+        import json
+        got = self.client.post(reverse('transfer_receive_rows', args=[self.tr.id]), json.dumps({'rows': rows}),
+                               content_type='application/json').json()
+        self.assertEqual((got['received'], got['pending'], len(got['errors'])), (2, 0, 1))
+        self.tr.refresh_from_db()
+        self.assertEqual(self.tr.status, 'COMPLETED')
+        detail = self.client.get(reverse('transfer_request_detail', args=[self.tr.id]), {'state': 'cancelled'})
+        self.assertContains(detail, 'Item damaged')
+        self.assertEqual(detail.context['counts']['cancelled'], 1)
+
+    def test_reason_required_and_pages_show_cancel(self):
+        self.assertFalse(self._cancel(reason='  ')['success'])
+        self.assertContains(self.client.get(reverse('transfer_request_page')), 'cancel-transfer-btn')
+        self.assertContains(self.client.get(reverse('transfer_request_detail', args=[self.tr.id])), 'Cancel request')
+        self._cancel()
+        page = self.client.get(reverse('transfer_request_page'))
+        self.assertEqual([r.id for r in page.context['cancelled_requests']], [self.tr.id])
+        self.assertNotContains(self.client.get(reverse('transfer_request_detail', args=[self.tr.id])), 'Cancel request')
+
+    def test_permission(self):
+        viewer = User.objects.create_user(username='tc-viewer', password='x')
+        UserProfile.objects.create(user=viewer, role='READONLY_LIVE')
+        self.client.force_login(viewer)
+        self.assertEqual(self.client.post(reverse('cancel_transfer_request', args=[self.tr.id]), {'reason': 'x'}).status_code, 403)

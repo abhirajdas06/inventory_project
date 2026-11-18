@@ -11,11 +11,20 @@
         Requested by {{ transfer_request.requested_by|default:"-" }} on {{ transfer_request.created_at|date:"d-m-Y H:i" }}
         {% if transfer_request.remarks %} · {{ transfer_request.remarks }}{% endif %}
       </div>
+      {% if transfer_request.cancelled_at %}
+      <div class="alert alert-danger py-1 px-2 small mt-2 mb-0">
+        <i class="bi bi-x-circle me-1"></i>Cancelled by {{ transfer_request.cancelled_by|default:"-" }} on {{ transfer_request.cancelled_at|date:"d-m-Y H:i" }}{% if transfer_request.cancel_reason %}: {{ transfer_request.cancel_reason }}{% endif %}
+      </div>
+      {% endif %}
     </div>
     <div class="d-flex gap-2">
       <a href="{% url 'transfer_request_page' %}" class="btn btn-link btn-sm">All transfer requests</a>
       {% if can_receive %}
       <a href="{% url 'transfer_request_page' %}?receive={{ transfer_request.id }}" class="btn btn-outline-primary btn-sm">Bulk receipt upload</a>
+      {% endif %}
+      {% if can_cancel %}
+      <button type="button" class="btn btn-outline-danger btn-sm cancel-transfer-btn" data-request-id="{{ transfer_request.id }}"
+              data-label="{{ transfer_request.source_warehouse }} → {{ transfer_request.destination_warehouse }} · {{ counts.pending }} item(s) still pending">Cancel request</button>
       {% endif %}
     </div>
   </div>
@@ -24,6 +33,7 @@
     <a class="btn btn-sm {% if not state %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?q={{ q|urlencode }}">All <strong>{{ counts.total }}</strong></a>
     <a class="btn btn-sm {% if state == 'pending' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?state=pending&q={{ q|urlencode }}">Pending <strong>{{ counts.pending }}</strong></a>
     <a class="btn btn-sm {% if state == 'received' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?state=received&q={{ q|urlencode }}">Received <strong>{{ counts.received }}</strong></a>
+    <a class="btn btn-sm {% if state == 'cancelled' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?state=cancelled&q={{ q|urlencode }}">Cancelled <strong>{{ counts.cancelled }}</strong></a>
     <form method="get" class="ms-auto d-flex gap-2">
       {% if state %}<input type="hidden" name="state" value="{{ state }}">{% endif %}
       <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Barcode, serial, part, location" style="min-width: 240px;">
@@ -59,15 +69,26 @@
             {% if item.received_at %}
               <span class="badge bg-success">Received</span>
               <div class="text-muted small">{{ item.received_at|date:"d-m-Y H:i" }}{% if item.received_by %} · {{ item.received_by }}{% endif %}</div>
+            {% elif item.cancelled_at %}
+              <span class="badge bg-danger">Cancelled</span>
+              <div class="text-muted small" title="{{ item.cancel_reason }}">{{ item.cancelled_at|date:"d-m-Y H:i" }}{% if item.cancelled_by %} · {{ item.cancelled_by }}{% endif %}{% if item.cancel_reason %} · {{ item.cancel_reason|truncatechars:60 }}{% endif %}</div>
             {% else %}
               <span class="badge bg-secondary">Pending</span>
             {% endif %}
           </td>
           <td class="text-end">
-            {% if can_receive and not item.received_at %}
-            <button class="btn btn-sm btn-outline-primary receive-single-transfer-btn" data-item-id="{{ item.id }}"
-                    data-label="TR-{{ transfer_request.id }} - {{ item.product.name }} - {{ item.display_barcode|default:'No barcode' }}">Approve one</button>
-            {% else %}<span class="text-muted">-</span>{% endif %}
+            {% if not item.received_at and not item.cancelled_at %}{% if can_receive or can_cancel %}
+            <div class="d-inline-flex gap-1">
+              {% if can_receive %}
+              <button class="btn btn-sm btn-outline-primary receive-single-transfer-btn" data-item-id="{{ item.id }}"
+                      data-label="TR-{{ transfer_request.id }} - {{ item.product.name }} - {{ item.display_barcode|default:'No barcode' }}">Approve one</button>
+              {% endif %}
+              {% if can_cancel %}
+              <button class="btn btn-sm btn-outline-danger cancel-transfer-btn" data-request-id="{{ transfer_request.id }}" data-item-id="{{ item.id }}"
+                      data-label="TR-{{ transfer_request.id }} - {{ item.product.name }} - {{ item.display_barcode|default:'No barcode' }}">Cancel</button>
+              {% endif %}
+            </div>
+            {% endif %}{% else %}<span class="text-muted">-</span>{% endif %}
           </td>
         </tr>
         {% empty %}
@@ -79,6 +100,8 @@
   <div class="px-3 pb-3">{% include "partials/list_pagination.html" %}</div>
 </div>
 </div>
+
+{% include "inventory/partials/transfer_cancel_modal.html" %}
 
 <div class="modal fade" id="receiveSingleTransferModal" tabindex="-1">
   <div class="modal-dialog">
