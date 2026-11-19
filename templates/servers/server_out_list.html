@@ -19,9 +19,13 @@
             <div class="server-list-subtitle">{{ total_count }} {% if is_faulty %}faulty{% else %}sold{% endif %} server{{ total_count|pluralize }}{% if q or list_filter.active_count %} (filtered){% endif %}</div>
         </div>
         <div class="server-list-actions d-flex align-items-center gap-2">
-            {% if can.reports %}
+            {% if is_faulty %}{% if can.export_faulty %}
+            <a href="{% url 'server_export' 'faulty' %}?group={{ group }}{% if list_filter.values.status %}&status={{ list_filter.values.status }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-download me-1"></i>Export
+            </a>
+            {% endif %}{% elif can.export_sold %}
             <a href="{% url 'server_export' 'sold' %}?group={{ group }}{% if list_filter.values.status %}&status={{ list_filter.values.status }}{% endif %}" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-download me-1"></i>Export CSV
+                <i class="bi bi-download me-1"></i>Export
             </a>
             {% endif %}
             <a href="{{ live_url }}" class="btn btn-outline-secondary btn-sm">

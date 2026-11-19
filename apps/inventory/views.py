@@ -659,6 +659,43 @@ def sales_return_history(request):
     return render(request, 'inventory/sales_return_list.html', context)
 
 
+@require_permission('export_sold')
+def stock_out_status_export(request, status):
+    """CSV of one stock-status list (Rent, In-House Use, Return to Vendor ...)."""
+    import csv
+    from django.http import HttpResponse
+    status = (status or '').strip().upper()
+    if status not in OPERATIONAL_STOCK_OUT_STATUSES:
+        return JsonResponse({'success': False, 'error': 'Unknown stock-out status'}, status=404)
+    latest_txn = InventoryTransaction.objects.filter(product_id=OuterRef('id')).order_by('-created_at', '-id')
+    products = Product.objects.select_related('category', *_RELATED_ATTRS).annotate(
+        latest_type=Subquery(latest_txn.values('transaction_type')[:1]),
+        latest_status=Subquery(latest_txn.values('stock_status')[:1]),
+        latest_store=Subquery(latest_txn.values('store_location')[:1]),
+        latest_client=Subquery(latest_txn.values('client_name')[:1]),
+        latest_invoice=Subquery(latest_txn.values('invoice_no')[:1]),
+        latest_olf_dc=Subquery(latest_txn.values('olf_dc_number')[:1]),
+        latest_out_date=Subquery(latest_txn.values('stock_out_date')[:1]),
+    ).filter(latest_type='OUT', latest_status=status).order_by('-id')
+    products = apply_search(products, request.GET.get('q', ''), product_lookups(), distinct=True)
+    label = dict(InventoryTransaction.STOCK_STATUS).get(status, status)
+    who = {'IN_HOUSE': 'Given To (Employee)', 'RETURN_TO_VENDOR': 'Vendor'}.get(status, 'Client')
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="stock-{status.lower()}.csv"'
+    writer = csv.writer(response)
+    writer.writerow(['Category', 'Product', 'Serial No', 'Part No', 'Barcode', 'Store', 'Status', who,
+                     'Invoice', 'OLF / DC No', 'Out Date'])
+    for product in products.iterator(chunk_size=1000):
+        detail = _inventory_detail(product)
+        writer.writerow([
+            product.category.name if product.category_id else '', product.name, product.serial_no or '',
+            detail.get('part_no') or product.part_no or '', detail.get('barcode') or '', product.latest_store or '',
+            label, product.latest_client or '', product.latest_invoice or '', product.latest_olf_dc or '',
+            product.latest_out_date or '',
+        ])
+    return response
+
+
 @require_any_permission('sold_view', 'reports')
 def stock_out_status_list(request, status):
     status = (status or '').strip().upper()
@@ -862,7 +899,7 @@ def audit_report(request):
     return render(request, 'spare/audit_report.html', audit_page)
 
 
-@require_permission('audit_view')
+@require_permission('export_audit')
 def audit_report_export(request):
     """The Audit Report as Excel — same filters as the page, every matching
     row (not just the current page), one header row so it pivots cleanly."""

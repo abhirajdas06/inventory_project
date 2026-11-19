@@ -24,6 +24,11 @@
       <h1 class="inventory-list-title">{{ status_label }} Stock</h1>
       <div class="inventory-list-subtitle">{{ result_count }} current {{ status_label|lower }} item{{ result_count|pluralize }} across all models{% if status == 'IN_HOUSE' %} — given to employees; use Return to Stock when an item comes back{% endif %}</div>
     </div>
+    {% if can.export_sold %}
+    <div class="inventory-list-actions">
+      <a href="{% url 'stock_out_status_export' status %}{% if q %}?q={{ q|urlencode }}{% endif %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-download"></i> Export</a>
+    </div>
+    {% endif %}
   </div>
 
   <div class="status-list-tabs">

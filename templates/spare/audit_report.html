@@ -21,9 +21,11 @@
             {% endif %}
         </div>
     </div>
+    {% if can.export_audit %}
     <a href="{% url 'audit_report_export' %}{% if export_query %}?{{ export_query }}{% endif %}" class="btn btn-success btn-sm">
         <i class="bi bi-file-earmark-excel me-1"></i>Export to Excel
     </a>
+    {% endif %}
 </div>
 
 <div class="px-3 pt-3">

@@ -2532,7 +2532,7 @@
     });
 
     function addExportButton() {
-        if (body.classList.contains('anon-user') || !{% if can.reports %}true{% else %}false{% endif %}) return;
+        if (body.classList.contains('anon-user') || !{% if can.export_live %}true{% else %}false{% endif %}) return;
         const path = window.location.pathname;
         const map = [
             ['/spare/spares/', '/spare/export/spare/live/'],
@@ -2547,8 +2547,7 @@
             ['/spare/harddisk-list/3.5/', '/spare/export/harddisk_35/live/'],
             ['/spare/networking-spare/list/', '/spare/export/networking_spare/live/'],
             ['/servers/list/', '/servers/export/live/'],
-            ['/servers/empty/', '/servers/export/live/'],
-            ['/servers/sold/', '/servers/export/sold/']
+            ['/servers/empty/', '/servers/export/live/']
         ];
         let match = map.find(function (item) { return path === item[0]; });
         // Per-group server lists: /servers/g/<group>/ and /servers/g/<group>/empty/

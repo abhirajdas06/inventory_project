@@ -2768,3 +2768,144 @@ class TransferCancelTests(TestCase):
         UserProfile.objects.create(user=viewer, role='READONLY_LIVE')
         self.client.force_login(viewer)
         self.assertEqual(self.client.post(reverse('cancel_transfer_request', args=[self.tr.id]), {'reason': 'x'}).status_code, 403)
+
+
+class ExportPermissionTests(TestCase):
+    """Each kind of export has its own permission in Role Settings."""
+
+    def setUp(self):
+        self.item = _barcoded_item('EXP-LIVE', category='CABLE')
+        sold = _barcoded_item('EXP-SOLD', category='CABLE')
+        InventoryTransaction.objects.create(product=sold, transaction_type='OUT', store_location='WH1', stock_status='RENT', client_name='Acme')
+        _barcoded_item('EXP-FLT', category='CABLE', status='FAULTY')
+
+    def _login(self, perms):
+        user = User.objects.create_user(username=f'exp-{len(perms)}-{"-".join(perms)[:20]}', password='x')
+        UserProfile.objects.create(user=user, role='STOCK_IN')
+        RolePermission.objects.update_or_create(role='STOCK_IN', defaults={'permissions': perms})
+        self.client.force_login(user)
+
+    def _codes(self):
+        urls = {
+            'live': reverse('inventory_export', args=['spare_cable', 'live']),
+            'sold': reverse('inventory_export', args=['spare_cable', 'sold']) + '?status=RENT',
+            'faulty': reverse('inventory_export', args=['spare_cable', 'faulty']),
+            'server_live': reverse('server_export', args=['live']),
+            'server_faulty': reverse('server_export', args=['faulty']),
+            'controller_sold': reverse('controller_export', args=['sold']),
+            'status_list': reverse('stock_out_status_export', args=['RENT']),
+            'register': reverse('stock_out_register_export'),
+            'audit': reverse('audit_report_export'),
+        }
+        return {k: self.client.get(u).status_code for k, u in urls.items()}
+
+    def test_each_export_needs_its_own_permission(self):
+        self._login(['view_live', 'export_live'])
+        codes = self._codes()
+        self.assertEqual((codes['live'], codes['server_live']), (200, 200))
+        for k in ('sold', 'faulty', 'server_faulty', 'controller_sold', 'status_list', 'register', 'audit'):
+            self.assertEqual(codes[k], 403, k)
+
+        self._login(['sold_view', 'export_sold'])
+        codes = self._codes()
+        self.assertEqual((codes['sold'], codes['controller_sold'], codes['status_list']), (200, 200, 200))
+        self.assertEqual((codes['live'], codes['faulty']), (403, 403))
+
+        self._login(['export_faulty'])
+        codes = self._codes()
+        self.assertEqual((codes['faulty'], codes['server_faulty']), (200, 200))
+
+        self._login(['stock_out_register', 'export_stock_out_register', 'audit_view', 'export_audit'])
+        codes = self._codes()
+        self.assertEqual((codes['register'], codes['audit'], codes['live']), (200, 200, 403))
+
+    def test_faulty_and_stock_status_exports_have_the_right_rows(self):
+        self._login(['export_faulty', 'export_sold'])
+        faulty = self.client.get(reverse('inventory_export', args=['spare_cable', 'faulty'])).content.decode()
+        self.assertIn('SN-EXP-FLT', faulty)
+        self.assertNotIn('SN-EXP-LIVE', faulty)
+        rent = self.client.get(reverse('stock_out_status_export', args=['RENT'])).content.decode()
+        self.assertIn('SN-EXP-SOLD', rent)
+        self.assertIn('Acme', rent)
+
+    def test_buttons_follow_permissions_and_options_in_role_settings(self):
+        self._login(['view_live', 'sold_view'])
+        self.assertNotContains(self.client.get(reverse('stock_out_status_list', args=['RENT'])), reverse('stock_out_status_export', args=['RENT']))
+        self._login(['view_live', 'sold_view', 'export_sold', 'export_faulty'])
+        self.assertContains(self.client.get(reverse('stock_out_status_list', args=['RENT'])), reverse('stock_out_status_export', args=['RENT']))
+        self.assertContains(self.client.get(reverse('inventory_faulty', args=['spare_cable'])), reverse('inventory_export', args=['spare_cable', 'faulty']))
+        admin = User.objects.create_user(username='exp-admin', password='x')
+        UserProfile.objects.create(user=admin, role='ADMIN')
+        self.client.force_login(admin)
+        html = self.client.get(reverse('role_permission_settings')).content.decode()
+        for perm in ('export_live', 'export_sold', 'export_faulty', 'export_stock_out_register', 'export_audit'):
+            self.assertIn(f'name="{perm}"', html)
+            self.assertTrue(has_permission(admin, perm))
+
+
+class ProductNameFollowsUpdatesTests(TestCase):
+    """Re-importing changed details renames the product when they are part of its name."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='pn-admin', password='pass12345')
+        UserProfile.objects.create(user=self.user, role='ADMIN')
+
+    def _import(self, key, rows):
+        headers = list(HEADER_MAPS[key].keys())
+        book = Workbook()
+        book.active.append(headers)
+        for row in rows:
+            book.active.append([row.get(h) for h in headers])
+        stream = BytesIO()
+        book.save(stream)
+        job = start_import_job(key, SimpleUploadedFile('pn.xlsx', stream.getvalue()), self.user)
+        while job.status not in ('DONE', 'FAILED'):
+            job = process_import_chunk(job, chunk_size=100, user=self.user)
+        self.assertEqual(job.error_count, 0, job.errors)
+        return job
+
+    def test_hard_disk_name_follows_capacity(self):
+        from apps.categories.models import HardDisk
+        self._import('harddisk_25', [{'Barcode': 'PN-HD', 'Brand': 'IBM', 'OEM': 'SEAGATE', 'Capacity': '300GB', 'Interface(Sas/Sata/Fc)': 'SAS'}])
+        disk = HardDisk.objects.get(barcode='PN-HD')
+        self.assertEqual(disk.product.name, 'HDD - 300GB SAS 2.5 - IBM (SEAGATE')
+        self._import('harddisk_25', [{'Barcode': 'PN-HD', 'Capacity': '600GB', 'Remark': 'x'}])
+        disk.product.refresh_from_db()
+        self.assertEqual(disk.product.name, 'HDD - 600GB SAS 2.5 - IBM (SEAGATE')
+
+    def test_spare_name_follows_model_and_brand_but_not_remark(self):
+        from apps.categories.models import Spare
+        self._import('spare_cable', [{'Barcode No': 'PN-CBL', 'Brand': 'HP', 'Model': 'D2600'}])
+        spare = Spare.objects.get(barcode='PN-CBL')
+        self.assertEqual(spare.product.name, 'CABLE - D2600 - HP')
+        self._import('spare_cable', [{'Barcode No': 'PN-CBL', 'Remark(describe exact issue)': 'only a remark'}])
+        spare.product.refresh_from_db()
+        self.assertEqual(spare.product.name, 'CABLE - D2600 - HP')
+        self._import('spare_cable', [{'Barcode No': 'PN-CBL', 'Brand': 'dell', 'Model': 'MD1200'}])
+        spare.product.refresh_from_db()
+        self.assertEqual(spare.product.name, 'CABLE - MD1200 - DELL')
+
+    def test_custom_name_keeps_wording_and_swaps_changed_value(self):
+        from apps.categories.models import Spare
+        self._import('spare_cable', [{'Barcode No': 'PN-CUS', 'Brand': 'HP', 'Model': 'D2600'}])
+        product = Spare.objects.get(barcode='PN-CUS').product
+        Product.objects.filter(pk=product.pk).update(name='Shelf cable for D2600 enclosure')
+        self._import('spare_cable', [{'Barcode No': 'PN-CUS', 'Model': 'D3700'}])
+        product.refresh_from_db()
+        self.assertEqual(product.name, 'Shelf cable for D3700 enclosure')
+
+    def test_memory_and_card_names(self):
+        from apps.categories.models import Card, Memory
+        self._import('memory', [{'Barcode': 'PN-MEM', 'Brand': 'SAMSUNG', 'Size': '8GB', 'OEM': 'HP'}])
+        mem = Memory.objects.get(barcode='PN-MEM')
+        before = mem.product.name
+        self._import('memory', [{'Barcode': 'PN-MEM', 'Size': '16GB'}])
+        mem.product.refresh_from_db()
+        self.assertEqual(mem.product.name, before.replace('8GB', '16GB'))
+        col = {v: k for k, v in HEADER_MAPS['card'].items()}
+        self._import('card', [{col['barcode']: 'PN-CARD', col['brand']: 'HP', col['brand_model_no']: 'P440AR'}])
+        card = Card.objects.get(barcode='PN-CARD')
+        self.assertEqual(card.product.name, 'CARD - P440AR - HP')
+        self._import('card', [{col['barcode']: 'PN-CARD', col['brand_model_no']: 'P840AR'}])
+        card.product.refresh_from_db()
+        self.assertEqual(card.product.name, 'CARD - P840AR - HP')

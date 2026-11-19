@@ -14,7 +14,7 @@ from django.contrib.postgres.aggregates import StringAgg
  
 from apps.core.models import Product, SpareCategory, Brand
 from apps.core.services import create_server_with_components, add_server_component
-from apps.core.permissions import has_permission
+from apps.core.permissions import can_export, has_permission
 from apps.core.pagination import paginated_list_context
 from apps.inventory.models import InventoryFreezeRecord, InventoryTransaction
 from apps.servers.models import Server, ServerComponent
@@ -333,12 +333,21 @@ def export_servers(request, state='live'):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
 
-    sold = state == 'sold'
-    servers = _server_queryset().filter(latest_type='OUT') if sold else _exclude_out_or_frozen(_server_queryset())
-    if sold:
-        selected_status = request.GET.get('status', '').strip()
+    if state not in ('live', 'sold', 'faulty'):
+        return JsonResponse({'error': 'Unknown export'}, status=404)
+    if not can_export(request.user, state):
+        return HttpResponse('You do not have permission to export this list', status=403)
+    selected_status = request.GET.get('status', '').strip()
+    if state == 'faulty':
+        servers = _server_queryset().filter(latest_status__in=('FAULTY', 'DAMAGED'))
+        if selected_status in ('FAULTY', 'DAMAGED'):
+            servers = servers.filter(latest_status=selected_status)
+    elif state == 'sold':
+        servers = _server_queryset().filter(latest_type='OUT')
         if selected_status:
             servers = servers.filter(latest_status=selected_status)
+    else:
+        servers = _exclude_out_or_frozen(_server_queryset())
     server_group = (request.GET.get('group') or '').strip()
     if server_group in SERVER_GROUPS:
         servers = servers.filter(group=server_group)

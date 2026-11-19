@@ -403,11 +403,127 @@ def _inventory_records(product):
     return records + list(ServerComponent.objects.filter(product=product))
 
 
+# ── Auto-generated product names ───────────────────────────────────────────
+# The same formulas the create functions in apps.core.services use, so a
+# re-import that changes e.g. a hard disk's capacity or a card's model also
+# renames the product ("HDD - 600GB SAS 2.5 - IBM (SEAGATE)" ...).
+
+def _txt(value):
+    return '' if value is None else str(value).strip()
+
+
+def product_name_parts(product):
+    """(auto name, {part: value}) for a product, by what kind of item it is."""
+    from apps.servers.models import ServerComponent
+
+    def brand_of(obj):
+        brand = getattr(obj, 'brand', None)
+        return brand.name if brand is not None and hasattr(brand, 'name') else _txt(product.brand).upper()
+
+    component = ServerComponent.objects.filter(product=product).first()
+    if component is not None:
+        parts = {'spare_type': _txt(component.spare_type).upper(), 'barcode': _txt(component.barcode), 'brand': _txt(product.brand).upper()}
+        return f"Server - {parts['spare_type']} - {parts['barcode']} - {parts['brand']}".strip(' -').replace('  ', ' '), parts
+
+    def record(attr):
+        try:
+            return getattr(product, attr)
+        except Exception:
+            return None
+
+    server = record('server')
+    if server is not None:
+        parts = {'model': _txt(server.model), 'service_tag': _txt(server.service_tag)}
+        return f"SERVER - {parts['model']} - {parts['service_tag']}".strip(' -'), parts
+    controller = record('controller')
+    if controller is not None:
+        parts = {'model': _txt(controller.model), 'brand': brand_of(controller)}
+        return f"CONTROLLER - {parts['model']} - {parts['brand']}".strip(' -'), parts
+    disk = record('harddisk')
+    if disk is not None:
+        parts = {'capacity': _txt(disk.capacity), 'interface': _txt(disk.interface), 'size': _txt(disk.size),
+                 'brand': brand_of(disk), 'oem': _txt(disk.oem)}
+        name = (f"HDD - {parts['capacity']} {parts['interface']} {parts['size']} - {parts['brand']} ({parts['oem']})"
+                .strip().strip('()').replace('  ', ' '))
+        return name, parts
+    memory = record('memory')
+    if memory is not None:
+        parts = {'size': _txt(memory.size), 'ddr_version': _txt(memory.ddr_version), 'brand': brand_of(memory), 'oem': _txt(memory.oem)}
+        return f"MEMORY - {parts['size']} {parts['ddr_version']} - {parts['brand']} ({parts['oem']})", parts
+    sfp = record('sfp')
+    if sfp is not None:
+        parts = {'model': _txt(sfp.model), 'data_rate': _txt(sfp.data_rate), 'brand': brand_of(sfp)}
+        return f"SFP - {parts['model']} - {parts['data_rate']} - {parts['brand']}".strip(' -'), parts
+    railkit = record('railkit')
+    if railkit is not None:
+        parts = {'brand': brand_of(railkit), 'side': _txt(railkit.side), 'supported_model': _txt(railkit.supported_model)}
+        return f"RAILKIT - {parts['brand']} - {parts['side']} - {parts['supported_model']}".strip(' -'), parts
+    card = record('card')
+    if card is not None:
+        parts = {'brand_model_no': _txt(card.brand_model_no), 'brand': brand_of(card)}
+        return f"CARD - {parts['brand_model_no']} - {parts['brand']}", parts
+    cpu = record('cpu')
+    if cpu is not None:
+        parts = {'model': _txt(cpu.model), 'brand': brand_of(cpu)}
+        return f"PROCESSOR - {parts['model']} - {parts['brand']}", parts
+    networking = record('networking_spare')
+    category = product.category.name if product.category_id else ''
+    if networking is not None:
+        parts = {'category': category, 'brand': brand_of(networking), 'part_no': _txt(networking.part_no)}
+        return f"{parts['category']} - {parts['brand']} - {parts['part_no']}".strip(' -'), parts
+    spare = record('spare')
+    if spare is not None:
+        parts = {'category': category, 'model': _txt(spare.model), 'brand': brand_of(spare)}
+        if spare.controller_id:
+            return f"CONTROLLER - {parts['category']} - {parts['model']} - {parts['brand']}".strip(' -'), parts
+        return f"{parts['category']} - {parts['model']} - {parts['brand']}", parts
+    return product.name, {}
+
+
+def _fresh(product):
+    return Product.objects.select_related(
+        'category', *[f'{a}__brand' for a in ('spare', 'card', 'cpu', 'controller', 'memory', 'sfp', 'railkit', 'harddisk', 'networking_spare')],
+        'server').get(pk=product.pk)
+
+
+def refresh_product_name(product, before):
+    """After an update: if any part of the auto name changed, rename the product.
+    ``before`` is product_name_parts() taken before the update.
+
+    A name that is still the auto-generated one is rebuilt in full. A name
+    that was typed in or came from an older format keeps its wording, with
+    each changed value swapped in place (e.g. the old barcode -> the new one).
+    Returns the new name, or None when nothing changed."""
+    import re
+    old_name, old_parts = before
+    new_name, new_parts = product_name_parts(_fresh(product))
+    changed = {k: (old_parts.get(k, ''), v) for k, v in new_parts.items() if old_parts.get(k, '') != v}
+    if not changed:
+        return None
+    current = product.name or ''
+    norm = lambda text: ' '.join(text.split()).upper()
+    if norm(current) == norm(old_name) or not current.strip():
+        renamed = new_name
+    else:
+        renamed = current
+        for old, new in changed.values():
+            if old:
+                renamed = re.sub(r'(?<!\w)' + re.escape(old) + r'(?!\w)', lambda _m, _new=new: _new, renamed, flags=re.IGNORECASE)
+        renamed = ' '.join(renamed.split())
+    renamed = renamed[:255]
+    if renamed and renamed != current:
+        Product.objects.filter(pk=product.pk).update(name=renamed)
+        product.name = renamed
+        return renamed
+    return None
+
+
 def update_existing_from_row(product, row, model_key):
     """Update an existing item's details from an import row (non-blank cells
     only; never store, location, reference location, barcode or stock status).
     Returns the list of changed fields."""
     from django.db import models as dj_models
+    name_before = product_name_parts(_fresh(product))
     base = _base_key(model_key)
     data = dict(row)
     if base in HARDDISK_SIZE_IMPORTS:
@@ -460,6 +576,8 @@ def update_existing_from_row(product, row, model_key):
     if product_update:
         product.save(update_fields=product_update)
         changed += [f'Product.{f}' for f in product_update]
+    if changed and refresh_product_name(product, name_before):
+        changed.append('Product.name')
     return changed
 
 
@@ -470,6 +588,7 @@ def _update_server_fields(row):
     server = Server.objects.filter(service_tag=service_tag).first() if service_tag else None
     if server is None:
         return
+    name_before = product_name_parts(_fresh(server.product)) if server.product_id else None
     update = []
     for field, value in (('machine_type', row.get('machine_type')), ('machine_no', row.get('machine_no')),
                          ('model', row.get('server_model')), ('tested_by', row.get('tested_by'))):
@@ -478,6 +597,8 @@ def _update_server_fields(row):
             update.append(field)
     if update:
         server.save(update_fields=update)
+        if name_before is not None:
+            refresh_product_name(server.product, name_before)
 
 
 # ════════════════════════════════════════════════════════════

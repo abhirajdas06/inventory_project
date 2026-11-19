@@ -71,8 +71,9 @@ urlpatterns = [
     path('networking-spare/list/', view_live(views.networking_spare_list), name='networking_spare_list'),
     path('sold/<str:kind>/', require_any_permission('sold_view', 'reports')(views.inventory_sold_list), name='inventory_sold'),
     path('faulty/<str:kind>/', require_any_permission('sold_view', 'reports')(views.inventory_faulty_list), name='inventory_faulty'),
-    path('export/<str:kind>/<str:state>/', require_any_permission('sold_view', 'reports')(views.export_inventory), name='inventory_export'),
-    path('export-controllers/<str:state>/', require_permission('reports')(views.export_controllers), name='controller_export'),
+    # Export rights are checked inside the views (Export: live / sold / faulty).
+    path('export/<str:kind>/<str:state>/', views.export_inventory, name='inventory_export'),
+    path('export-controllers/<str:state>/', login_required(views.export_controllers), name='controller_export'),
     path('import/', views.import_inventory_page, name='inventory_import'),
     path('import/template/<str:model_key>/', login_required(views.import_template_download), name='inventory_import_template'),
     path('import/start/', views.start_import, name='inventory_import_start'),

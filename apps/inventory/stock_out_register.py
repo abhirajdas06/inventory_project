@@ -250,7 +250,7 @@ def stock_out_register(request):
     })
 
 
-@require_permission('stock_out_register')
+@require_permission('export_stock_out_register')
 def stock_out_register_export(request):
     from openpyxl import Workbook
     from openpyxl.cell import WriteOnlyCell

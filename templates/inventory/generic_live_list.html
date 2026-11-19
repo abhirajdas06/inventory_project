@@ -28,7 +28,7 @@
                 <i class="bi bi-bag-check"></i> Sold
             </a>
             {% endif %}
-            {% if can.sold_view or can.reports %}
+            {% if can.export_live %}
             <a href="{% url 'inventory_export' kind 'live' %}" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-download"></i> Export
             </a>

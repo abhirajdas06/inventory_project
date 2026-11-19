@@ -14,6 +14,9 @@
         {% if can.sold_view or can.reports %}
         <a class="btn btn-sm btn-outline-secondary" href="{% url 'inventory_sold' kind %}">Sold list</a>
         {% endif %}
+        {% if can.export_faulty %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'inventory_export' kind 'faulty' %}{% if list_filter.values.status %}?status={{ list_filter.values.status }}{% endif %}"><i class="bi bi-download"></i> Export</a>
+        {% endif %}
       </div>
     </div>
 

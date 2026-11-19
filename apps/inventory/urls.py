@@ -8,6 +8,7 @@ urlpatterns = [
     path('sales-returns/', views.sales_return_history, name='sales_return_history'),
     path('update-status/', views.update_inventory_status, name='update_inventory_status'),
     path('stock-out-status/<str:status>/', views.stock_out_status_list, name='stock_out_status_list'),
+    path('stock-out-status/<str:status>/export/', views.stock_out_status_export, name='stock_out_status_export'),
     path('audit/', views.audit_spare, name='audit_spare'),
     path('audit-history/<int:product_id>/', views.audit_history, name='audit_history'),
     path('audit-report/', views.audit_report, name='audit_report'),

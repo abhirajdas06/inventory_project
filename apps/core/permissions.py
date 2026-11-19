@@ -13,19 +13,22 @@ ROLE_PERMISSIONS = {
         'reconciliation', 'mapping', 'freeze', 'reports', 'audit_findings',
         'attend_audit_finding', 'stock_return', 'status_update', 'view_live',
         'delete_inventory', 'stock_out_register', 'staff_activity',
+        'export_live', 'export_sold', 'export_faulty', 'export_stock_out_register', 'export_audit',
     },
     'STOCK_IN': {
         'stock_in', 'sales_return', 'rent_return', 'transfer_receive',
         'audit_view', 'product_history', 'sold_view', 'mapping',
         'audit_findings', 'attend_audit_finding', 'stock_return', 'reports',
         'status_update', 'view_live',
+        'export_live', 'export_sold', 'export_faulty', 'export_audit',
     },
     'STOCK_OUT': {
         'stock_out', 'stock_out_import', 'transfer_request', 'freeze', 'mapping',
         'sold_view', 'reports', 'status_update', 'view_live',
+        'export_live', 'export_sold', 'export_faulty',
     },
     'AUDIT': {
-        'audit', 'audit_findings', 'view_live', 'stock_out_register',
+        'audit', 'audit_findings', 'view_live', 'stock_out_register', 'export_stock_out_register',
     },
     # View-only roles: can open lists but every action button is hidden and
     # every write endpoint refuses them (they hold no action permission).
@@ -33,7 +36,7 @@ ROLE_PERMISSIONS = {
         'view_live',
     },
     'READONLY_OUT': {
-        'sold_view', 'stock_out_register',
+        'sold_view', 'stock_out_register', 'export_stock_out_register',
     },
 }
 
@@ -42,6 +45,11 @@ PERMISSION_LABELS = {
     'sold_view': 'Read-only: view out-stock lists (sold, faulty, stock status)',
     'stock_out_register': 'Stock Out Register: view and export every stock out by date (for auditors)',
     'staff_activity': 'Employee Activity on the dashboard: transactions per employee by month',
+    'export_live': 'Export: live (in-stock) lists — every product, incl. servers and controllers',
+    'export_sold': 'Export: sold / stocked-out lists — sold, rent, in-house, return to vendor and other stock statuses',
+    'export_faulty': 'Export: faulty / damaged lists — every product',
+    'export_stock_out_register': 'Export: Stock Out Register',
+    'export_audit': 'Export: Audit Report',
     'user_management': 'Manage users and role settings',
     'stock_in': 'Add stock and components',
     'stock_out': 'Stock out products',
@@ -106,6 +114,15 @@ def permissions_for(user):
     if role == 'ADMIN':
         granted.add('user_management')
     return granted
+
+
+# Which permission each list export needs ('live' / 'sold' / 'faulty').
+EXPORT_PERMISSIONS = {'live': 'export_live', 'sold': 'export_sold', 'faulty': 'export_faulty'}
+
+
+def can_export(user, state):
+    permission = EXPORT_PERMISSIONS.get(state)
+    return bool(permission) and has_permission(user, permission)
 
 
 def has_permission(user, permission):

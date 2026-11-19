@@ -18,7 +18,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.views.decorators.http import require_POST
-from apps.core.permissions import require_any_permission
+from apps.core.permissions import require_any_permission, EXPORT_PERMISSIONS, can_export
 
 from apps.inventory.models import InventoryFreezeRecord, InventoryTransaction
 from apps.core.permissions import has_permission
@@ -1607,15 +1607,22 @@ def inventory_faulty_list(request, kind):
 
 @login_required
 def export_inventory(request, kind, state='live'):
-    if kind not in LIST_MODELS:
+    """CSV of one product's Live, Sold or Faulty list. Each needs its own
+    export permission (Role Settings → Export: live / sold / faulty)."""
+    if kind not in LIST_MODELS or state not in EXPORT_PERMISSIONS:
         return JsonResponse({'error': 'Unknown export'}, status=404)
+    if not can_export(request.user, state):
+        return HttpResponseForbidden('You do not have permission to export this list')
     import csv
     config = LIST_MODELS[kind]
-    sold = state == 'sold'
-    qs = _scoped_queryset(config, sold=sold)
-    if sold:
-        selected_status = request.GET.get('status', '').strip()
-        if selected_status:
+    selected_status = request.GET.get('status', '').strip()
+    if state == 'faulty':
+        qs = _scoped_queryset(config, include_stocked_out=True).filter(latest_status__in=('FAULTY', 'DAMAGED'))
+        if selected_status in ('FAULTY', 'DAMAGED'):
+            qs = qs.filter(latest_status=selected_status)
+    else:
+        qs = _scoped_queryset(config, sold=state == 'sold')
+        if state == 'sold' and selected_status:
             qs = qs.filter(latest_status=selected_status)
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="{kind}-{state}.csv"'
@@ -1711,6 +1718,10 @@ def export_controllers(request, state='live'):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
 
+    if state not in ('live', 'sold'):
+        return JsonResponse({'error': 'Unknown export'}, status=404)
+    if not can_export(request.user, state):
+        return HttpResponseForbidden('You do not have permission to export this list')
     sold = state == 'sold'
     wb = Workbook()
     ws = wb.active
